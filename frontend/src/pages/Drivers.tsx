@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Pencil, Power, PowerOff, Trash2 } from 'lucide-react'
+import { Plus, Search, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useList } from '../hooks/useList'
 import { api, apiError } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -11,6 +11,7 @@ import { Button, Card, EmptyState, Field, Input, PageHeader, Select, Spinner, Te
 import { StatusBadge } from '../components/StatusBadge'
 import { Pagination } from '../components/Pagination'
 import { DataTable } from '../components/DataTable'
+import { OrgUnitSelect } from '../components/OrgUnitSelect'
 import { Modal } from '../components/Modal'
 
 export function Drivers() {
@@ -78,6 +79,7 @@ export function Drivers() {
           <DataTable
             rows={items}
             rowKey={(d) => d.id}
+            onRowClick={canManage ? (d) => setEditing(d) : undefined}
             columns={[
               {
                 key: 'name', header: 'Name', primary: true, cell: (d) => (
@@ -89,12 +91,12 @@ export function Drivers() {
               },
               { key: 'emp', header: 'Employee ID', cell: (d) => d.employee_id ?? '—' },
               { key: 'phone', header: 'Phone', cell: (d) => d.phone ?? '—' },
+              { key: 'unit', header: 'Unit', cell: (d) => d.org_unit?.name ?? '—' },
               { key: 'lic', header: 'Licence Expiry', cell: (d) => fmtDate(d.licence_expiry) },
               { key: 'status', header: 'Status', badge: true, cell: (d) => <StatusBadge label={d.status_label} color={d.status_color} /> },
             ]}
             actions={canManage ? (d) => (
               <div className="flex items-center justify-end gap-1">
-                <button onClick={() => setEditing(d)} className="rounded p-1.5 text-text-3 hover:bg-surface-2 hover:text-primary" title="Edit"><Pencil className="h-4 w-4" /></button>
                 <button onClick={() => toggleActive(d)} className="rounded p-1.5 text-text-3 hover:bg-surface-2 hover:text-warning" title={d.active ? 'Deactivate' : 'Reactivate'}>
                   {d.active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                 </button>
@@ -135,6 +137,7 @@ function DriverFormModal({ driver, onClose, onSaved }: { driver?: Driver; onClos
     licence_number: driver?.licence_number ?? '',
     licence_expiry: driver?.licence_expiry ?? '',
     status: driver?.status ?? 'available',
+    org_unit_id: driver?.org_unit_id != null ? String(driver.org_unit_id) : '',
     notes: driver?.notes ?? '',
     active: driver?.active ?? true,
   })
@@ -160,6 +163,7 @@ function DriverFormModal({ driver, onClose, onSaved }: { driver?: Driver; onClos
       const payload = {
         ...form,
         licence_expiry: form.licence_expiry || null,
+        org_unit_id: form.org_unit_id ? Number(form.org_unit_id) : null,
         ...(createLogin ? { create_login: true, login_email: loginEmail, login_password: loginPassword || undefined } : {}),
       }
       if (driver) await api.put(`/drivers/${driver.id}`, payload)
@@ -186,6 +190,7 @@ function DriverFormModal({ driver, onClose, onSaved }: { driver?: Driver; onClos
             {meta?.enums.driver_status.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </Select>
         </Field>
+        <Field label="Org Unit" hint="Which unit this driver belongs to."><OrgUnitSelect value={form.org_unit_id} onChange={(v) => set('org_unit_id', v)} noneLabel="— Unassigned —" /></Field>
       </div>
       <div className="mt-4"><Field label="Notes"><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field></div>
       {isAdmin && (

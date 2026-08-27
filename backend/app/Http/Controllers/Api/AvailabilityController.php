@@ -118,9 +118,11 @@ class AvailabilityController extends Controller
         $start = Carbon::parse($data['start']);
         $end = Carbon::parse($data['end']);
         $passengers = (int) ($data['passengers'] ?? 1);
+        // Only the requester's unit fleet (+ ancestor pools) can serve them.
+        $serving = $request->user()->servingOrgUnitIds();
 
-        $vehicles = $this->availability->availableVehicles($start, $end, $passengers);
-        $drivers = $this->availability->availableDrivers($start, $end);
+        $vehicles = $this->availability->availableVehicles($start, $end, $passengers, $serving);
+        $drivers = $this->availability->availableDrivers($start, $end, $serving);
 
         $conflicts = Trip::whereIn('status', self::BLOCKING)
             ->where('scheduled_start', '<', $end)

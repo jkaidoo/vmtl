@@ -24,6 +24,7 @@ import { Reports } from './pages/Reports'
 import { AuditLogs } from './pages/AuditLogs'
 import { Users } from './pages/Users'
 import { Departments } from './pages/Departments'
+import { OrgUnits } from './pages/admin/OrgUnits'
 import { Settings } from './pages/Settings'
 import { Faqs } from './pages/Faqs'
 import { AppHealth } from './pages/admin/AppHealth'
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="/audit-logs" element={<ProtectedRoute cap="audit.view"><AuditLogs /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute cap="users.manage"><Users /></ProtectedRoute>} />
         <Route path="/departments" element={<ProtectedRoute cap="departments.manage"><Departments /></ProtectedRoute>} />
+        <Route path="/org-units" element={<ProtectedRoute cap="departments.manage"><OrgUnits /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute cap="settings.manage"><Settings /></ProtectedRoute>} />
 
         <Route path="/faqs" element={<Faqs />} />

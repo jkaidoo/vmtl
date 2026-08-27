@@ -22,6 +22,7 @@ class User extends Authenticatable
         'password',
         'role_id',
         'department_id',
+        'org_unit_id',
         'phone',
         'active',
         'is_super_admin',
@@ -56,6 +57,44 @@ class User extends Authenticatable
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    public function orgUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrgUnit::class);
+    }
+
+    /**
+     * The org-unit ids this user may see/act on for fleet & drivers.
+     * Returns null when the user has unrestricted scope (super admin), otherwise
+     * their unit plus all descendants. A user with no unit sees only unassigned
+     * (null org_unit) records — represented by an empty id list.
+     *
+     * @return array<int,int>|null  null = all units
+     */
+    public function visibleOrgUnitIds(): ?array
+    {
+        if ($this->is_super_admin) {
+            return null;
+        }
+
+        return $this->orgUnit ? $this->orgUnit->subtreeIds() : [];
+    }
+
+    /**
+     * Org-unit ids whose fleet may serve THIS user's requests: their unit plus
+     * every ancestor (so a parent/central pool serves sub-units). Null = no
+     * restriction (super admin, or a user with no unit — avoids lockout).
+     *
+     * @return array<int,int>|null
+     */
+    public function servingOrgUnitIds(): ?array
+    {
+        if ($this->is_super_admin) {
+            return null;
+        }
+
+        return $this->orgUnit ? $this->orgUnit->pathIds() : null;
     }
 
     public function vehicleRequests(): HasMany

@@ -14,6 +14,7 @@ import { Modal } from '../components/Modal'
 export function Maintenance() {
   const [vehicleId, setVehicleId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<MaintenanceRecord | null>(null)
   const { items, page, lastPage, total, loading, setPage, reload } = useList<MaintenanceRecord>('/maintenance-records', {
     vehicle_id: vehicleId || undefined,
   })
@@ -46,6 +47,7 @@ export function Maintenance() {
           <DataTable
             rows={items}
             rowKey={(m) => m.id}
+            onRowClick={(m) => setEditing(m)}
             columns={[
               { key: 'veh', header: 'Vehicle', primary: true, cell: (m) => <span className="font-medium text-text">{m.vehicle?.vehicle_number}</span> },
               { key: 'date', header: 'Date', cell: (m) => fmtDate(m.service_date) },
@@ -61,25 +63,27 @@ export function Maintenance() {
       </Card>
 
       {creating && <MaintenanceFormModal vehicles={vehicles} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); reload() }} />}
+      {editing && <MaintenanceFormModal record={editing} vehicles={vehicles} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </div>
   )
 }
 
-function MaintenanceFormModal({ vehicles, onClose, onSaved }: { vehicles: Vehicle[]; onClose: () => void; onSaved: () => void }) {
+function MaintenanceFormModal({ record, vehicles, onClose, onSaved }: { record?: MaintenanceRecord; vehicles: Vehicle[]; onClose: () => void; onSaved: () => void }) {
   const meta = useMeta()
   const toast = useToast()
+  const editing = !!record
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
-    vehicle_id: '',
-    maintenance_type: 'general_service',
-    service_date: new Date().toISOString().slice(0, 10),
-    odometer: '',
-    description: '',
-    cost: '',
-    service_provider: '',
-    next_service_date: '',
-    next_service_odometer: '',
-    remarks: '',
+    vehicle_id: record ? String(record.vehicle_id) : '',
+    maintenance_type: record?.maintenance_type ?? 'general_service',
+    service_date: record?.service_date ?? new Date().toISOString().slice(0, 10),
+    odometer: record?.odometer != null ? String(record.odometer) : '',
+    description: record?.description ?? '',
+    cost: record?.cost != null ? String(record.cost) : '',
+    service_provider: record?.service_provider ?? '',
+    next_service_date: record?.next_service_date ?? '',
+    next_service_odometer: record?.next_service_odometer != null ? String(record.next_service_odometer) : '',
+    remarks: record?.remarks ?? '',
   })
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -89,16 +93,18 @@ function MaintenanceFormModal({ vehicles, onClose, onSaved }: { vehicles: Vehicl
       return
     }
     setLoading(true)
+    const payload = {
+      ...form,
+      vehicle_id: Number(form.vehicle_id),
+      odometer: form.odometer ? Number(form.odometer) : null,
+      cost: form.cost ? Number(form.cost) : null,
+      next_service_odometer: form.next_service_odometer ? Number(form.next_service_odometer) : null,
+      next_service_date: form.next_service_date || null,
+    }
     try {
-      await api.post('/maintenance-records', {
-        ...form,
-        vehicle_id: Number(form.vehicle_id),
-        odometer: form.odometer ? Number(form.odometer) : null,
-        cost: form.cost ? Number(form.cost) : null,
-        next_service_odometer: form.next_service_odometer ? Number(form.next_service_odometer) : null,
-        next_service_date: form.next_service_date || null,
-      })
-      toast.success('Maintenance recorded')
+      if (editing) await api.put(`/maintenance-records/${record!.id}`, payload)
+      else await api.post('/maintenance-records', payload)
+      toast.success(editing ? 'Maintenance updated' : 'Maintenance recorded')
       onSaved()
     } catch (e) {
       toast.error(apiError(e))
@@ -108,7 +114,7 @@ function MaintenanceFormModal({ vehicles, onClose, onSaved }: { vehicles: Vehicl
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title="Record Maintenance" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={loading} onClick={submit}>Save</Button></>}>
+    <Modal open onClose={onClose} size="lg" title={editing ? 'Edit Maintenance' : 'Record Maintenance'} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={loading} onClick={submit}>Save</Button></>}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Vehicle" required>
           <Select value={form.vehicle_id} onChange={(e) => set('vehicle_id', e.target.value)}>

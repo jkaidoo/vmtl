@@ -2,18 +2,17 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plane } from 'lucide-react'
 import { api, apiError } from '../../lib/api'
-import { useMeta } from '../../context/MetaContext'
 import { useToast } from '../../components/Toast'
-import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../../components/ui'
+import { OrgUnitSelect } from '../../components/OrgUnitSelect'
+import { Button, Card, Field, Input, PageHeader, Textarea } from '../../components/ui'
 
 export function ExternalTravel() {
-  const meta = useMeta()
   const navigate = useNavigate()
   const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     external_org: '',
-    department_id: '',
+    org_unit_id: '',
     travel_date: '',
     requested_start_time: '',
     expected_end_time: '',
@@ -41,7 +40,7 @@ export function ExternalTravel() {
     try {
       const res = await api.post<{ data: { id: number; request_number: string } }>('/vehicle-requests/external', {
         ...form,
-        department_id: form.department_id ? Number(form.department_id) : null,
+        org_unit_id: form.org_unit_id ? Number(form.org_unit_id) : null,
         passenger_count: Number(form.passenger_count),
         expected_duration_days: Number(form.expected_duration_days),
         start_odometer: Number(form.start_odometer),
@@ -70,11 +69,8 @@ export function ExternalTravel() {
             <Field label="Requesting Arm / Unit" required hint="Which university arm is requesting the vehicle.">
               <Input value={form.external_org} onChange={(e) => set('external_org', e.target.value)} placeholder="e.g. College of Health Sciences" required />
             </Field>
-            <Field label="Department / Unit (internal)">
-              <Select value={form.department_id} onChange={(e) => set('department_id', e.target.value)}>
-                <option value="">— Select department —</option>
-                {meta?.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </Select>
+            <Field label="Internal Org Unit" hint="Which unit's fleet serves this.">
+              <OrgUnitSelect value={form.org_unit_id} onChange={(v) => set('org_unit_id', v)} noneLabel="— Your unit (default) —" />
             </Field>
             <Field label="Travel Date" required><Input type="date" value={form.travel_date} onChange={(e) => set('travel_date', e.target.value)} required /></Field>
             <Field label="Expected Duration (days)" required><Input type="number" min={1} value={form.expected_duration_days} onChange={(e) => set('expected_duration_days', e.target.value)} required /></Field>

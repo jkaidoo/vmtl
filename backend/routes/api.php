@@ -131,6 +131,14 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     // Departments listing is available to all authenticated users (for dropdowns).
     Route::get('/departments', [DepartmentController::class, 'index']);
 
+    // Organisational units (hierarchy + scoping). Listing is scoped for selectors;
+    // management is capability-gated inside the controller.
+    Route::get('/org-units', [\App\Http\Controllers\Api\OrgUnitController::class, 'index']);
+    Route::get('/org-units/tree', [\App\Http\Controllers\Api\OrgUnitController::class, 'tree']);
+    Route::post('/org-units', [\App\Http\Controllers\Api\OrgUnitController::class, 'store']);
+    Route::put('/org-units/{orgUnit}', [\App\Http\Controllers\Api\OrgUnitController::class, 'update']);
+    Route::delete('/org-units/{orgUnit}', [\App\Http\Controllers\Api\OrgUnitController::class, 'destroy']);
+
     // Break-glass tier — the System Administrator only (spec Part II §6–§12).
     Route::middleware('super')->group(function () {
         Route::get('/rbac', [\App\Http\Controllers\Api\RbacController::class, 'index']);
@@ -140,6 +148,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
         Route::put('/admin/system-controls', [\App\Http\Controllers\Api\SystemControlController::class, 'update']);
         Route::get('/admin/directory-auth', [\App\Http\Controllers\Api\DirectoryAuthController::class, 'index']);
         Route::put('/admin/directory-auth', [\App\Http\Controllers\Api\DirectoryAuthController::class, 'update']);
+        Route::post('/admin/directory-auth/test', [\App\Http\Controllers\Api\DirectoryAuthController::class, 'test']);
         Route::get('/admin/database', [\App\Http\Controllers\Api\DatabaseConnectionController::class, 'index']);
         Route::get('/admin/documentation', [\App\Http\Controllers\Api\DocumentationController::class, 'index']);
         Route::get('/admin/documentation/{slug}', [\App\Http\Controllers\Api\DocumentationController::class, 'show']);

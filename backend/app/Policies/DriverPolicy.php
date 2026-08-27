@@ -25,11 +25,19 @@ class DriverPolicy
 
     public function update(User $user, Driver $driver): bool
     {
-        return $user->hasCapability(Capabilities::DRIVERS_MANAGE);
+        return $user->hasCapability(Capabilities::DRIVERS_MANAGE) && $this->inScope($user, $driver->org_unit_id);
     }
 
     public function delete(User $user, Driver $driver): bool
     {
-        return $user->hasCapability(Capabilities::DRIVERS_MANAGE);
+        return $user->hasCapability(Capabilities::DRIVERS_MANAGE) && $this->inScope($user, $driver->org_unit_id);
+    }
+
+    /** A driver is manageable only within the user's org-unit scope. */
+    private function inScope(User $user, ?int $orgUnitId): bool
+    {
+        $scope = $user->visibleOrgUnitIds();
+
+        return $scope === null || ($orgUnitId !== null && in_array($orgUnitId, $scope, true));
     }
 }

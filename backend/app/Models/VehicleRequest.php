@@ -18,6 +18,7 @@ class VehicleRequest extends Model
         'request_number',
         'requester_id',
         'department_id',
+        'org_unit_id',
         'travel_date',
         'requested_start_time',
         'expected_end_time',
@@ -60,6 +61,11 @@ class VehicleRequest extends Model
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    public function orgUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrgUnit::class);
     }
 
     public function approvals(): HasMany

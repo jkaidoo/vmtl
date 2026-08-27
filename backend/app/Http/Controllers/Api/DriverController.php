@@ -23,10 +23,14 @@ class DriverController extends Controller
     {
         $this->authorize('viewAny', Driver::class);
 
+        $scope = $request->user()->visibleOrgUnitIds();
+
         $query = Driver::query()
-            ->with('user')
+            ->with(['user', 'orgUnit'])
+            ->when($scope !== null, fn ($q) => $q->whereIn('org_unit_id', $scope))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('active', true))
+            ->when($request->filled('org_unit_id'), fn ($q) => $q->where('org_unit_id', $request->integer('org_unit_id')))
             ->when($request->filled('search'), function ($q) use ($request) {
                 $s = $request->string('search');
                 $q->where(fn ($qq) => $qq->where('name', 'like', "%{$s}%")
@@ -47,7 +51,9 @@ class DriverController extends Controller
         $this->authorize('create', Driver::class);
 
         $driver = DB::transaction(function () use ($request) {
-            $driver = Driver::create($request->safe()->except(['create_login', 'login_email', 'login_password']));
+            $data = $request->safe()->except(['create_login', 'login_email', 'login_password']);
+            $data['org_unit_id'] = $this->resolveOrgUnit($request->user(), $data['org_unit_id'] ?? null);
+            $driver = Driver::create($data);
             $this->syncLoginAccount($driver, $request);
 
             return $driver;
@@ -55,14 +61,14 @@ class DriverController extends Controller
 
         AuditLogger::log('driver.created', "Driver {$driver->name} was added", $driver);
 
-        return (new DriverResource($driver->fresh('user')))->response()->setStatusCode(201);
+        return (new DriverResource($driver->fresh(['user', 'orgUnit'])))->response()->setStatusCode(201);
     }
 
     public function show(Driver $driver): DriverResource
     {
         $this->authorize('view', $driver);
 
-        return new DriverResource($driver->load('user'));
+        return new DriverResource($driver->load(['user', 'orgUnit']));
     }
 
     public function update(StoreDriverRequest $request, Driver $driver): DriverResource
@@ -71,13 +77,28 @@ class DriverController extends Controller
 
         $old = $driver->only(['name', 'status', 'active']);
         DB::transaction(function () use ($driver, $request) {
-            $driver->update($request->safe()->except(['create_login', 'login_email', 'login_password']));
+            $data = $request->safe()->except(['create_login', 'login_email', 'login_password']);
+            if (array_key_exists('org_unit_id', $data)) {
+                $data['org_unit_id'] = $this->resolveOrgUnit($request->user(), $data['org_unit_id']);
+            }
+            $driver->update($data);
             $this->syncLoginAccount($driver, $request);
         });
 
         AuditLogger::log('driver.updated', "Driver {$driver->name} was updated", $driver, $old, $driver->only(['name', 'status', 'active']));
 
-        return new DriverResource($driver->fresh('user'));
+        return new DriverResource($driver->fresh(['user', 'orgUnit']));
+    }
+
+    /** Constrain a chosen org unit to the actor's scope; default to their own unit. */
+    private function resolveOrgUnit(User $user, ?int $orgUnitId): ?int
+    {
+        $scope = $user->visibleOrgUnitIds();
+        if ($orgUnitId && ($scope === null || in_array($orgUnitId, $scope, true))) {
+            return $orgUnitId;
+        }
+
+        return $user->org_unit_id;
     }
 
     /**

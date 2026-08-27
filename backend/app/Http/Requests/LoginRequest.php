@@ -15,7 +15,8 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email'],
+            // Accept an email (local accounts) or a directory username (LDAP/AD).
+            'email' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
             'device_name' => ['sometimes', 'string', 'max:255'],
         ];

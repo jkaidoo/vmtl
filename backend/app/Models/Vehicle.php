@@ -23,6 +23,7 @@ class Vehicle extends Model
         'capacity',
         'current_odometer',
         'status',
+        'org_unit_id',
         'acquisition_date',
         'insurance_expiry',
         'roadworthy_expiry',
@@ -48,6 +49,11 @@ class Vehicle extends Model
             'service_interval_km' => 'integer',
             'last_service_odometer' => 'integer',
         ];
+    }
+
+    public function orgUnit(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(OrgUnit::class);
     }
 
     public function trips(): HasMany

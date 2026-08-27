@@ -5,6 +5,7 @@ import { useMeta } from '../../context/MetaContext'
 import { useToast } from '../../components/Toast'
 import type { Vehicle } from '../../lib/types'
 import { Button, Field, Input, Select, Textarea } from '../../components/ui'
+import { OrgUnitSelect } from '../../components/OrgUnitSelect'
 import { Modal } from '../../components/Modal'
 
 export function VehicleFormModal({ vehicle, onClose, onSaved }: { vehicle?: Vehicle; onClose: () => void; onSaved: () => void }) {
@@ -29,6 +30,7 @@ export function VehicleFormModal({ vehicle, onClose, onSaved }: { vehicle?: Vehi
     service_interval_km: vehicle?.service_interval_km?.toString() ?? '',
     last_service_date: vehicle?.last_service_date ?? '',
     last_service_odometer: vehicle?.last_service_odometer?.toString() ?? '',
+    org_unit_id: vehicle?.org_unit_id != null ? String(vehicle.org_unit_id) : '',
     notes: vehicle?.notes ?? '',
     active: vehicle?.active ?? true,
   })
@@ -48,6 +50,7 @@ export function VehicleFormModal({ vehicle, onClose, onSaved }: { vehicle?: Vehi
         insurance_expiry: form.insurance_expiry || null,
         roadworthy_expiry: form.roadworthy_expiry || null,
         last_service_date: form.last_service_date || null,
+        org_unit_id: form.org_unit_id ? Number(form.org_unit_id) : null,
       }
       if (vehicle) await api.put(`/vehicles/${vehicle.id}`, payload)
       else await api.post('/vehicles', payload)
@@ -88,6 +91,7 @@ export function VehicleFormModal({ vehicle, onClose, onSaved }: { vehicle?: Vehi
         <Field label="Service Interval (km)"><Input type="number" value={form.service_interval_km} onChange={(e) => set('service_interval_km', e.target.value)} /></Field>
         <Field label="Last Service Date"><Input type="date" value={form.last_service_date} onChange={(e) => set('last_service_date', e.target.value)} /></Field>
         <Field label="Last Service Odometer"><Input type="number" value={form.last_service_odometer} onChange={(e) => set('last_service_odometer', e.target.value)} /></Field>
+        <Field label="Org Unit" hint="Which unit this vehicle belongs to."><OrgUnitSelect value={form.org_unit_id} onChange={(v) => set('org_unit_id', v)} noneLabel="— Unassigned —" /></Field>
       </div>
       <div className="mt-4"><Field label="Notes"><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field></div>
       {isAdmin && (

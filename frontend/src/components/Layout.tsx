@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, FileText, CheckSquare, Route as RouteIcon, Car, Users as UsersIcon,
-  Wrench, BarChart3, FileSpreadsheet, ScrollText, Settings, Building2, LogOut, Menu, Sun, Moon, Monitor,
-  Activity, ShieldCheck, SlidersHorizontal, KeyRound, Database, BookOpen, Code2, HelpCircle, Gift, Plane, Fuel,
+  Wrench, BarChart3, FileSpreadsheet, ScrollText, Settings, LogOut, Menu, Sun, Moon, Monitor,
+  Activity, ShieldCheck, SlidersHorizontal, KeyRound, Database, BookOpen, Code2, HelpCircle, Gift, Plane, Fuel, Network,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '../context/AuthContext'
@@ -60,7 +60,7 @@ const SECTIONS: NavSection[] = [
     label: 'Administration',
     items: [
       { to: '/users', label: 'Users', icon: UsersIcon, cap: 'users.manage' },
-      { to: '/departments', label: 'Departments', icon: Building2, cap: 'departments.manage' },
+      { to: '/org-units', label: 'Organisation', icon: Network, cap: 'departments.manage' },
       { to: '/settings', label: 'Settings', icon: Settings, cap: 'settings.manage' },
       { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText, cap: 'audit.view' },
     ],

@@ -18,7 +18,7 @@ class UserController extends Controller
     {
         $this->authorize('viewAny', User::class);
 
-        $query = User::with(['role', 'department'])
+        $query = User::with(['role', 'department', 'orgUnit'])
             ->when($request->filled('role_id'), fn ($q) => $q->where('role_id', $request->integer('role_id')))
             ->when($request->filled('department_id'), fn ($q) => $q->where('department_id', $request->integer('department_id')))
             ->when($request->filled('search'), function ($q) use ($request) {
@@ -40,14 +40,14 @@ class UserController extends Controller
 
         AuditLogger::log('user.created', "User {$user->name} ({$user->email}) was created", $user);
 
-        return (new UserResource($user->load(['role', 'department'])))->response()->setStatusCode(201);
+        return (new UserResource($user->load(['role', 'department', 'orgUnit'])))->response()->setStatusCode(201);
     }
 
     public function show(User $user): UserResource
     {
         $this->authorize('view', $user);
 
-        return new UserResource($user->load(['role', 'department']));
+        return new UserResource($user->load(['role', 'department', 'orgUnit']));
     }
 
     public function update(StoreUserRequest $request, User $user): UserResource
@@ -64,7 +64,7 @@ class UserController extends Controller
         $user->update($data);
         AuditLogger::log('user.updated', "User {$user->name} was updated", $user);
 
-        return new UserResource($user->fresh(['role', 'department']));
+        return new UserResource($user->fresh(['role', 'department', 'orgUnit']));
     }
 
     public function destroy(Request $request, User $user): JsonResponse

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Pencil } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { useList } from '../hooks/useList'
 import { api, apiError } from '../lib/api'
 import { useMeta } from '../context/MetaContext'
@@ -9,6 +9,7 @@ import type { User } from '../lib/types'
 import { Button, Card, EmptyState, Field, Input, PageHeader, Select, Spinner } from '../components/ui'
 import { Pagination } from '../components/Pagination'
 import { DataTable } from '../components/DataTable'
+import { OrgUnitSelect } from '../components/OrgUnitSelect'
 import { Modal } from '../components/Modal'
 
 export function Users({ embedded = false }: { embedded?: boolean } = {}) {
@@ -48,11 +49,12 @@ export function Users({ embedded = false }: { embedded?: boolean } = {}) {
           <DataTable
             rows={items}
             rowKey={(u) => u.id}
+            onRowClick={(u) => setEditing(u)}
             columns={[
               { key: 'name', header: 'Name', primary: true, cell: (u) => <span className="font-medium text-text">{u.name}</span> },
               { key: 'email', header: 'Email', cell: (u) => u.email },
               { key: 'role', header: 'Role', cell: (u) => u.role?.name ?? '—' },
-              { key: 'dept', header: 'Department', cell: (u) => u.department?.name ?? '—' },
+              { key: 'unit', header: 'Org Unit', cell: (u) => u.org_unit?.name ?? '—' },
               {
                 key: 'active', header: 'Active', badge: true, cell: (u) => (
                   <span className="inline-flex items-center gap-1.5 text-xs text-text-2">
@@ -62,9 +64,6 @@ export function Users({ embedded = false }: { embedded?: boolean } = {}) {
                 ),
               },
             ]}
-            actions={(u) => (
-              <button onClick={() => setEditing(u)} className="text-text-3 hover:text-primary" title="Edit"><Pencil className="h-4 w-4" /></button>
-            )}
           />
         )}
         <Pagination page={page} lastPage={lastPage} total={total} onChange={setPage} />
@@ -88,6 +87,7 @@ function UserFormModal({ user, onClose, onSaved }: { user?: User; onClose: () =>
     password_confirmation: '',
     role_id: user?.role?.id?.toString() ?? '',
     department_id: user?.department_id?.toString() ?? '',
+    org_unit_id: user?.org_unit_id != null ? String(user.org_unit_id) : '',
     phone: user?.phone ?? '',
     active: user?.active ?? true,
   })
@@ -114,6 +114,7 @@ function UserFormModal({ user, onClose, onSaved }: { user?: User; onClose: () =>
         email: form.email,
         role_id: Number(form.role_id),
         department_id: form.department_id ? Number(form.department_id) : null,
+        org_unit_id: form.org_unit_id ? Number(form.org_unit_id) : null,
         phone: form.phone || null,
         active: form.active,
         avatar, // profile picture (data URL) or null to clear
@@ -155,11 +156,8 @@ function UserFormModal({ user, onClose, onSaved }: { user?: User; onClose: () =>
             {meta?.roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </Select>
         </Field>
-        <Field label="Department">
-          <Select value={form.department_id} onChange={(e) => set('department_id', e.target.value)}>
-            <option value="">— None —</option>
-            {meta?.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </Select>
+        <Field label="Org Unit" hint="Scopes which fleet/drivers they see.">
+          <OrgUnitSelect value={form.org_unit_id} onChange={(v) => set('org_unit_id', v)} />
         </Field>
         <Field label="Phone"><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
         <div />

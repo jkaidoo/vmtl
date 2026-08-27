@@ -15,6 +15,36 @@ export interface Department {
   active?: boolean
 }
 
+export interface OrgUnitRef {
+  id: number
+  name: string
+  type: string
+}
+
+export interface OrgUnitOption {
+  id: number
+  name: string
+  type: string
+  type_label: string
+  parent_id: number | null
+  depth: number
+}
+
+export interface OrgUnit {
+  id: number
+  name: string
+  code: string | null
+  type: string
+  type_label: string
+  parent_id: number | null
+  path: string | null
+  depth: number
+  active?: boolean
+  vehicles_count?: number
+  drivers_count?: number
+  users_count?: number
+}
+
 export interface User {
   id: number
   name: string
@@ -28,6 +58,8 @@ export interface User {
   capabilities?: string[]
   department?: Department | null
   department_id: number | null
+  org_unit_id?: number | null
+  org_unit?: OrgUnitRef | null
   created_at?: string
 }
 
@@ -53,6 +85,8 @@ export interface Vehicle {
   last_service_odometer: number | null
   notes: string | null
   active: boolean
+  org_unit_id?: number | null
+  org_unit?: OrgUnitRef | null
   active_trip?: Trip | null
 }
 
@@ -69,6 +103,8 @@ export interface Driver {
   status_color: string
   notes: string | null
   active: boolean
+  org_unit_id?: number | null
+  org_unit?: OrgUnitRef | null
   has_account?: boolean
   account_email?: string | null
 }
@@ -91,6 +127,8 @@ export interface VehicleRequest {
   department?: Department | null
   department_id: number | null
   department_label: string | null
+  org_unit_id?: number | null
+  org_unit?: OrgUnitRef | null
   travel_date: string
   requested_start_time: string
   expected_end_time: string
@@ -260,6 +298,7 @@ export interface EnumOption {
 export interface Meta {
   roles: Role[]
   departments: Department[]
+  org_units: OrgUnitOption[]
   enums: {
     request_status: EnumOption[]
     trip_status: EnumOption[]
@@ -267,6 +306,7 @@ export interface Meta {
     driver_status: EnumOption[]
     role_type: EnumOption[]
     maintenance_type: EnumOption[]
+    org_unit_type: EnumOption[]
   }
 }
 

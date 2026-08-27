@@ -32,6 +32,8 @@ class VehicleResource extends JsonResource
             'last_service_odometer' => $this->last_service_odometer,
             'notes' => $this->notes,
             'active' => $this->active,
+            'org_unit_id' => $this->org_unit_id,
+            'org_unit' => $this->whenLoaded('orgUnit', fn () => $this->orgUnit ? ['id' => $this->orgUnit->id, 'name' => $this->orgUnit->name, 'type' => $this->orgUnit->type->value] : null),
             'active_trip' => new TripResource($this->whenLoaded('activeTrip')),
             'created_at' => $this->created_at,
         ];

@@ -169,9 +169,9 @@ class AnalyticsService
     {
         return $this->completed($filters)
             ->join('vehicle_requests', 'trips.vehicle_request_id', '=', 'vehicle_requests.id')
-            ->leftJoin('departments', 'vehicle_requests.department_id', '=', 'departments.id')
-            // Goodwill trips have no department — group them under "Goodwill".
-            ->select(DB::raw("case when vehicle_requests.is_goodwill = 1 then 'Goodwill' else coalesce(departments.name, 'Unassigned') end as label"), DB::raw('count(*) as trips'))
+            ->leftJoin('org_units', 'vehicle_requests.org_unit_id', '=', 'org_units.id')
+            // Goodwill trips have no unit — group them under "Goodwill".
+            ->select(DB::raw("case when vehicle_requests.is_goodwill = 1 then 'Goodwill' else coalesce(org_units.name, 'Unassigned') end as label"), DB::raw('count(*) as trips'))
             ->groupBy('label')
             ->orderByDesc('trips')
             ->get()
@@ -234,7 +234,7 @@ class AnalyticsService
         $q = VehicleRequest::query()
             ->when($filters['date_from'] ?? null, fn ($qq, $v) => $qq->whereDate('created_at', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($qq, $v) => $qq->whereDate('created_at', '<=', $v))
-            ->when($filters['department_id'] ?? null, fn ($qq, $v) => $qq->where('department_id', $v))
+            ->when($filters['org_unit_id'] ?? null, fn ($qq, $v) => $qq->where('org_unit_id', $v))
             ->when($filters['requester_id'] ?? null, fn ($qq, $v) => $qq->where('requester_id', $v));
 
         return [

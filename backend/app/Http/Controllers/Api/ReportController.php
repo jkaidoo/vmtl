@@ -32,7 +32,7 @@ class ReportController extends Controller
     private function rows(array $filters): array
     {
         return TripQueryFilter::query($filters)
-            ->with(['vehicle', 'driver', 'vehicleRequest.requester', 'vehicleRequest.department'])
+            ->with(['vehicle', 'driver', 'vehicleRequest.requester', 'vehicleRequest.orgUnit'])
             ->orderBy('scheduled_start')
             ->get()
             ->map(fn ($trip) => [
@@ -41,7 +41,7 @@ class ReportController extends Controller
                 'vehicle' => $trip->vehicle?->vehicle_number,
                 'driver' => $trip->driver?->name,
                 'requester' => $trip->vehicleRequest?->requester?->name,
-                'department' => $trip->vehicleRequest?->is_goodwill ? 'Goodwill' : $trip->vehicleRequest?->department?->name,
+                'department' => $trip->vehicleRequest?->is_goodwill ? 'Goodwill' : $trip->vehicleRequest?->orgUnit?->name,
                 'destination' => $trip->vehicleRequest?->destination,
                 'purpose' => $trip->vehicleRequest?->purpose,
                 'start' => optional($trip->actual_start ?? $trip->scheduled_start)->format('Y-m-d H:i'),
@@ -122,7 +122,7 @@ class ReportController extends Controller
     {
         return $request->only([
             'date_from', 'date_to', 'vehicle_id', 'driver_id',
-            'department_id', 'requester_id', 'destination', 'status',
+            'org_unit_id', 'requester_id', 'destination', 'status',
         ]);
     }
 

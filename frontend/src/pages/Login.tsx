@@ -54,8 +54,8 @@ export function Login() {
           <p className="mb-5 text-sm text-text-2">Use your institutional account.</p>
 
           <form onSubmit={submit} className="space-y-4">
-            <Field label="Email">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            <Field label="Email or username">
+              <Input type="text" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="username" />
             </Field>
             <Field label="Password">
               <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />

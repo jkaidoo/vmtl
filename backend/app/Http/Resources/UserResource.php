@@ -26,6 +26,8 @@ class UserResource extends JsonResource
             'is_super_admin' => (bool) $this->is_super_admin,
             'department' => new DepartmentResource($this->whenLoaded('department')),
             'department_id' => $this->department_id,
+            'org_unit_id' => $this->org_unit_id,
+            'org_unit' => $this->whenLoaded('orgUnit', fn () => $this->orgUnit ? ['id' => $this->orgUnit->id, 'name' => $this->orgUnit->name, 'type' => $this->orgUnit->type->value] : null),
             // Capabilities are only serialised for the authenticated user (their own record).
             'capabilities' => $this->when(
                 $request->user()?->id === $this->id,

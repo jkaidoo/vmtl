@@ -20,9 +20,14 @@ class VehicleController extends Controller
     {
         $this->authorize('viewAny', Vehicle::class);
 
+        // Scope to the org units this user may see (null = all, for super admin).
+        $scope = $request->user()->visibleOrgUnitIds();
+
         $query = Vehicle::query()
+            ->when($scope !== null, fn ($q) => $q->whereIn('org_unit_id', $scope))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('active', true))
+            ->when($request->filled('org_unit_id'), fn ($q) => $q->where('org_unit_id', $request->integer('org_unit_id')))
             ->when($request->filled('search'), function ($q) use ($request) {
                 $s = $request->string('search');
                 $q->where(fn ($qq) => $qq->where('vehicle_number', 'like', "%{$s}%")
@@ -30,7 +35,7 @@ class VehicleController extends Controller
                     ->orWhere('make', 'like', "%{$s}%")
                     ->orWhere('model', 'like', "%{$s}%"));
             })
-            ->with('activeTrip.driver')
+            ->with(['activeTrip.driver', 'orgUnit'])
             ->orderBy('vehicle_number');
 
         if ($request->boolean('all')) {
@@ -44,28 +49,53 @@ class VehicleController extends Controller
     {
         $this->authorize('create', Vehicle::class);
 
-        $vehicle = Vehicle::create($request->validated());
-        AuditLogger::log('vehicle.created', "Vehicle {$vehicle->vehicle_number} was added", $vehicle, null, $request->validated());
+        $data = $request->validated();
+        // Default the vehicle to the creator's own unit; a chosen unit must be
+        // within the creator's scope (super admin may pick any).
+        $data['org_unit_id'] = $this->resolveOrgUnit($request->user(), $data['org_unit_id'] ?? null);
 
-        return (new VehicleResource($vehicle))->response()->setStatusCode(201);
+        $vehicle = Vehicle::create($data);
+        AuditLogger::log('vehicle.created', "Vehicle {$vehicle->vehicle_number} was added", $vehicle, null, $data);
+
+        // fresh() so DB defaults (e.g. status) are reflected before serialising.
+        return (new VehicleResource($vehicle->fresh('orgUnit')))->response()->setStatusCode(201);
     }
 
     public function show(Vehicle $vehicle): VehicleResource
     {
         $this->authorize('view', $vehicle);
 
-        return new VehicleResource($vehicle->load(['activeTrip.driver']));
+        return new VehicleResource($vehicle->load(['activeTrip.driver', 'orgUnit']));
     }
 
     public function update(StoreVehicleRequest $request, Vehicle $vehicle): VehicleResource
     {
         $this->authorize('update', $vehicle);
 
-        $old = $vehicle->only(array_keys($request->validated()));
-        $vehicle->update($request->validated());
-        AuditLogger::log('vehicle.updated', "Vehicle {$vehicle->vehicle_number} was updated", $vehicle, $old, $request->validated());
+        $data = $request->validated();
+        if (array_key_exists('org_unit_id', $data)) {
+            $data['org_unit_id'] = $this->resolveOrgUnit($request->user(), $data['org_unit_id']);
+        }
 
-        return new VehicleResource($vehicle->fresh());
+        $old = $vehicle->only(array_keys($data));
+        $vehicle->update($data);
+        AuditLogger::log('vehicle.updated', "Vehicle {$vehicle->vehicle_number} was updated", $vehicle, $old, $data);
+
+        return new VehicleResource($vehicle->fresh('orgUnit'));
+    }
+
+    /**
+     * Constrain a chosen org unit to the actor's scope; default to the actor's
+     * own unit when none is given.
+     */
+    private function resolveOrgUnit(\App\Models\User $user, ?int $orgUnitId): ?int
+    {
+        $scope = $user->visibleOrgUnitIds();
+        if ($orgUnitId && ($scope === null || in_array($orgUnitId, $scope, true))) {
+            return $orgUnitId;
+        }
+
+        return $user->org_unit_id;
     }
 
     public function destroy(Vehicle $vehicle): JsonResponse

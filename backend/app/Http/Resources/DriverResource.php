@@ -23,6 +23,8 @@ class DriverResource extends JsonResource
             'status_color' => $this->status->color(),
             'notes' => $this->notes,
             'active' => $this->active,
+            'org_unit_id' => $this->org_unit_id,
+            'org_unit' => $this->whenLoaded('orgUnit', fn () => $this->orgUnit ? ['id' => $this->orgUnit->id, 'name' => $this->orgUnit->name, 'type' => $this->orgUnit->type->value] : null),
             'has_account' => $this->user_id !== null,
             'account_email' => $this->whenLoaded('user', fn () => $this->user?->email),
             'created_at' => $this->created_at,

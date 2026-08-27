@@ -13,6 +13,7 @@ import { Modal } from '../components/Modal'
 export function Fuel() {
   const [vehicleId, setVehicleId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<FuelLog | null>(null)
   const { items, page, lastPage, total, loading, setPage, reload } = useList<FuelLog>('/fuel-logs', {
     vehicle_id: vehicleId || undefined,
   })
@@ -45,6 +46,7 @@ export function Fuel() {
           <DataTable
             rows={items}
             rowKey={(f) => f.id}
+            onRowClick={(f) => setEditing(f)}
             columns={[
               { key: 'veh', header: 'Vehicle', primary: true, cell: (f) => <span className="font-medium text-text">{f.vehicle?.vehicle_number}</span> },
               { key: 'date', header: 'Date', cell: (f) => fmtDateTime(f.purchase_date) },
@@ -61,24 +63,26 @@ export function Fuel() {
       </Card>
 
       {creating && <FuelFormModal vehicles={vehicles} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); reload() }} />}
+      {editing && <FuelFormModal record={editing} vehicles={vehicles} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </div>
   )
 }
 
-function FuelFormModal({ vehicles, onClose, onSaved }: { vehicles: Vehicle[]; onClose: () => void; onSaved: () => void }) {
+function FuelFormModal({ record, vehicles, onClose, onSaved }: { record?: FuelLog; vehicles: Vehicle[]; onClose: () => void; onSaved: () => void }) {
   const toast = useToast()
+  const editing = !!record
   const [loading, setLoading] = useState(false)
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [form, setForm] = useState({
-    vehicle_id: '',
-    driver_id: '',
-    purchase_date: new Date().toISOString().slice(0, 16),
-    odometer: '',
-    litres: '',
-    price_per_litre: '',
-    fuel_type: '',
-    station: '',
-    notes: '',
+    vehicle_id: record ? String(record.vehicle_id) : '',
+    driver_id: record?.driver_id != null ? String(record.driver_id) : '',
+    purchase_date: record?.purchase_date ? record.purchase_date.slice(0, 16) : new Date().toISOString().slice(0, 16),
+    odometer: record ? String(record.odometer) : '',
+    litres: record?.litres ?? '',
+    price_per_litre: record?.price_per_litre ?? '',
+    fuel_type: record?.fuel_type ?? '',
+    station: record?.station ?? '',
+    notes: record?.notes ?? '',
   })
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -98,19 +102,21 @@ function FuelFormModal({ vehicles, onClose, onSaved }: { vehicles: Vehicle[]; on
       return
     }
     setLoading(true)
+    const payload = {
+      ...form,
+      vehicle_id: Number(form.vehicle_id),
+      driver_id: form.driver_id ? Number(form.driver_id) : null,
+      odometer: Number(form.odometer),
+      litres: Number(form.litres),
+      price_per_litre: Number(form.price_per_litre),
+      fuel_type: form.fuel_type || null,
+      station: form.station || null,
+      notes: form.notes || null,
+    }
     try {
-      await api.post('/fuel-logs', {
-        ...form,
-        vehicle_id: Number(form.vehicle_id),
-        driver_id: form.driver_id ? Number(form.driver_id) : null,
-        odometer: Number(form.odometer),
-        litres: Number(form.litres),
-        price_per_litre: Number(form.price_per_litre),
-        fuel_type: form.fuel_type || null,
-        station: form.station || null,
-        notes: form.notes || null,
-      })
-      toast.success('Fuel purchase logged')
+      if (editing) await api.put(`/fuel-logs/${record!.id}`, payload)
+      else await api.post('/fuel-logs', payload)
+      toast.success(editing ? 'Fuel purchase updated' : 'Fuel purchase logged')
       onSaved()
     } catch (e) {
       toast.error(apiError(e))
@@ -124,7 +130,7 @@ function FuelFormModal({ vehicles, onClose, onSaved }: { vehicles: Vehicle[]; on
       open
       onClose={onClose}
       size="lg"
-      title="Log Fuel Purchase"
+      title={editing ? 'Edit Fuel Purchase' : 'Log Fuel Purchase'}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={loading} onClick={submit}>Save</Button></>}
     >
       <div className="mb-4 flex items-start gap-3 rounded-lg bg-primary-tint p-3 text-sm text-primary">

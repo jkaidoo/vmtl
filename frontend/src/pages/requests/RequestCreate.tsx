@@ -13,7 +13,7 @@ import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../../
 
 const schema = z
   .object({
-    department_id: z.string().optional(),
+    org_unit_id: z.string().optional(),
     travel_date: z.string().min(1, 'Travel date is required'),
     requested_start_time: z.string().min(1, 'Departure time is required'),
     expected_end_time: z.string().min(1, 'Return time is required'),
@@ -81,7 +81,7 @@ export function RequestCreate() {
       return
     }
     try {
-      const payload = { ...values, department_id: values.department_id ? Number(values.department_id) : null }
+      const payload = { ...values, org_unit_id: values.org_unit_id ? Number(values.org_unit_id) : null }
       const res = await api.post<{ data: { id: number; request_number: string } }>('/vehicle-requests', payload)
       toast.success(`Request ${res.data.data.request_number} submitted`)
       navigate(`/requests/${res.data.data.id}`)
@@ -107,12 +107,12 @@ export function RequestCreate() {
       <Card className="p-6">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Department / Unit" error={errors.department_id?.message}>
-              <Select {...register('department_id')}>
-                <option value="">— Select department —</option>
-                {meta?.departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
+            <Field label="Org Unit" error={errors.org_unit_id?.message} hint="Defaults to your unit.">
+              <Select {...register('org_unit_id')}>
+                <option value="">— Your unit (default) —</option>
+                {meta?.org_units.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {'  '.repeat(u.depth) + u.name}
                   </option>
                 ))}
               </Select>

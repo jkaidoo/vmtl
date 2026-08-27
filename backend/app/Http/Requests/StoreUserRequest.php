@@ -25,6 +25,7 @@ class StoreUserRequest extends FormRequest
             'password' => [$creating ? 'required' : 'nullable', 'confirmed', Password::defaults()],
             'role_id' => ['required', 'exists:roles,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
+            'org_unit_id' => ['nullable', 'exists:org_units,id'],
             'phone' => ['nullable', 'string', 'max:50'],
             'active' => ['sometimes', 'boolean'],
             // Profile picture as a data URL (client-compressed). ~700KB base64 cap.

@@ -89,6 +89,7 @@ export function VehicleList() {
               { key: 'num', header: 'Vehicle', primary: true, cell: (v) => <span className="font-medium text-primary">{v.vehicle_number}</span> },
               { key: 'reg', header: 'Registration', cell: (v) => v.registration_number },
               { key: 'model', header: 'Make / Model', cell: (v) => [v.make, v.model].filter(Boolean).join(' ') || '—' },
+              { key: 'unit', header: 'Unit', cell: (v) => v.org_unit?.name ?? '—' },
               { key: 'cap', header: 'Capacity', cell: (v) => v.capacity },
               { key: 'odo', header: 'Odometer', cell: (v) => fmtKm(v.current_odometer) },
               { key: 'status', header: 'Status', badge: true, cell: (v) => <StatusBadge label={v.status_label} color={v.status_color} /> },

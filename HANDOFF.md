@@ -93,6 +93,17 @@ Password for all: **`password`**
 
 Additional staff: `ama@uits.test`, `kofi@uits.test`.
 
+**Directory (LDAP) test users** — sign in with the bare username or the email;
+password `password`. Provisioned on first login via the live `ldap.forumsys.com`
+config (see `directory-auth-live` memory): `einstein` (→ transport_admin @ College
+of Science by group mapping), `newton`, `tesla`, `euler` (→ staff @ UITS default).
+
+**Org placement of the demo accounts:** admin → KNUST (root), approver/transport →
+UITS directorate (central — see the whole UITS fleet), staff/ama/kofi → *User
+Support Services*, drivers → UITS. The central fleet lives on the **UITS**
+directorate node; two extra vans (`CS-VAN-1/2`) sit under *Dept of Computer
+Science* to demonstrate cross-branch scoping.
+
 ---
 
 ## 5. Roles & capability RBAC
@@ -149,7 +160,7 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 
 ---
 
-## 7. Feature inventory (all implemented & tested)
+## 7. Feature inventory (all implemented; see §9 for the test-suite caveat)
 
 - **Request lifecycle**: create → approve/reject (reason required) → assign
   (vehicle + driver, conflict-checked, transaction + row locks) → start → end
@@ -159,7 +170,10 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
   status **`changes_requested`**. The requester sees the explanation, **edits**
   the booking (time, etc.) and saving **resubmits** it to `pending` (`PUT` on the
   request; re-checks availability and notifies approvers). Explanation is stored as
-  a `changes_requested` approval-log entry.
+  a `changes_requested` approval-log entry. The **Approvals** queue has tabs —
+  *Pending*, *Changes Requested* (with a live count badge), *All open* —
+  deep-linkable via `?tab=`; the list `status` filter accepts a comma-separated
+  list (e.g. `pending,changes_requested`) for the open queue.
 - **Goodwill requests**: raised by driver/transport (`requests.create_goodwill`),
   require an explanation, checked against existing bookings, then approved
   normally. Page: `/goodwill`. They are **not tied to a department** —
@@ -195,6 +209,21 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
   own assigned trips from a phone.
 - **Vehicles & drivers**: admin **and approver** (and transport) can add, edit,
   **deactivate/reactivate** (`POST /…/active`), and remove (soft delete).
+- **Org hierarchy & scoping**: a single `org_units` tree (College → Faculty →
+  Department → Unit → Office, plus Directorates) with a materialised `path`.
+  `users`/`vehicles`/`drivers` carry `org_unit_id`; each user sees/manages only
+  their **unit + all sub-units** (`User::visibleOrgUnitIds()`; super admin = all,
+  a user at the root unit = all → the "central transport" pattern). Scopes vehicle
+  & driver lists, assignment options, and create/update/delete policies. Admin
+  manages the tree at **/org-units** (`OrgUnitController`); `OrgUnitSelect` (from
+  scoped `/meta` `org_units`) sits on the vehicle/driver/user forms.
+  **Request serving** = the requester's unit **+ ancestors** (`servingOrgUnitIds()`),
+  so a parent/central pool serves sub-units (the demo fleet lives at the UITS
+  directorate node). **Directory login** can place a user in a unit via the
+  Role-Mapping tab (group → role + org unit). **Departments are unified into the
+  tree**: requests carry `org_unit_id`, analytics/reports group by unit, and the
+  request forms use org units (the old `departments` table is vestigial, kept but
+  unused; its nav/settings entry was removed). See the `org-hierarchy-scoping` memory.
 - **Maintenance** records + dashboard alerts (insurance/roadworthy/licence/service).
 - **Analytics** (Recharts) and **Reports** with CSV / Excel / PDF export (filters respected).
   Analytics includes a **Fuel Spend & Economy** section (total cost, litres, fleet
@@ -203,8 +232,13 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 - **Notifications**: in-app (database) + email + **Web Push** on every lifecycle event.
 - **Audit trail**: append-only ledger of every action (who/what/when/IP), incl. failed sign-ins.
 - **Admin suite** (super admin): App Health, RBAC editor, System Controls
-  (feature flags/retention/maintenance), Directory Auth (LDAP config, write-only
-  secret), Database Connections, Documentation, Codebase Guide, FAQs.
+  (feature flags/retention/maintenance), **Organisation** (org-unit tree editor),
+  Directory Auth (**General / LDAP / Active Directory / Role Mapping** tabs —
+  independent per-provider config with write-only bind passwords, a **Test
+  connection** button, and a **live LDAP/AD bind** on login with group→role/unit
+  mapping; see §11), Database Connections, Documentation, Codebase Guide, FAQs.
+  Directory settings are private to this page — they are **not** exposed in the
+  generic Settings screen, and secrets are redacted from the data export.
 - **Profile pictures**: users can upload an avatar (client-compressed data URL,
   `frontend/src/lib/image.ts` → `users.avatar` longtext).
 - **PWA**: installable, offline app-shell (`/api/*` never cached), "new version →
@@ -227,12 +261,18 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 
 ### Backend
 - **Enums** (`app/Enums`): every status carries a label + semantic colour token.
-- **Services** (`app/Services`): `AvailabilityService` (conflict detection),
-  `AssignmentService` (locked assignment), `TripService` (start/end/no-show/
-  odometer correction), `AnalyticsService`, `MaintenanceAlertService`,
-  `WebPushService`, `TripQueryFilter`.
-- **Policies** (`app/Policies`): all capability-driven. `AuditLogger` +
-  `SequenceNumber` helpers in `app/Support`.
+- **Services** (`app/Services`): `AvailabilityService` (conflict detection +
+  optional org-unit scoping), `AssignmentService` (locked assignment),
+  `TripService` (start/end/no-show/odometer correction), `AnalyticsService`,
+  `MaintenanceAlertService`, `WebPushService`, `TripQueryFilter`,
+  `DirectoryAuthService` (native `ext-ldap` bind, test-connection, group→role/unit
+  resolution).
+- **Org model** (`app/Models/OrgUnit`, `app/Enums/OrgUnitType`): the university
+  tree with a materialised `path`; `subtreeIds()` (visibility) and `pathIds()`
+  (serving). `User::visibleOrgUnitIds()` / `servingOrgUnitIds()` drive scoping.
+- **Policies** (`app/Policies`): all capability-driven; `Vehicle`/`Driver` policies
+  also enforce org-unit scope on update/delete. `AuditLogger` + `SequenceNumber`
+  helpers in `app/Support`.
 - **Notifications** (`app/Notifications`): typed classes + a reusable
   `GenericNotification`; all fan out via `['database','mail', WebPushChannel]`.
 - Routes: `backend/routes/api.php` (grouped by `auth:sanctum` + `cap:`/`super`).
@@ -240,16 +280,19 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 ### Frontend
 - `src/lib/`: `api.ts` (axios + token), `theme.ts`, `format.ts` (dates; **figures
   round to 3 dp**; **durations render `HH:MM:SS:mmm`**), `image.ts`, `types.ts`.
-- `src/context/`: `AuthContext` (`can`/`isSuperAdmin`/`requesterOnly`),
-  `MetaContext` (enums/departments/roles).
+- `src/context/`: `AuthContext` (`can`/`isSuperAdmin`/`requesterOnly`; the user's
+  `org_unit`), `MetaContext` (enums incl. `org_unit_type`, roles, and the user's
+  **scoped `org_units`** for selectors).
 - `src/components/`: `Layout` (shell + capability nav + mobile bottom nav),
   `DataTable` (**table on desktop, cards on mobile** — used by every list page;
-  pass `overlay` to open a row's detail as a **modal over the list**),
+  pass `overlay` to open a row's detail as a **modal over the list**, or
+  `onRowClick` to make rows open an edit modal),
   `RouteModal` (renders a detail route as a modal overlay via a background
   location — list click → modal; deep-link/refresh → full page; `useInRouteModal()`
   lets a detail hide its back-link/width when shown in the modal),
-  `Toast` (renders result **modals**), `Modal`, `StatusBadge`, `Tabs`,
-  `PwaManager`, `NotificationBell`, `AnimatedHero`, `ui.tsx` (Button/Card/Field/…).
+  `OrgUnitSelect` (indented, scoped org-unit picker used on the vehicle/driver/user
+  forms), `Toast` (renders **animated** result **modals**), `Modal`, `StatusBadge`,
+  `Tabs`, `PwaManager`, `NotificationBell`, `AnimatedHero`, `ui.tsx` (Button/Card/Field/…).
 - `src/pages/`: feature pages; `pages/admin/*` is the break-glass tier.
 
 ---
@@ -257,15 +300,25 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 ## 9. Testing
 
 ```bash
-cd backend && php artisan test        # 42 tests, all passing
-cd frontend && npm run build          # tsc typecheck + production build
+cd backend && php artisan test        # ⚠ see caveat below
+cd frontend && npm run build          # tsc typecheck + production build (the real gate today)
 ```
 
-Backend tests cover: auth, the full request/trip lifecycle, data-integrity
-(double-booking, odometer), driver self-service, RBAC (grant/revoke takes
-effect), staff lockdown, push subscriptions, goodwill, and trip stops + delay
-notification. There is no automated frontend test suite — `npm run build` is the
-typecheck gate.
+The original PHPUnit suite (~42 tests) covers auth, the full request/trip
+lifecycle, data-integrity (double-booking, odometer), driver self-service, RBAC,
+staff lockdown, push subscriptions, goodwill, and trip stops + delay notification.
+
+⚠️ **Caveat:** that suite predates the large recent feature wave (org-unit
+hierarchy + scoping, unit-serving of requests, department→org-unit unification,
+`changes_requested` status, live LDAP/AD auth). Some tests almost certainly need
+updating (e.g. request-creation now requires a free vehicle **in the requester's
+serving scope**, and analytics groups by org unit, not department). The suite was
+**not re-run after these changes** because `php artisan test` uses `RefreshDatabase`
+and **wipes `uits_vmtl`** — which would destroy the live demo state the app is
+currently configured with (org tree, directory test users, scoped fleet). Before
+relying on it: update the affected tests + factories for `org_unit_id`/serving
+scope, then run against a **separate test database**. `npm run build` (tsc) is the
+green gate used throughout. There is no automated frontend test suite.
 
 ---
 
@@ -279,6 +332,8 @@ typecheck gate.
    adds a UTF-8 BOM that breaks `<?php`/namespace. Use `Write`/`Edit` tools or
    `[System.IO.File]::WriteAllText($p,$t,(New-Object System.Text.UTF8Encoding($false)))`.
 4. **Guzzle is pinned to 7.x** (web-push required it; Laravel supports both).
+4b. **`ext-ldap` must be enabled** for directory auth — uncomment `extension=ldap`
+   in `C:\tools\php83\php.ini` and **restart `php artisan serve`** so it loads.
 5. **`php artisan test` runs against the dev DB** (RefreshDatabase) — it wipes
    `uits_vmtl`. Re-run `php artisan migrate:fresh --seed` afterwards to restore demo data.
 6. **Login response doesn't include capabilities** (no auth context yet) — the
@@ -287,15 +342,42 @@ typecheck gate.
    handler is old) — a hard refresh fixes it; production builds are unaffected.
 8. The in-app **Browser preview pane** in the original tooling didn't composite
    frames (screenshots/animation clocks froze); verify visuals in a real browser.
+9. **Web Push needs HTTPS on mobile.** Service workers/push only run on a secure
+   origin (localhost is the only http exception), so testing on a phone over the
+   LAN (`http://192.168.x.x`) silently fails. iOS also needs **16.4+ and the PWA
+   installed to the Home Screen** — no push in a plain Safari tab.
+10. **`migrate:fresh` rebuilds the org tree from the seed**, but the current live
+   `uits_vmtl` also has **manual demo tweaks** applied at runtime (central fleet
+   moved onto the UITS node, directory role/unit mapping, the `CS-VAN-1/2`
+   demo vehicles, provisioned LDAP users). A fresh migrate won't reproduce those
+   exactly — it seeds a clean tree + backfill. Keep this DB if you want the demo
+   state; see the `org-hierarchy-scoping` and `directory-auth-live` memories.
 
 ---
 
 ## 11. Known gaps / possible next steps
 
 - **No automated frontend tests** — consider Vitest + Testing Library.
-- **Directory Auth & Database Connections** are configuration/inspection surfaces
-  (LDAP fields persist; DB page is read-only). No live LDAP bind or SQLite→
-  Postgres cutover is wired — they're intentionally informational for this app.
+- **Directory Auth is LIVE**: real LDAP/AD bind via `DirectoryAuthService` (native
+  `ext-ldap`). Login is local-first (break-glass + local accounts unaffected) then
+  falls back to the directory when enabled; unknown directory users are
+  provisioned with a **role _and_ org unit from group mapping** (the **Role
+  Mapping** tab: ordered group-DN → role + org-unit rules, plus a default role and
+  default org unit; membership resolved via AD `memberOf` or OpenLDAP
+  `member`/`uniqueMember`; both re-synced on every directory login, never touching
+  the super admin). Per-provider **Test connection** button
+  (`POST /admin/directory-auth/test`). The login field accepts an email **or**
+  username. Currently enabled against the public test server `ldap.forumsys.com`
+  (users `einstein`/`newton`/`tesla`, pw `password`) — see the `directory-auth-live`
+  memory. **Database Connections** remains a read-only inspection surface.
+- **Vestigial `departments`**: the flat `departments` table + `*.department_id`
+  columns still exist but nothing user-facing uses them (org units replaced them).
+  A clean-up migration could drop them once you're confident.
+- **Directory bind runs inline** during login (like the rest of the app's `sync`
+  work) — fine for now; move behind a queue/timeout for scale.
+- **PWA update prompt is effectively inert** (`sw.js` bytes + `CACHE` name are
+  static, so `updatefound` rarely fires); inject a build hash into the SW so the
+  "new version → Refresh" flow triggers and stale offline caches are purged.
 - **Email** uses the `log` mailer in dev; configure real SMTP (M365) for prod via
   Settings / `.env`.
 - **Admin sub-tables** (RBAC matrix, DB tables) still scroll horizontally on
@@ -316,4 +398,12 @@ typecheck gate.
 - [ ] Seed roles/capabilities/settings (or run the seeders once), then create the
       real System Administrator and disable the demo accounts.
 - [ ] Confirm the audit log, backups (Settings → Backup & export), and push all work.
+- [ ] Build the real **org-unit tree** (/org-units) and place staff/fleet/drivers
+      into their units; verify scoping with a non-admin account.
+- [ ] If using directory auth: enable **`ext-ldap`** in prod PHP, replace the
+      `ldap.forumsys.com` demo config with your LDAP/AD (General → provider; the
+      provider tab; Role Mapping for group→role/unit), **Test connection**, and
+      remove the forumsys test users.
+- [ ] Serve over **HTTPS** (mandatory for service worker + Web Push, esp. mobile);
+      consider a queue worker for push/notifications.
 ```

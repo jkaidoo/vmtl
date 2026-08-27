@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useList } from '../hooks/useList'
 import { api, apiError } from '../lib/api'
 import { useToast } from '../components/Toast'
@@ -38,6 +38,7 @@ export function Departments({ embedded = false }: { embedded?: boolean } = {}) {
           <DataTable
             rows={items}
             rowKey={(d) => d.id}
+            onRowClick={(d) => setEditing(d)}
             columns={[
               { key: 'name', header: 'Name', primary: true, cell: (d) => <span className="font-medium text-text">{d.name}</span> },
               { key: 'code', header: 'Code', cell: (d) => d.code ?? '—' },
@@ -50,9 +51,6 @@ export function Departments({ embedded = false }: { embedded?: boolean } = {}) {
                 ),
               },
             ]}
-            actions={(d) => (
-              <button onClick={() => setEditing(d)} className="text-text-3 hover:text-primary" title="Edit"><Pencil className="h-4 w-4" /></button>
-            )}
           />
         )}
         <Pagination page={page} lastPage={lastPage} total={total} onChange={setPage} />

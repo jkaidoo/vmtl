@@ -18,10 +18,18 @@ use Illuminate\Http\Request;
 
 class SettingController extends Controller
 {
+    /**
+     * The directory-auth group is managed only on the Directory Authentication
+     * page — its settings (incl. write-only bind passwords) are never exposed or
+     * editable through the generic Settings screen.
+     */
+    private const PRIVATE_GROUPS = ['directory'];
+
     public function index(): JsonResponse
     {
         return response()->json([
-            'data' => SystemSetting::orderBy('group')->orderBy('key')->get(['key', 'value', 'type', 'group', 'label']),
+            'data' => SystemSetting::whereNotIn('group', self::PRIVATE_GROUPS)
+                ->orderBy('group')->orderBy('key')->get(['key', 'value', 'type', 'group', 'label']),
         ]);
     }
 
@@ -35,7 +43,8 @@ class SettingController extends Controller
 
         foreach ($validated['settings'] as $item) {
             $existing = SystemSetting::where('key', $item['key'])->first();
-            if ($existing) {
+            // Never write private (directory) settings from the generic Settings screen.
+            if ($existing && ! in_array($existing->group, self::PRIVATE_GROUPS, true)) {
                 SystemSetting::set($item['key'], $item['value'], $existing->type, $existing->group);
             }
         }
@@ -71,7 +80,17 @@ class SettingController extends Controller
             'vehicle_requests' => VehicleRequest::all(),
             'trips' => Trip::all(),
             'maintenance_records' => MaintenanceRecord::all(),
-            'system_settings' => SystemSetting::all(['key', 'value', 'type', 'group', 'label']),
+            'system_settings' => SystemSetting::all(['key', 'value', 'type', 'group', 'label'])->map(function (SystemSetting $s) {
+                $secret = str_contains(strtolower($s->key), 'password') || str_contains(strtolower($s->key), 'secret');
+
+                return [
+                    'key' => $s->key,
+                    'value' => $secret ? '[redacted]' : $s->value,
+                    'type' => $s->type,
+                    'group' => $s->group,
+                    'label' => $s->label,
+                ];
+            }),
         ];
 
         $filename = 'uits-vmtl-export_'.now()->format('Ymd_His').'.json';

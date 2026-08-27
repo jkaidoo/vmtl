@@ -19,6 +19,7 @@ class StoreVehicleRequestRequest extends FormRequest
 
         return [
             'department_id' => ['nullable', 'exists:departments,id'],
+            'org_unit_id' => ['nullable', 'exists:org_units,id'],
             'travel_date' => ['required', 'date', ...($allowPast ? [] : ['after_or_equal:today'])],
             'requested_start_time' => ['required', 'date', ...($allowPast ? [] : ['after_or_equal:now'])],
             'expected_end_time' => ['required', 'date', 'after:requested_start_time'],

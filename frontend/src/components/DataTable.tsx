@@ -25,6 +25,7 @@ export function DataTable<T>({
   rows,
   rowKey,
   rowLink,
+  onRowClick,
   actions,
   overlay,
 }: {
@@ -32,6 +33,8 @@ export function DataTable<T>({
   rows: T[]
   rowKey: (row: T) => string | number
   rowLink?: (row: T) => string
+  /** Make each row/card clickable, invoking this handler (e.g. open an edit modal). */
+  onRowClick?: (row: T) => void
   actions?: (row: T) => ReactNode
   /** Open rowLink as a modal overlay over the current list (background location). */
   overlay?: boolean
@@ -39,6 +42,11 @@ export function DataTable<T>({
   const navigate = useNavigate()
   const location = useLocation()
   const linkState = overlay ? { background: location } : undefined
+  const clickable = !!rowLink || !!onRowClick
+  const handleRow = (row: T) => {
+    if (rowLink) navigate(rowLink(row), { state: linkState })
+    else if (onRowClick) onRowClick(row)
+  }
 
   const primary = columns.find((c) => c.primary) ?? columns[0]
   const badge = columns.find((c) => c.badge)
@@ -63,8 +71,8 @@ export function DataTable<T>({
             {rows.map((row) => (
               <tr
                 key={rowKey(row)}
-                className={clsx('hover:bg-surface-2/60', rowLink && 'cursor-pointer')}
-                onClick={rowLink ? () => navigate(rowLink(row), { state: linkState }) : undefined}
+                className={clsx('hover:bg-surface-2/60', clickable && 'cursor-pointer')}
+                onClick={clickable ? () => handleRow(row) : undefined}
               >
                 {columns.map((c) => (
                   <td key={c.key} className={clsx('px-4 py-3 text-text-2', c.className)}>
@@ -114,6 +122,10 @@ export function DataTable<T>({
                 <Link to={rowLink(row)} state={linkState} className="block px-4 py-3 hover:bg-surface-2">
                   {inner}
                 </Link>
+              ) : onRowClick ? (
+                <div role="button" tabIndex={0} onClick={() => onRowClick(row)} className="block cursor-pointer px-4 py-3 hover:bg-surface-2">
+                  {inner}
+                </div>
               ) : (
                 <div className="px-4 py-3">{inner}</div>
               )}

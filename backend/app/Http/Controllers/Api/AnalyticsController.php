@@ -18,7 +18,7 @@ class AnalyticsController extends Controller
 
         $filters = $request->only([
             'date_from', 'date_to', 'vehicle_id', 'driver_id',
-            'department_id', 'requester_id', 'destination', 'status',
+            'org_unit_id', 'requester_id', 'destination', 'status',
         ]);
 
         return response()->json(['data' => $this->analytics->build($filters)]);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Clock, FileClock, Car, Navigation, CheckCircle2, Gauge, AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { api } from '../lib/api'
@@ -42,6 +42,7 @@ const CARD_DEFS = [
 
 export function Dashboard() {
   const location = useLocation()
+  const navigate = useNavigate()
   const bg = { background: location }
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,7 +95,11 @@ export function Dashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {data.todays_schedule.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50">
+                    <tr
+                      key={t.id}
+                      className="cursor-pointer hover:bg-surface-2/60"
+                      onClick={() => navigate(`/trips/${t.id}`, { state: bg })}
+                    >
                       <td className="whitespace-nowrap px-5 py-2.5 font-medium text-slate-700">{fmtTime(t.scheduled_start)}</td>
                       <td className="px-3 py-2.5">{t.vehicle?.vehicle_number}</td>
                       <td className="px-3 py-2.5 text-slate-600">{t.driver?.name}</td>

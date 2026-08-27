@@ -6,7 +6,6 @@ import { useToast } from '../components/Toast'
 import { Button, Card, Field, Input, PageHeader, Spinner } from '../components/ui'
 import { Tabs, useTabParam, type TabDef } from '../components/Tabs'
 import { Users } from './Users'
-import { Departments } from './Departments'
 
 interface Setting {
   key: string
@@ -19,7 +18,6 @@ interface Setting {
 const TABS: TabDef[] = [
   { key: 'general', label: 'General' },
   { key: 'accounts', label: 'Staff accounts' },
-  { key: 'departments', label: 'Departments' },
   { key: 'rbac', label: 'Roles & RBAC' },
   { key: 'backup', label: 'Backup & export' },
 ]
@@ -43,7 +41,6 @@ export function Settings() {
 
       {active === 'general' && <GeneralTab />}
       {active === 'accounts' && <Users embedded />}
-      {active === 'departments' && <Departments embedded />}
       {active === 'rbac' && <RbacTab />}
       {active === 'backup' && <BackupTab />}
     </div>

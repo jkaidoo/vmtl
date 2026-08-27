@@ -29,6 +29,7 @@ class StoreVehicleRequest extends FormRequest
             'colour' => ['nullable', 'string', 'max:50'],
             'capacity' => ['required', 'integer', 'min:1', 'max:100'],
             'current_odometer' => ['nullable', 'integer', 'min:0'],
+            'org_unit_id' => ['nullable', 'exists:org_units,id'],
             'status' => ['sometimes', new Enum(VehicleStatus::class)],
             'acquisition_date' => ['nullable', 'date'],
             'insurance_expiry' => ['nullable', 'date'],

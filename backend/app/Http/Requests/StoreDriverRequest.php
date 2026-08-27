@@ -33,6 +33,7 @@ class StoreDriverRequest extends FormRequest
             'licence_number' => ['nullable', 'string', 'max:100'],
             'licence_expiry' => ['nullable', 'date'],
             'status' => ['sometimes', new Enum(DriverStatus::class)],
+            'org_unit_id' => ['nullable', 'exists:org_units,id'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'active' => ['sometimes', 'boolean'],
 

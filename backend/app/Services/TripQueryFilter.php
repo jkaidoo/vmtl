@@ -22,7 +22,7 @@ class TripQueryFilter
         $query->when($filters['driver_id'] ?? null, fn (Builder $q, $v) => $q->where('trips.driver_id', $v));
         $query->when($filters['status'] ?? null, fn (Builder $q, $v) => $q->where('trips.status', $v));
 
-        $query->when($filters['department_id'] ?? null, fn (Builder $q, $v) => $q->whereHas('vehicleRequest', fn (Builder $r) => $r->where('department_id', $v)));
+        $query->when($filters['org_unit_id'] ?? null, fn (Builder $q, $v) => $q->whereHas('vehicleRequest', fn (Builder $r) => $r->where('org_unit_id', $v)));
         $query->when($filters['requester_id'] ?? null, fn (Builder $q, $v) => $q->whereHas('vehicleRequest', fn (Builder $r) => $r->where('requester_id', $v)));
         $query->when($filters['destination'] ?? null, fn (Builder $q, $v) => $q->whereHas('vehicleRequest', fn (Builder $r) => $r->where('destination', 'like', "%{$v}%")));
 

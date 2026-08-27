@@ -41,15 +41,19 @@ class VehicleRequestController extends Controller
         $this->authorize('viewAny', VehicleRequest::class);
         $user = $request->user();
 
-        $query = VehicleRequest::with(['requester.role', 'department', 'latestApproval.approver', 'trip.vehicle', 'trip.driver']);
+        $query = VehicleRequest::with(['requester.role', 'orgUnit', 'latestApproval.approver', 'trip.vehicle', 'trip.driver']);
 
         // Without the "view all" capability, users only see their own requests.
         if (! $user->hasCapability(\App\Support\Capabilities::REQUESTS_VIEW_ALL)) {
             $query->where('requester_id', $user->id);
         }
 
-        $query->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
-            ->when($request->filled('department_id'), fn ($q) => $q->where('department_id', $request->integer('department_id')))
+        $query->when($request->filled('status'), function ($q) use ($request) {
+            // Accept a single status or a comma-separated list (e.g. open queue).
+            $statuses = array_filter(explode(',', $request->string('status')->toString()));
+            count($statuses) > 1 ? $q->whereIn('status', $statuses) : $q->where('status', reset($statuses));
+        })
+            ->when($request->filled('org_unit_id'), fn ($q) => $q->where('org_unit_id', $request->integer('org_unit_id')))
             ->when($request->filled('requester_id'), fn ($q) => $q->where('requester_id', $request->integer('requester_id')))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('travel_date', '>=', $request->date('date_from')))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('travel_date', '<=', $request->date('date_to')))
@@ -78,19 +82,22 @@ class VehicleRequestController extends Controller
         $start = $request->date('requested_start_time');
         $end = $request->date('expected_end_time');
         $passengers = $request->integer('passenger_count', 1);
+        // Requests are served by the requester's unit + its ancestor pools.
+        $serving = $user->servingOrgUnitIds();
 
-        if ($this->availability->availableVehicles($start, $end, $passengers)->isEmpty()) {
-            throw new \App\Exceptions\BusinessRuleException('This time window is fully booked — no suitable vehicle is free then. Please choose another window.');
+        if ($this->availability->availableVehicles($start, $end, $passengers, $serving)->isEmpty()) {
+            throw new \App\Exceptions\BusinessRuleException("This time window is fully booked — no suitable vehicle in your unit's fleet is free then. Please choose another window.");
         }
-        if ($this->availability->availableDrivers($start, $end)->isEmpty()) {
-            throw new \App\Exceptions\BusinessRuleException('This time window is fully booked — no driver is free then. Please choose another window.');
+        if ($this->availability->availableDrivers($start, $end, $serving)->isEmpty()) {
+            throw new \App\Exceptions\BusinessRuleException("This time window is fully booked — no driver in your unit is free then. Please choose another window.");
         }
 
         $vehicleRequest = VehicleRequest::create([
             ...$request->validated(),
             'request_number' => SequenceNumber::next(VehicleRequest::class, 'request_number', 'REQ'),
             'requester_id' => $user->id,
-            'department_id' => $request->input('department_id', $user->department_id),
+            // A request belongs to the requester's org unit.
+            'org_unit_id' => $request->input('org_unit_id', $user->org_unit_id),
             'status' => RequestStatus::PENDING,
         ]);
 
@@ -105,7 +112,7 @@ class VehicleRequestController extends Controller
             ->where('active', true)->get();
         Notification::send($approvers, new NewRequestNotification($vehicleRequest));
 
-        return (new VehicleRequestResource($vehicleRequest->load(['requester', 'department'])))
+        return (new VehicleRequestResource($vehicleRequest->load(['requester', 'orgUnit'])))
             ->response()->setStatusCode(201);
     }
 
@@ -121,17 +128,18 @@ class VehicleRequestController extends Controller
         $start = $request->date('requested_start_time');
         $end = $request->date('expected_end_time');
 
-        // Conflict check: at least one suitable vehicle must be free for the window.
-        $available = $this->availability->availableVehicles($start, $end, $request->integer('passenger_count', 1));
+        // Conflict check: a suitable vehicle in the actor's unit (+ ancestors) must be free.
+        $available = $this->availability->availableVehicles($start, $end, $request->integer('passenger_count', 1), $user->servingOrgUnitIds());
         if ($available->isEmpty()) {
-            throw new \App\Exceptions\BusinessRuleException('This time window conflicts with existing bookings — no vehicle is free then.');
+            throw new \App\Exceptions\BusinessRuleException('This time window conflicts with existing bookings — no vehicle in your unit is free then.');
         }
 
         $vehicleRequest = VehicleRequest::create([
             'request_number' => SequenceNumber::next(VehicleRequest::class, 'request_number', 'REQ'),
             'requester_id' => $user->id,
-            // Goodwill trips are not tied to a specific department.
-            'department_id' => null,
+            // Goodwill reads "Goodwill" for its department label, but still carries
+            // the requester's org unit for scoping/serving.
+            'org_unit_id' => $user->org_unit_id,
             'travel_date' => $request->date('travel_date'),
             'requested_start_time' => $start,
             'expected_end_time' => $end,
@@ -150,7 +158,7 @@ class VehicleRequestController extends Controller
             ->where('active', true)->get();
         Notification::send($approvers, new NewRequestNotification($vehicleRequest));
 
-        return (new VehicleRequestResource($vehicleRequest->load(['requester', 'department'])))->response()->setStatusCode(201);
+        return (new VehicleRequestResource($vehicleRequest->load(['requester', 'orgUnit'])))->response()->setStatusCode(201);
     }
 
     /**
@@ -167,7 +175,7 @@ class VehicleRequestController extends Controller
         $vehicleRequest = VehicleRequest::create([
             'request_number' => SequenceNumber::next(VehicleRequest::class, 'request_number', 'REQ'),
             'requester_id' => $user->id,
-            'department_id' => $request->input('department_id', $user->department_id),
+            'org_unit_id' => $request->input('org_unit_id', $user->org_unit_id),
             'travel_date' => $request->date('travel_date'),
             'requested_start_time' => $request->date('requested_start_time'),
             'expected_end_time' => $request->date('expected_end_time'),
@@ -193,7 +201,7 @@ class VehicleRequestController extends Controller
             ->where('active', true)->get();
         Notification::send($approvers, new NewRequestNotification($vehicleRequest));
 
-        return (new VehicleRequestResource($vehicleRequest->load(['requester', 'department'])))->response()->setStatusCode(201);
+        return (new VehicleRequestResource($vehicleRequest->load(['requester', 'orgUnit'])))->response()->setStatusCode(201);
     }
 
     public function show(VehicleRequest $vehicleRequest): VehicleRequestResource
@@ -202,7 +210,7 @@ class VehicleRequestController extends Controller
 
         return new VehicleRequestResource(
             $vehicleRequest->load([
-                'requester.role', 'requester.department', 'department',
+                'requester.role', 'requester.orgUnit', 'orgUnit',
                 'approvals.approver', 'trip.vehicle', 'trip.driver', 'trip.startedBy', 'trip.endedBy',
                 'trip.stops.requestedBy', 'trip.stops.decidedBy',
             ])
@@ -249,7 +257,7 @@ class VehicleRequestController extends Controller
             Notification::send($approvers, new NewRequestNotification($vehicleRequest));
         }
 
-        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'department', 'approvals.approver']));
+        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'orgUnit', 'approvals.approver']));
     }
 
     /**
@@ -276,7 +284,7 @@ class VehicleRequestController extends Controller
 
         $vehicleRequest->requester?->notify(new RequestChangesNotification($vehicleRequest, $request->input('reason')));
 
-        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'department', 'approvals.approver']));
+        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'orgUnit', 'approvals.approver']));
     }
 
     public function cancel(Request $request, VehicleRequest $vehicleRequest): VehicleRequestResource
@@ -287,7 +295,7 @@ class VehicleRequestController extends Controller
 
         AuditLogger::log('request.cancelled', "Request {$vehicleRequest->request_number} was cancelled", $vehicleRequest);
 
-        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'department']));
+        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'orgUnit']));
     }
 
     public function approve(ApproveRequestRequest $request, VehicleRequest $vehicleRequest): VehicleRequestResource
@@ -309,7 +317,7 @@ class VehicleRequestController extends Controller
 
         $vehicleRequest->requester?->notify(new RequestApprovedNotification($vehicleRequest, $request->input('comment')));
 
-        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'department', 'approvals.approver']));
+        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'orgUnit', 'approvals.approver']));
     }
 
     public function reject(RejectRequestRequest $request, VehicleRequest $vehicleRequest): VehicleRequestResource
@@ -331,23 +339,26 @@ class VehicleRequestController extends Controller
 
         $vehicleRequest->requester?->notify(new RequestRejectedNotification($vehicleRequest, $request->input('reason')));
 
-        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'department', 'approvals.approver']));
+        return new VehicleRequestResource($vehicleRequest->fresh(['requester', 'orgUnit', 'approvals.approver']));
     }
 
     /** Options for the assignment screen: vehicles/drivers free for this request's window. */
-    public function assignmentOptions(VehicleRequest $vehicleRequest): JsonResponse
+    public function assignmentOptions(Request $request, VehicleRequest $vehicleRequest): JsonResponse
     {
         $this->authorize('assign', $vehicleRequest);
 
         $start = $vehicleRequest->requested_start_time;
         $end = $vehicleRequest->expected_end_time;
+        // A request is served by the requester's unit + its ancestor pools.
+        $vehicleRequest->loadMissing('requester.orgUnit');
+        $scope = $vehicleRequest->requester?->servingOrgUnitIds();
 
         return response()->json([
             'vehicles' => \App\Http\Resources\VehicleResource::collection(
-                $this->availability->availableVehicles($start, $end, $vehicleRequest->passenger_count)
+                $this->availability->availableVehicles($start, $end, $vehicleRequest->passenger_count, $scope)
             ),
             'drivers' => \App\Http\Resources\DriverResource::collection(
-                $this->availability->availableDrivers($start, $end)
+                $this->availability->availableDrivers($start, $end, $scope)
             ),
         ]);
     }

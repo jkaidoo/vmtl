@@ -43,24 +43,30 @@ class AvailabilityService
 
     /**
      * Vehicles that are active, in an assignable status, meet capacity, and have
-     * no scheduling conflict in the requested window.
+     * no scheduling conflict in the requested window. When $orgUnitIds is a list,
+     * results are limited to those org units (null = no org scoping).
+     *
+     * @param  array<int,int>|null  $orgUnitIds
      */
-    public function availableVehicles(Carbon $start, Carbon $end, int $minCapacity = 1): Collection
+    public function availableVehicles(Carbon $start, Carbon $end, int $minCapacity = 1, ?array $orgUnitIds = null): Collection
     {
         return Vehicle::query()
             ->where('active', true)
             ->whereIn('status', [VehicleStatus::AVAILABLE->value, VehicleStatus::SCHEDULED->value])
             ->where('capacity', '>=', $minCapacity)
+            ->when($orgUnitIds !== null, fn ($q) => $q->whereIn('org_unit_id', $orgUnitIds))
             ->get()
             ->reject(fn (Vehicle $v) => $this->vehicleHasConflict($v->id, $start, $end))
             ->values();
     }
 
-    public function availableDrivers(Carbon $start, Carbon $end): Collection
+    /** @param array<int,int>|null $orgUnitIds */
+    public function availableDrivers(Carbon $start, Carbon $end, ?array $orgUnitIds = null): Collection
     {
         return Driver::query()
             ->where('active', true)
             ->where('status', DriverStatus::AVAILABLE->value)
+            ->when($orgUnitIds !== null, fn ($q) => $q->whereIn('org_unit_id', $orgUnitIds))
             ->get()
             ->reject(fn (Driver $d) => $this->driverHasConflict($d->id, $start, $end))
             ->values();

@@ -16,6 +16,7 @@ class StoreExternalTravelRequest extends FormRequest
     {
         return [
             'department_id' => ['nullable', 'exists:departments,id'],
+            'org_unit_id' => ['nullable', 'exists:org_units,id'],
             // The arm / unit of the university requesting the vehicle.
             'external_org' => ['required', 'string', 'max:255'],
             'travel_date' => ['required', 'date'],

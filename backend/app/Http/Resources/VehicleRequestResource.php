@@ -15,10 +15,11 @@ class VehicleRequestResource extends JsonResource
             'request_number' => $this->request_number,
             'requester' => new UserResource($this->whenLoaded('requester')),
             'requester_id' => $this->requester_id,
-            'department' => new DepartmentResource($this->whenLoaded('department')),
-            'department_id' => $this->department_id,
-            // Goodwill trips are not tied to a department — they read "Goodwill".
-            'department_label' => $this->is_goodwill ? 'Goodwill' : ($this->department?->name),
+            'org_unit_id' => $this->org_unit_id,
+            'org_unit' => $this->whenLoaded('orgUnit', fn () => $this->orgUnit ? ['id' => $this->orgUnit->id, 'name' => $this->orgUnit->name, 'type' => $this->orgUnit->type->value] : null),
+            // Goodwill trips are not tied to a unit — they read "Goodwill"; otherwise
+            // the request's org unit is its "department" label.
+            'department_label' => $this->is_goodwill ? 'Goodwill' : ($this->orgUnit?->name),
             'travel_date' => $this->travel_date?->toDateString(),
             'requested_start_time' => $this->requested_start_time,
             'expected_end_time' => $this->expected_end_time,

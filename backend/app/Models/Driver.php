@@ -21,6 +21,7 @@ class Driver extends Model
         'licence_number',
         'licence_expiry',
         'status',
+        'org_unit_id',
         'notes',
         'active',
     ];
@@ -37,6 +38,11 @@ class Driver extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function orgUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrgUnit::class);
     }
 
     public function trips(): HasMany
