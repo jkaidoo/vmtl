@@ -11,6 +11,7 @@ import { fmtDate, fmtDateTime, fmtTime } from '../../lib/format'
 import { Avatar } from '../../components/Avatar'
 import { Button, Card, Field, Input, Select, Spinner, Textarea } from '../../components/ui'
 import { StatusBadge } from '../../components/StatusBadge'
+import { TripProgress } from '../../components/TripProgress'
 import { Modal } from '../../components/Modal'
 
 export function RequestDetail() {
@@ -169,6 +170,9 @@ export function RequestDetail() {
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0 text-text-3" />
               </Link>
+
+              {/* Live trip progress — visible to every role that can see the request. */}
+              <TripProgress trip={req.trip} className="mt-3" />
 
               {req.trip.status === 'in_progress' && req.requester_id === user?.id && (
                 <Card className="mt-3 p-4">

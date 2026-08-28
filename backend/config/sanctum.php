@@ -54,6 +54,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Idle Timeout Minutes
+    |--------------------------------------------------------------------------
+    |
+    | Unlike "expiration" (an absolute lifetime from token creation), this is an
+    | inactivity timeout: a token whose "last_used_at" is older than this many
+    | minutes is rejected and revoked on the next request. It backstops the
+    | client-side idle logout (frontend/src/lib/idle.ts) — reclaiming orphaned
+    | tokens when a tab is closed/crashes without logging out. Set to 0/null to
+    | disable. Enforced via Sanctum::authenticateAccessTokensUsing in
+    | App\Providers\AppServiceProvider.
+    |
+    */
+
+    'idle_timeout' => (int) env('SANCTUM_IDLE_TIMEOUT_MINUTES', 30),
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Prefix
     |--------------------------------------------------------------------------
     |

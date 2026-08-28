@@ -2,7 +2,12 @@
  * Network-first same-origin GETs; /api/* never cached; offline app-shell
  * fallback; no silent auto-update (waits for a Refresh prompt); Web Push. */
 
-const CACHE = 'uits-vmtl-v1'
+// The build injects a content hash here (see vite/sw-build-hash.ts). It changes
+// only when the app bundle changes, so the SW bytes change too → the browser
+// detects an update and fires `updatefound`, and the old cache is purged on
+// activate. In dev the literal placeholder is served unchanged (static cache).
+const BUILD_HASH = '__BUILD_HASH__'
+const CACHE = `uits-vmtl-${BUILD_HASH}`
 const PRECACHE = ['/', '/index.html', '/knust-logo.png', '/manifest.webmanifest']
 
 self.addEventListener('install', (event) => {

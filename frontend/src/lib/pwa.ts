@@ -1,5 +1,29 @@
 import { api } from './api'
 
+// Coordinates the "new service worker took control → reload" behaviour with the
+// sign-in flow. A controllerchange firing mid-login (e.g. the SW claiming the
+// page on first load, or an update activating) would reload back onto /login and
+// look like the sign-in "bounced". While a sign-in is in progress we defer the
+// reload and apply it once the sign-in finishes.
+let reloaded = false
+let signInInProgress = false
+let reloadPending = false
+
+function reloadForNewWorker() {
+  if (reloaded) return
+  reloaded = true
+  window.location.reload()
+}
+
+/** Called by the auth flow around a sign-in so an update reload waits for it. */
+export function setSignInInProgress(active: boolean) {
+  signInInProgress = active
+  if (!active && reloadPending) {
+    reloadPending = false
+    reloadForNewWorker()
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -34,12 +58,14 @@ export function registerServiceWorker(onUpdate: (waiting: ServiceWorker) => void
     })
     .catch(() => undefined)
 
-  // Reload once the new worker takes control.
-  let refreshing = false
+  // Reload once the new worker takes control — but not mid sign-in (defer until
+  // it completes, so the reload never interrupts login).
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return
-    refreshing = true
-    window.location.reload()
+    if (signInInProgress) {
+      reloadPending = true
+      return
+    }
+    reloadForNewWorker()
   })
 }
 

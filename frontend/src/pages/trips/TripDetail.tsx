@@ -9,6 +9,7 @@ import type { Trip } from '../../lib/types'
 import { fmtDateTime, fmtDuration, fmtKm } from '../../lib/format'
 import { Button, Card, Field, Input, PageHeader, Spinner, Textarea } from '../../components/ui'
 import { StatusBadge } from '../../components/StatusBadge'
+import { TripProgress } from '../../components/TripProgress'
 import { Modal } from '../../components/Modal'
 
 export function TripDetail() {
@@ -79,6 +80,9 @@ export function TripDetail() {
           )}
         </div>
       )}
+
+      {/* Live trip progress — a pickup driving through the expected duration. */}
+      <TripProgress trip={trip} className="mb-6" />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="p-5 lg:col-span-2">

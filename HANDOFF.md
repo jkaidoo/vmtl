@@ -98,11 +98,21 @@ password `password`. Provisioned on first login via the live `ldap.forumsys.com`
 config (see `directory-auth-live` memory): `einstein` (→ transport_admin @ College
 of Science by group mapping), `newton`, `tesla`, `euler` (→ staff @ UITS default).
 
+**Org tree = the real KNUST structure.** `KnustOrgStructureSeeder` (runs last in
+`DatabaseSeeder`) builds the full university org chart from
+`backend/database/data/knust_org_structure.php` (generated from `col_fac_dep.xlsx`):
+**265 nodes** — KNUST → 6 colleges → 20 faculties/schools → 151 departments, plus
+4 directorates (Main Administration, Finance Office, UITS, Institute of Distance
+Learning) and 83 units (incl. 59 *standalone* units that belong to no college and
+hang directly off the root). The seeder is idempotent and re-maps the demo
+accounts/fleet by email/plate.
+
 **Org placement of the demo accounts:** admin → KNUST (root), approver/transport →
 UITS directorate (central — see the whole UITS fleet), staff/ama/kofi → *User
-Support Services*, drivers → UITS. The central fleet lives on the **UITS**
-directorate node; two extra vans (`CS-VAN-1/2`) sit under *Dept of Computer
-Science* to demonstrate cross-branch scoping.
+Support Services* (under UITS), drivers → UITS. The central fleet lives on the
+**UITS** directorate node; two vans (`CS-VAN-1/2`) sit under *Computer Science*
+(College of Science → Faculty of Physical and Computational Sciences) to
+demonstrate cross-branch scoping.
 
 ---
 
@@ -138,6 +148,10 @@ DB_PASSWORD=
 
 QUEUE_CONNECTION=sync           # notifications send synchronously
 FRONTEND_URL=http://localhost:5173
+
+# Token idle timeout (minutes). A Sanctum token unused for this long is rejected
+# and revoked on its next request — backstops the client-side idle logout. 0 = off.
+SANCTUM_IDLE_TIMEOUT_MINUTES=30
 
 # Expiry alert thresholds (days) — also editable in Settings
 ALERT_INSURANCE_DAYS=30
@@ -232,7 +246,9 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 - **Notifications**: in-app (database) + email + **Web Push** on every lifecycle event.
 - **Audit trail**: append-only ledger of every action (who/what/when/IP), incl. failed sign-ins.
 - **Admin suite** (super admin): App Health, RBAC editor, System Controls
-  (feature flags/retention/maintenance), **Organisation** (org-unit tree editor),
+  (feature flags/retention/maintenance), **Organisation** (interactive org-unit
+  tree — collapsible, searchable, **drag-and-drop re-parenting**; logic in
+  `frontend/src/lib/orgtree.ts`),
   Directory Auth (**General / LDAP / Active Directory / Role Mapping** tabs —
   independent per-provider config with write-only bind passwords, a **Test
   connection** button, and a **live LDAP/AD bind** on login with group→role/unit
@@ -243,6 +259,36 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
   `frontend/src/lib/image.ts` → `users.avatar` longtext).
 - **PWA**: installable, offline app-shell (`/api/*` never cached), "new version →
   Refresh" prompt, themed boot splash, VAPID push + app badge.
+- **Idle auto-logout**: signs the user out after **30 minutes of inactivity** on
+  the **web** (any browser tab) and the **desktop PWA** — but **not** on the
+  **mobile PWA** (an installed app on a phone/tablet is treated like a native app).
+  The rule is `!(standalonePWA && mobileDevice)` (`frontend/src/lib/idle.ts`);
+  `IdleLogout` (`frontend/src/components/IdleLogout.tsx`, mounted in `App`) tracks
+  activity (throttled, shared across tabs via `localStorage`), re-checks on an
+  interval and on tab focus/visibility, and on expiry revokes the token via the
+  normal `logout()` and returns to `/login` with a "signed out due to inactivity"
+  notice. A fresh login resets the clock; a reload keeps the stored timestamp so
+  a session left idle past the window still expires on return. **Server-side
+  backstop:** Sanctum rejects + revokes any token whose `last_used_at` is older
+  than `sanctum.idle_timeout` minutes (default 30) via
+  `Sanctum::authenticateAccessTokensUsing` in `AppServiceProvider` — this runs
+  before Sanctum refreshes `last_used_at`, so it sees the genuine last-use time.
+  It reclaims tokens orphaned by a closed/crashed tab (the client-side timer
+  handles walk-away-with-tab-open). The **mobile-PWA exemption is honored on the
+  server too**: the client sends `device_name: mobile-pwa` at login for that
+  environment, and the callback skips idle enforcement for `mobile-pwa` tokens.
+  Configure via `SANCTUM_IDLE_TIMEOUT_MINUTES`.
+- **Live trip progress graphic**: a pickup truck drives from origin to
+  destination flag along the trip's **expected duration** (planned window
+  `scheduled_start → scheduled_end`, elapsed measured from `actual_start`). Ticks
+  live client-side every second for in-progress trips (no polling), shows % done,
+  elapsed/expected, remaining or "overdue", and a completed trip at 100%. Pure
+  time-based logic in `frontend/src/lib/trip.ts` (`computeTripProgress`);
+  component `frontend/src/components/TripProgress.tsx` (animated wheels, respects
+  `prefers-reduced-motion`, `role="progressbar"`). Shown to **every access level**
+  that can view the trip: on **Trip detail** (operators/drivers/admin) and on
+  **Request detail** (requesters/staff — the surface a locked-down Staff user can
+  reach).
 - **Design system**: KNUST tokens (light/dark, system-aware) incl. **theme-aware
   elevation** (`--elev-1/2/3` → `shadow-card`/`shadow-elevated`/`shadow-pop`); the
   shared `Card` uses a layered soft shadow + 16px radius for depth. **Trial:** a
@@ -302,6 +348,8 @@ php -r "require 'vendor/autoload.php'; print_r(Minishlink\WebPush\VAPID::createV
 ```bash
 cd backend && php artisan test        # ⚠ see caveat below
 cd frontend && npm run build          # tsc typecheck + production build (the real gate today)
+cd frontend && npm test               # Vitest unit/component tests (jsdom)
+cd frontend && npm run test:types     # typecheck the test files (tsconfig.test.json)
 ```
 
 The original PHPUnit suite (~42 tests) covers auth, the full request/trip
@@ -318,7 +366,16 @@ and **wipes `uits_vmtl`** — which would destroy the live demo state the app is
 currently configured with (org tree, directory test users, scoped fleet). Before
 relying on it: update the affected tests + factories for `org_unit_id`/serving
 scope, then run against a **separate test database**. `npm run build` (tsc) is the
-green gate used throughout. There is no automated frontend test suite.
+green gate used throughout.
+
+**Frontend tests (new):** a **Vitest + Testing Library** suite now exists
+(`npm test`). Config is in `vitest.config.ts` (kept separate from `vite.config.ts`
+so the Vitest type world doesn't clash with Vite 8's rolldown plugin types);
+`src/test/setup.ts` wires jest-dom + DOM cleanup; `tsconfig.test.json` typechecks
+the specs (`npm run test:types`) and test files are excluded from the production
+`tsc -b`. Initial coverage: `src/lib/format.ts` (duration / decimal / cedi
+formatting), the `PwaManager` update-prompt component, and the SW build-hash
+helper (`vite/sw-build-hash.ts`). Expand from here.
 
 ---
 
@@ -357,7 +414,9 @@ green gate used throughout. There is no automated frontend test suite.
 
 ## 11. Known gaps / possible next steps
 
-- **No automated frontend tests** — consider Vitest + Testing Library.
+- **Frontend tests** — a Vitest + Testing Library suite now exists (`npm test`,
+  28 tests across `format`, `PwaManager`, and the SW build-hash helper). Coverage
+  is still thin; grow it toward the request/trip flow pages and forms.
 - **Directory Auth is LIVE**: real LDAP/AD bind via `DirectoryAuthService` (native
   `ext-ldap`). Login is local-first (break-glass + local accounts unaffected) then
   falls back to the directory when enabled; unknown directory users are
@@ -375,9 +434,14 @@ green gate used throughout. There is no automated frontend test suite.
   A clean-up migration could drop them once you're confident.
 - **Directory bind runs inline** during login (like the rest of the app's `sync`
   work) — fine for now; move behind a queue/timeout for scale.
-- **PWA update prompt is effectively inert** (`sw.js` bytes + `CACHE` name are
-  static, so `updatefound` rarely fires); inject a build hash into the SW so the
-  "new version → Refresh" flow triggers and stale offline caches are purged.
+- ~~**PWA update prompt is effectively inert**~~ **(fixed)**: the build now
+  injects a content-derived hash into `public/sw.js` (`__BUILD_HASH__` →
+  `vite/sw-build-hash.ts`, a `closeBundle` plugin). The SW bytes and `CACHE` name
+  change whenever the app bundle does, so `updatefound` fires on a genuinely new
+  build and the stale offline cache is purged on activate. The hash is derived
+  from the emitted asset file names + the SW template, so a no-op rebuild keeps
+  the same hash (no phantom "new version" prompt). Dev serves the literal
+  placeholder unchanged.
 - **Email** uses the `log` mailer in dev; configure real SMTP (M365) for prod via
   Settings / `.env`.
 - **Admin sub-tables** (RBAC matrix, DB tables) still scroll horizontally on

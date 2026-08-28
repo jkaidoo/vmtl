@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, getToken, setToken } from '../lib/api'
+import { clearActivity, deviceLabel, markActivity } from '../lib/idle'
+import { setSignInInProgress } from '../lib/pwa'
 import type { RoleSlug, User } from '../lib/types'
 
 interface AuthContextValue {
@@ -36,11 +38,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await api.post<{ token: string; user: User }>('/login', { email, password, device_name: 'web' })
-    setToken(res.data.token)
-    // Re-fetch the authenticated user so capabilities are included.
-    const me = await api.get<{ data: User }>('/me')
-    setUser(me.data.data)
+    // Hold off any service-worker "new version" reload until sign-in finishes,
+    // so it can't interrupt the flow and bounce us back to /login.
+    setSignInInProgress(true)
+    try {
+      // The device label lets the server apply the same mobile-PWA idle exemption.
+      const res = await api.post<{ token: string; user: User }>('/login', { email, password, device_name: deviceLabel() })
+      setToken(res.data.token)
+      // Fresh sign-in resets the idle clock (a reload with a valid token keeps the
+      // stored timestamp, so a session left idle past the window still expires).
+      markActivity()
+      // Re-fetch the authenticated user so capabilities are included.
+      const me = await api.get<{ data: User }>('/me')
+      setUser(me.data.data)
+    } finally {
+      setSignInInProgress(false)
+    }
   }, [])
 
   const refreshUser = useCallback(async () => {
@@ -60,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setToken(null)
     setUser(null)
+    clearActivity()
   }, [])
 
   const hasRole = useCallback(

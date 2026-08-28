@@ -1,8 +1,11 @@
 import { Navigate, Route, Routes, useLocation, type Location } from 'react-router-dom'
+import { useAuth } from './context/AuthContext'
 import { Layout } from './components/Layout'
+import { IdleLogout } from './components/IdleLogout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { PwaManager } from './components/PwaManager'
 import { RouteModal } from './components/RouteModal'
+import { Spinner } from './components/ui'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { RequestList } from './pages/requests/RequestList'
@@ -35,6 +38,25 @@ import { DatabaseConnections } from './pages/admin/DatabaseConnections'
 import { Documentation } from './pages/admin/Documentation'
 import { CodebaseGuide } from './pages/admin/CodebaseGuide'
 
+/**
+ * The /login route. Redirects an already-authenticated user to the app instead
+ * of showing the form again — otherwise any reload that lands back on /login
+ * after a sign-in (SW update, HMR, or a token from a prior session) makes it
+ * look like the first click "bounced" and needs a second click.
+ */
+function LoginRoute() {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner label="Loading…" />
+      </div>
+    )
+  }
+  if (user) return <Navigate to="/dashboard" replace />
+  return <Login />
+}
+
 export default function App() {
   const location = useLocation()
   // When a list opens a detail as a modal, it stashes the list's location here.
@@ -44,8 +66,9 @@ export default function App() {
   return (
     <>
       <PwaManager />
+      <IdleLogout />
       <Routes location={background ?? location}>
-      <Route path="/login" element={<Login />} />
+      <Route path="/login" element={<LoginRoute />} />
 
       <Route
         element={

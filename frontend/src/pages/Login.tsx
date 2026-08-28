@@ -2,8 +2,22 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiError } from '../lib/api'
+import { IDLE_LOGOUT_FLAG } from '../lib/idle'
 import { Button, Field, Input } from '../components/ui'
 import { AnimatedHero } from '../components/AnimatedHero'
+
+/** Read (and consume) the one-shot idle-logout flag set before an idle sign-out. */
+function readIdleNotice(): string {
+  try {
+    if (sessionStorage.getItem(IDLE_LOGOUT_FLAG)) {
+      sessionStorage.removeItem(IDLE_LOGOUT_FLAG)
+      return 'You were signed out after 30 minutes of inactivity.'
+    }
+  } catch {
+    // ignore
+  }
+  return ''
+}
 
 const DEMO = [
   { role: 'Administrator', email: 'admin@uits.test' },
@@ -19,11 +33,13 @@ export function Login() {
   const [email, setEmail] = useState('admin@uits.test')
   const [password, setPassword] = useState('password')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState(readIdleNotice)
   const [loading, setLoading] = useState(false)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setNotice('')
     setLoading(true)
     try {
       await login(email, password)
@@ -52,6 +68,12 @@ export function Login() {
 
           <h2 className="mb-1 text-lg font-semibold text-text">Sign in</h2>
           <p className="mb-5 text-sm text-text-2">Use your institutional account.</p>
+
+          {notice && (
+            <p className="mb-4 rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary" role="status">
+              {notice}
+            </p>
+          )}
 
           <form onSubmit={submit} className="space-y-4">
             <Field label="Email or username">

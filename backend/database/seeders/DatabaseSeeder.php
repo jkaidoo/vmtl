@@ -17,6 +17,9 @@ class DatabaseSeeder extends Seeder
             DriverSeeder::class,
             SystemSettingSeeder::class,
             DemoDataSeeder::class,
+            // Builds the real KNUST org tree and re-points the demo accounts/fleet
+            // onto it — must run last so the demo users/vehicles/drivers exist.
+            KnustOrgStructureSeeder::class,
         ]);
     }
 }
