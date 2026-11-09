@@ -187,10 +187,22 @@
           </div>
           <div class="right">
             <button class="icon-btn" id="bellBtn" aria-label="Notifications" style="position:relative">${icon('bell')}<span id="bellCount" class="badge red hidden" style="position:absolute;top:0;right:0;padding:0 5px;font-size:10px"></span></button>
-            <button class="icon-btn" id="themeBtn" aria-label="Theme">${icon(VMTL.themePref() === 'dark' ? 'moon' : VMTL.themePref() === 'light' ? 'sun' : 'monitor')}</button>
-            <div class="right-user" style="text-align:right;margin:0 4px" ><div style="font-size:13px;font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--text-3)">${esc(u.role ? u.role.label : '')}</div></div>
-            <div class="avatar">${esc((u.name || '?').charAt(0))}</div>
-            <button class="icon-btn" id="logoutBtn" aria-label="Log out">${icon('logout')}</button>
+            <div class="theme-switch" role="radiogroup" aria-label="Color theme">
+              <button type="button" role="radio" data-theme-set="light" aria-label="Light theme" title="Light" aria-checked="${VMTL.themePref() === 'light'}">${icon('sun')}</button>
+              <button type="button" role="radio" data-theme-set="dark" aria-label="Dark theme" title="Dark" aria-checked="${VMTL.themePref() === 'dark'}">${icon('moon')}</button>
+              <button type="button" role="radio" data-theme-set="system" aria-label="System theme" title="System" aria-checked="${VMTL.themePref() === 'system'}">${icon('monitor')}</button>
+            </div>
+            <div class="usermenu">
+              <button class="usermenu-trigger" id="userMenuBtn" aria-haspopup="true" aria-expanded="false">
+                <div class="who"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : '')}</span></div>
+                <div class="avatar">${esc((u.name || '?').charAt(0))}</div>
+                <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="menu hidden" id="userMenu" role="menu">
+                <div class="menu-head"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : '')}${u.email ? ' · ' + esc(u.email) : ''}</span></div>
+                <button class="menu-item danger" id="logoutBtn" role="menuitem" type="button">${icon('logout')}<span>Sign out</span></button>
+              </div>
+            </div>
           </div>
         </header>
         <main class="content"><div id="view"></div></main>
@@ -204,7 +216,16 @@
     const openDrawer = () => { sidebar.classList.add('open'); const bd = el('<div class="drawer-backdrop"></div>'); bd.onclick = () => { sidebar.classList.remove('open'); bd.remove(); }; document.body.appendChild(bd); };
     app.querySelector('#menuBtn').onclick = openDrawer;
     app.querySelector('#menuBtn2').onclick = openDrawer;
-    app.querySelector('#themeBtn').onclick = (e) => { const order = ['light', 'dark', 'system']; const next = order[(order.indexOf(VMTL.themePref()) + 1) % 3]; applyTheme(next); e.currentTarget.innerHTML = icon(next === 'dark' ? 'moon' : next === 'light' ? 'sun' : 'monitor'); toast(`Theme: ${next}`); };
+    // Theme segmented switch (light / dark / system), mirroring walkin.
+    const syncThemeSwitch = () => { const p = VMTL.themePref(); app.querySelectorAll('.theme-switch [data-theme-set]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeSet === p))); };
+    app.querySelectorAll('.theme-switch [data-theme-set]').forEach((b) => { b.onclick = () => { applyTheme(b.dataset.themeSet); syncThemeSwitch(); }; });
+    // User menu: combined identity + Sign out in one dropdown.
+    const userBtn = app.querySelector('#userMenuBtn');
+    const userMenu = app.querySelector('#userMenu');
+    const closeUserMenu = () => { userMenu.classList.add('hidden'); userBtn.setAttribute('aria-expanded', 'false'); };
+    userBtn.onclick = (e) => { e.stopPropagation(); const open = userMenu.classList.toggle('hidden'); userBtn.setAttribute('aria-expanded', String(!open)); };
+    document.addEventListener('click', (e) => { if (!userMenu.contains(e.target) && !userBtn.contains(e.target)) closeUserMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUserMenu(); });
     app.querySelector('#logoutBtn').onclick = async () => { try { await api('/logout', { method: 'POST' }); } catch (_) {} location.href = '/login.html'; };
     app.querySelector('#bellBtn').onclick = showNotifications;
     refreshBell();
@@ -317,6 +338,98 @@
 
   function registerSW() { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); }
 
+  // ---- In-place page navigation (SPA-style, mirrors walkin) --------------
+  // Clicking an internal link swaps only the main content and runs that page's
+  // own VMTL_PAGE renderer, leaving the shell (top bar + side nav) mounted — so
+  // navigation is instant with no white flash. Every failure path falls back to
+  // a normal full navigation, so behaviour never regresses below a plain load.
+  //
+  // Each page script is loaded at most once per session (its VMTL_PAGE is cached
+  // by path); revisiting a page just re-runs the cached renderer. This avoids
+  // re-executing a script's top-level declarations (which would throw on `const`).
+  const pageCache = new Map();
+  let spaBusy = false;
+  window.__vmtlLeave = window.__vmtlLeave || [];
+  VMTL.onLeave = (fn) => { if (typeof fn === 'function') window.__vmtlLeave.push(fn); };
+  const runLeave = () => { window.__vmtlLeave.splice(0).forEach((fn) => { try { fn(); } catch (_) { /* ignore */ } }); };
+  const flatNav = () => NAV.reduce((acc, s) => acc.concat(s.items), []);
+
+  function spaEligible(a) {
+    if (!a || !a.getAttribute('href')) return false;
+    if (a.target && a.target !== '_self') return false;
+    if (a.hasAttribute('download')) return false;
+    let url; try { url = new URL(a.href, location.href); } catch (_) { return false; }
+    if (url.origin !== location.origin) return false;
+    return /\.html$/.test(url.pathname);
+  }
+  function setActiveNav(key) {
+    const item = flatNav().find((it) => it.key === key);
+    const href = item ? item.to : null;
+    document.querySelectorAll('#sidebar .nav-link, .bottom-nav a').forEach((a) => {
+      let p = null; try { p = new URL(a.href, location.href).pathname; } catch (_) { /* ignore */ }
+      a.classList.toggle('active', !!href && p === href);
+    });
+    const sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('open');
+    const bd = document.querySelector('.drawer-backdrop'); if (bd) bd.remove();
+  }
+  function setTitle(key, docTitle) {
+    const item = flatNav().find((it) => it.key === key);
+    const t = document.querySelector('.topbar .title');
+    if (t) t.textContent = item ? item.label : String(docTitle || document.title || '').replace(/\s*·.*$/, '');
+  }
+  function loadPageScript(src) {
+    return new Promise((resolve, reject) => {
+      document.querySelectorAll('script[data-spa-page]').forEach((s) => s.remove());
+      const s = document.createElement('script');
+      s.src = src; s.setAttribute('data-spa-page', '1');
+      s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.body.appendChild(s);
+    });
+  }
+  async function spaNavigate(href, { push = true } = {}) {
+    if (spaBusy) return; spaBusy = true;
+    try {
+      const res = await fetch(href, { credentials: 'same-origin' });
+      if (!res.ok || /\/login\.html(\?|$)/.test(res.url)) { location.href = href; return; }
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const key = doc.body.getAttribute('data-nav');
+      const path = new URL(href, location.href).pathname;
+      const scriptSrc = [...doc.querySelectorAll('script[src]')]
+        .map((s) => s.getAttribute('src'))
+        .find((src) => src && !/\/js\/common\.js(\?|$)/.test(src));
+      runLeave();
+      if (push) history.pushState({ spa: true }, '', href);
+      if (doc.title) document.title = doc.title;
+      setActiveNav(key); setTitle(key, doc.title);
+      if (VMTL.view) { VMTL.view.innerHTML = '<div class="loading"><span class="spinner"></span></div>'; VMTL.view.classList.remove('spa-in'); void VMTL.view.offsetWidth; VMTL.view.classList.add('spa-in'); }
+      window.scrollTo(0, 0);
+      let fn = pageCache.get(path);
+      if (!fn) {
+        if (scriptSrc) { await loadPageScript(scriptSrc); fn = window.VMTL_PAGE; pageCache.set(path, fn); }
+      } else { window.VMTL_PAGE = fn; }
+      if (typeof fn === 'function') await fn();
+    } catch (err) {
+      console.error('Page navigation failed', err);
+      location.href = href; // graceful fallback
+    } finally { spaBusy = false; }
+  }
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('view')) return; // only inside a mounted shell
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!spaEligible(a)) return;
+    const url = new URL(a.href, location.href);
+    if (url.pathname === location.pathname && url.search === location.search && !url.hash) { e.preventDefault(); setActiveNav(document.body.getAttribute('data-nav')); return; }
+    e.preventDefault();
+    spaNavigate(url.pathname + url.search + url.hash);
+  });
+  window.addEventListener('popstate', () => { if (!document.getElementById('view')) return; spaNavigate(location.pathname + location.search, { push: false }); });
+
   // Page-head helper pages can call before boot to set the active nav from <body data-nav>.
-  document.addEventListener('DOMContentLoaded', () => { const k = document.body.getAttribute('data-nav'); if (k && !window.__VMTL_MANUAL_BOOT) VMTL.boot(k).then(() => { if (window.VMTL_PAGE) window.VMTL_PAGE(); }).catch(() => {}); });
+  document.addEventListener('DOMContentLoaded', () => {
+    const k = document.body.getAttribute('data-nav');
+    if (k && !window.__VMTL_MANUAL_BOOT) VMTL.boot(k).then(() => {
+      if (window.VMTL_PAGE) { const fn = window.VMTL_PAGE; pageCache.set(location.pathname, fn); return fn(); }
+    }).catch(() => {});
+  });
 })();
