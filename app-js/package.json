@@ -1,0 +1,29 @@
+{
+  "name": "uits-vmtl",
+  "version": "1.0.0",
+  "description": "KNUST UITS Vehicle Management & Trip Logging — request, approval, assignment, trips, reporting and analytics",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0",
+    "ldapts": "^7.4.0",
+    "pdfkit": "^0.16.0",
+    "pg": "^8.13.1",
+    "web-push": "^3.6.7"
+  }
+}

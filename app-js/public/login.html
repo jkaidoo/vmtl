@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sign in · UITS VMTL</title>
+  <meta name="description" content="KNUST UITS Vehicle Management & Trip Logging">
+  <link rel="icon" href="/knust-logo.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body>
+  <div class="login-wrap">
+    <section class="login-hero">
+      <h1>UITS Vehicle Management &amp; Trip Logging</h1>
+      <p>Request, approve, assign and track official KNUST vehicles — from request through to the completed trip, with full reporting and analytics.</p>
+      <div class="road"></div>
+      <div class="car" aria-hidden="true">🚐</div>
+    </section>
+    <section class="login-form">
+      <div class="login-card">
+        <img class="logo" src="/knust-logo.png" alt="KNUST">
+        <h2>Sign in</h2>
+        <p class="muted">Use your UITS VMTL account or university directory sign-in.</p>
+        <form id="loginForm" class="mt">
+          <div class="field">
+            <label for="email">Email or username</label>
+            <input id="email" name="email" type="text" autocomplete="username" required autofocus>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit" id="submitBtn">Sign in</button>
+        </form>
+        <p class="dim mt" style="font-size:12px">KNUST · University Information Technology Services</p>
+      </div>
+    </section>
+  </div>
+  <script src="/js/common.js"></script>
+  <script src="/js/login.js"></script>
+</body>
+</html>

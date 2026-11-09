@@ -88,10 +88,11 @@ Password for all: **`password`**
 | System Administrator | `admin@uits.test` | **break-glass super admin** — sees the deep admin tier |
 | Approver | `approver@uits.test` | approves; can also manage fleet |
 | Transport Officer | `transport@uits.test` | assigns, runs trips, goodwill |
+| Supervisor | `supervisor@uits.test` | OU-scoped admin (College of Science) — admin powers minus System/Audit/Settings/Org; scoped users + analytics |
 | Staff | `staff@uits.test` | requests only (locked to Requests area) |
 | Driver | `driver1@uits.test`, `driver2@uits.test` | self-service; own trips + goodwill |
 
-Additional staff: `ama@uits.test`, `kofi@uits.test`.
+Additional staff: `ama@uits.test`, `kofi@uits.test`. Also `gatedstaff@uits.test` — a Staff with **no department**, demonstrating the request-gating (can't submit until assigned a department).
 
 **Directory (LDAP) test users** — sign in with the bare username or the email;
 password `password`. Provisioned on first login via the live `ldap.forumsys.com`

@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
-      "port": 5173
+      "name": "vmtl-js",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["app-js/server.js"],
+      "port": 8000
     }
   ]
 }

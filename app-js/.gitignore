@@ -1,0 +1,8 @@
+node_modules/
+.env
+# Local database data (embedded Postgres + SQLite dev files)
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+npm-debug.log*

@@ -1,0 +1,47 @@
+'use strict';
+// External notification transports (email / SMS / Web Push), fanned out from an
+// in-app notification when the matching feature flag is on. Best-effort: a
+// transport failure never breaks the originating action.
+const db = require('./db_ref');
+const settings = require('./settings');
+const webPush = require('./webPush');
+const sms = require('./sms');
+const log = require('../util/log');
+
+// Human-readable title/body for a notification type.
+function describe(type, data) {
+  const map = {
+    new_request: ['New vehicle request', `Request ${data.request_number || ''} from ${data.requester || 'a requester'} needs review.`],
+    request_approved: ['Request approved', `Your request ${data.request_number || ''} was approved.`],
+    request_rejected: ['Request rejected', `Your request ${data.request_number || ''} was rejected.`],
+    request_changes_requested: ['Changes requested', `Changes were requested on ${data.request_number || ''}.`],
+    vehicle_assigned: ['Vehicle assigned', `${data.vehicle || 'A vehicle'} was assigned (trip ${data.trip_number || ''}).`],
+    trip_completed: ['Trip completed', `Trip ${data.trip_number || ''} completed (${data.distance || 0} km).`],
+    driver_ready: ['Driver ready', `The driver is ready for trip ${data.trip_number || ''}.`],
+    trip_stop_requested: ['Added destination requested', `A destination "${data.destination || ''}" was added to ${data.trip_number || ''}.`],
+    trip_stop_accepted: ['Added destination accepted', `"${data.destination || ''}" was accepted on ${data.trip_number || ''}.`],
+    trip_stop_declined: ['Added destination declined', `"${data.destination || ''}" was declined on ${data.trip_number || ''}.`],
+    trip_delay_warning: ['Possible delay', `Trip ${data.trip_number || ''} may be delayed.`],
+  };
+  return map[type] || ['Notification', ''];
+}
+
+async function fanout(userId, type, data) {
+  const [title, body] = describe(type, data);
+  // Web Push
+  if (await settings.get('feature_push_notifications', true)) {
+    try { await webPush.sendToUser(userId, { title, body, data }); } catch (err) { log.warn('push_fanout_failed', { message: err.message }); }
+  }
+  // Email (only when a recipient address is known and email is enabled)
+  if (await settings.get('feature_email_notifications', true) && await settings.get('mail_enabled', false)) {
+    try { await require('./email').send(await addressFor(userId), title, body); } catch (err) { log.warn('email_fanout_failed', { message: err.message }); }
+  }
+  // SMS (opt-in; phone required)
+  if (await settings.get('feature_sms_notifications', false) && await settings.get('sms_enabled', false)) {
+    try { const phone = (await db.get('SELECT phone FROM users WHERE id = ?', [userId]) || {}).phone; if (phone) await sms.send(phone, `${title}: ${body}`); } catch (err) { log.warn('sms_fanout_failed', { message: err.message }); }
+  }
+}
+
+async function addressFor(userId) { const u = await db.get('SELECT email FROM users WHERE id = ?', [userId]); return u ? u.email : null; }
+
+module.exports = { fanout, describe };
