@@ -113,6 +113,51 @@ async function authenticate(identifier, password) {
   finally { await client.unbind().catch(() => {}); }
 }
 
+// Escape a user-typed query for safe inclusion in an LDAP filter (RFC 4515).
+function ldapEscape(value) {
+  return String(value).replace(/[\\*()\u0000]/g, (c) => '\\' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+}
+
+// Search the directory for people matching `query` (name, username or email).
+// Used by an administrator to add staff from the directory — it service-binds
+// and reads, but never verifies a password. Each result carries a suggested
+// role + org unit from the group→role/unit mapping.
+async function searchDirectory(query, limit = 25) {
+  if (!(await isEnabled())) return { enabled: false, provider: null, results: [] };
+  const provider = await activeProvider();
+  const cfg = provider === 'ad' ? await adConfig() : await ldapConfig();
+  if (!cfg.host) return { enabled: true, provider, results: [], error: 'No directory host is configured.' };
+  const q = ldapEscape(String(query || '').trim());
+  if (!q) return { enabled: true, provider, results: [] };
+  const attrs = provider === 'ad'
+    ? [cfg.attrName, cfg.attrUsername, cfg.attrEmail, cfg.attrUpn]
+    : [cfg.attrName, cfg.attrUsername, cfg.attrEmail];
+  const ors = provider === 'ad'
+    ? `(|(${cfg.attrName}=*${q}*)(${cfg.attrUsername}=*${q}*)(${cfg.attrEmail}=*${q}*)(${cfg.attrUpn}=*${q}*))`
+    : `(|(${cfg.attrName}=*${q}*)(${cfg.attrUsername}=*${q}*)(${cfg.attrEmail}=*${q}*))`;
+  const filter = provider === 'ad' ? `(&(objectCategory=person)(objectClass=user)${ors})` : ors;
+  const client = newClient(urlFor(provider, cfg));
+  try {
+    if (provider === 'ldap' && cfg.encryption === 'starttls') await client.startTLS({});
+    if (provider === 'ad') { if (cfg.bindAccount) await client.bind(cfg.bindAccount, cfg.bindPassword); }
+    else if (cfg.bindDn) await client.bind(cfg.bindDn, cfg.bindPassword);
+    const { searchEntries } = await client.search(cfg.baseDn, { scope: 'sub', filter, attributes: [...attrs, 'memberOf'], sizeLimit: limit });
+    const results = [];
+    for (const entry of searchEntries.slice(0, limit)) {
+      const first = (a) => (Array.isArray(entry[a]) ? entry[a][0] : entry[a]);
+      const username = String(first(cfg.attrUsername) || '').trim();
+      if (!username) continue;
+      const name = String(first(cfg.attrName) || username).trim();
+      const email = (String(first(cfg.attrEmail) || (provider === 'ad' ? first(cfg.attrUpn) || '' : '')).trim()) || null;
+      const groups = memberOf(entry);
+      const mapping = await resolveMapping(groups);
+      results.push({ username, name, email, dn: entry.dn, suggested_role: mapping.role, suggested_org_unit_id: mapping.orgUnitId });
+    }
+    return { enabled: true, provider, results };
+  } catch (err) { log.warn('directory_search_error', { provider, message: err.message }); return { enabled: true, provider, results: [], error: err.message }; }
+  finally { await client.unbind().catch(() => {}); }
+}
+
 async function testConnection(provider) {
   const p = provider === 'active_directory' ? 'ad' : provider;
   const cfg = p === 'ad' ? await adConfig() : await ldapConfig();
@@ -128,4 +173,4 @@ async function testConnection(provider) {
   finally { await client.unbind().catch(() => {}); }
 }
 
-module.exports = { isEnabled, activeProvider, authenticate, testConnection };
+module.exports = { isEnabled, activeProvider, authenticate, testConnection, searchDirectory };

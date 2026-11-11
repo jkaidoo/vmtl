@@ -5,6 +5,8 @@
 const db = require('../../db/runtime');
 const enums = require('../../services/enums');
 const orgScope = require('../../services/orgScope');
+const settings = require('../../services/settings');
+const directoryAuth = require('../../services/directoryAuth');
 const { requireAuth } = require('../../middleware/auth');
 
 module.exports = function register(router) {
@@ -22,6 +24,8 @@ module.exports = function register(router) {
     const roles = await db.all('SELECT id, slug, name FROM roles ORDER BY id');
     const departments = await db.all('SELECT id, name, code FROM departments WHERE active = 1 ORDER BY name');
 
-    res.json({ roles, departments, org_units: orgUnitDtos, enums: enums.options });
+    let directoryEnabled = false; try { directoryEnabled = await directoryAuth.isEnabled(); } catch (_) { /* default off */ }
+    const navHidden = (await settings.get('nav_hidden', [])) || [];
+    res.json({ roles, departments, org_units: orgUnitDtos, enums: enums.options, directory_enabled: directoryEnabled, nav_hidden: navHidden });
   });
 };

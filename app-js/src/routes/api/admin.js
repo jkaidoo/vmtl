@@ -7,11 +7,13 @@ const settings = require('../../services/settings');
 const directoryAuth = require('../../services/directoryAuth');
 const sms = require('../../services/sms');
 const email = require('../../services/email');
+const notifications = require('../../services/notifications');
+const dbProfiles = require('../../services/dbProfiles');
 const audit = require('../../services/audit');
 const log = require('../../util/log');
 const { requireAuth, requireSuper } = require('../../middleware/auth');
 const { validate } = require('../../util/validate');
-const { notFound } = require('../../middleware/errorHandler');
+const { notFound, badRequest } = require('../../middleware/errorHandler');
 
 const SC_GROUPS = ['features', 'notifications', 'retention', 'maintenance'];
 
@@ -66,26 +68,129 @@ function docContent(slug) {
   return '# UITS Vehicle Management & Trip Logging\n\nSee the Technical Overview and User Guide.';
 }
 
+// Structured tour of the codebase for the System Administrator.
+const CODEBASE_GUIDE = [
+  { group: 'Overview', blurb: 'A Node.js + Express app in plain JavaScript, serving a static multi-page front-end, backed by PostgreSQL (embedded pglite in dev, managed PostgreSQL in prod). It mirrors the walkin reference architecture.', items: [
+    { path: 'server.js', desc: 'Process lifecycle: run migrations, log server start, listen, graceful shutdown.' },
+    { path: 'src/app.js', desc: 'Express factory — helmet CSP, sessions, idle policy, rate limits, page guards, static assets.' },
+    { path: 'scripts/seed.js', desc: 'Idempotent seeder: roles, capabilities, KNUST org tree, demo fleet, drivers and trips.' },
+  ] },
+  { group: 'Data layer', blurb: 'One async interface over both engines so services have a single code path.', items: [
+    { path: 'src/db/runtime.js', desc: 'get/all/run/transaction bridge; auto-appends RETURNING id for PostgreSQL inserts.' },
+    { path: 'src/db/postgres.js', desc: 'PostgreSQL gateway — embedded pglite when no DATABASE_URL, else node-postgres.' },
+    { path: 'src/db/postgresSchema.js', desc: 'Migration runner (migrations/postgres/NNN_*.sql), applied once each on boot.' },
+    { path: 'src/db/sqlite.js', desc: 'Optional SQLite engine for quick local dev.' },
+  ] },
+  { group: 'Security & middleware', blurb: 'Capability RBAC enforced server-side on every route; the UI is never the boundary.', items: [
+    { path: 'src/middleware/auth.js', desc: 'requireAuth, requireCap, requireAnyCap, requireSuper (break-glass System Administrator).' },
+    { path: 'src/middleware/idle.js', desc: 'Sliding idle logout — 30 min on web/desktop PWA, mobile PWA exempt.' },
+    { path: 'src/middleware/rateLimit.js', desc: 'Per-user and per-IP request limits.' },
+    { path: 'src/services/authz.js · orgScope.js', desc: 'Capability checks and organisational-unit subtree scoping.' },
+  ] },
+  { group: 'Domain services', blurb: 'Business logic, one module per concern (async, over the runtime bridge).', items: [
+    { path: 'src/services/assignment.js · trips.js · availability.js', desc: 'Vehicle/driver assignment with conflict checks; trip lifecycle; availability windows.' },
+    { path: 'src/services/analytics.js · reports.js', desc: 'Usage analytics and CSV/XLSX/PDF report rows.' },
+    { path: 'src/services/directoryAuth.js', desc: 'LDAP/AD sign-in and directory search (ldapts).' },
+    { path: 'src/services/notifications.js · webPush.js · email.js · sms.js', desc: 'In-app, Web Push, email and SMS fan-out.' },
+    { path: 'src/services/audit.js', desc: 'Append-only audit ledger — who did what, when, from where.' },
+  ] },
+  { group: 'API routes', blurb: 'Mounted under /api, one module per domain in src/routes/api/.', items: [
+    { path: 'auth · meta · dashboard', desc: 'Sign-in/out, selectors + enums, the role-aware dashboard.' },
+    { path: 'vehicle-requests · trips · vehicles · drivers', desc: 'The request-to-trip lifecycle and the fleet.' },
+    { path: 'maintenance · fuel · analytics · reports · audit', desc: 'Records, insights, exports and the audit log.' },
+    { path: 'users · org-units · rbac · settings · admin', desc: 'Administration and the super-admin tier (app-health, system-controls, directory-auth, messaging, database, documentation, broadcasts, codebase-guide).' },
+  ] },
+  { group: 'Front-end', blurb: 'Static multi-page app with instant in-place (SPA-style) navigation.', items: [
+    { path: 'public/js/common.js', desc: 'Shell (sidebar, top bar, user menu, theme switch), API client, SPA navigation, helpers.' },
+    { path: 'public/js/<page>.js', desc: 'One script per page defining window.VMTL_PAGE, rendered into #view.' },
+    { path: 'public/css/styles.css', desc: 'KNUST design tokens (light/dark), components, charts — the walkin design language.' },
+    { path: 'public/sw.js · manifest.webmanifest', desc: 'PWA service worker (network-first) and install manifest.' },
+  ] },
+];
+
 module.exports = function register(router) {
   // ---- App Health --------------------------------------------------------
-  router.get('/admin/app-health', requireAuth, requireSuper, async (req, res) => {
-    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-    const count = async (sql, p) => (await db.get(sql, p)).n;
+  const FAILED_LOGIN = "('auth.login_failed','auth.login_blocked')";
+  function dayBuckets(days) {
+    const out = []; const d = new Date(); d.setHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) { const x = new Date(d); x.setDate(x.getDate() - i); out.push(x.toISOString().slice(0, 10)); }
+    return out;
+  }
+  async function dailySeries(sql, params, days) {
+    const rows = await db.all(sql, params);
+    const map = {}; rows.forEach((r) => { map[r.day] = Number(r.n); });
+    return dayBuckets(days).map((date) => ({ date, count: map[date] || 0 }));
+  }
+  async function healthData(windowDays) {
+    const since = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+    const count = async (sql, p) => Number((await db.get(sql, p)).n);
     const stats = {
       successful_signins: await count("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'auth.login' AND created_at >= ?", [since]),
-      failed_signins: await count("SELECT COUNT(*) AS n FROM audit_logs WHERE action IN ('auth.login_failed','auth.login_blocked') AND created_at >= ?", [since]),
-      events_7d: await count('SELECT COUNT(*) AS n FROM audit_logs WHERE created_at >= ?', [since]),
-      errors_recent: log.recent(50).filter((e) => e.level === 'error').length,
+      failed_signins: await count(`SELECT COUNT(*) AS n FROM audit_logs WHERE action IN ${FAILED_LOGIN} AND created_at >= ?`, [since]),
+      requests: await count('SELECT COUNT(*) AS n FROM vehicle_requests WHERE created_at >= ?', [since]),
+      events: await count('SELECT COUNT(*) AS n FROM audit_logs WHERE created_at >= ?', [since]),
+      server_starts: await count("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'system.server_start' AND created_at >= ?", [since]),
+      errors_recent: log.recent(100).filter((e) => e.level === 'error').length,
     };
-    const rows = (sql, p) => db.all(sql, p);
+    const series = {
+      successful_signins: await dailySeries("SELECT substr(created_at,1,10) AS day, COUNT(*) AS n FROM audit_logs WHERE action = 'auth.login' AND created_at >= ? GROUP BY substr(created_at,1,10)", [since], windowDays),
+      failed_signins: await dailySeries(`SELECT substr(created_at,1,10) AS day, COUNT(*) AS n FROM audit_logs WHERE action IN ${FAILED_LOGIN} AND created_at >= ? GROUP BY substr(created_at,1,10)`, [since], windowDays),
+      requests: await dailySeries('SELECT substr(created_at,1,10) AS day, COUNT(*) AS n FROM vehicle_requests WHERE created_at >= ? GROUP BY substr(created_at,1,10)', [since], windowDays),
+    };
+    // Setup checks (infrastructure readiness).
+    let dbOk = true; try { await db.get('SELECT 1 AS ok'); } catch (_) { dbOk = false; }
+    let tablesOk = true; try { await db.get('SELECT COUNT(*) AS n FROM users'); } catch (_) { tablesOk = false; }
+    let auditOk = true; try { await db.get('SELECT COUNT(*) AS n FROM audit_logs'); } catch (_) { auditOk = false; }
+    const checks = [
+      { name: 'Database connection', ok: dbOk },
+      { name: `Data store (${runtime.mode()})`, ok: dbOk },
+      { name: 'Core tables present', ok: tablesOk },
+      { name: 'Audit ledger writable', ok: auditOk },
+      { name: 'Session store ready', ok: !!runtime.sessionMode() },
+    ];
     const mapAudit = (a) => ({ id: a.id, action: a.action, description: a.description, user: a.user_name, ip_address: a.ip_address, created_at: a.created_at });
-    res.json({ data: {
-      stats,
-      successful_signins: (await rows("SELECT a.*, u.name AS user_name FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.login' AND a.created_at >= ? ORDER BY a.created_at DESC LIMIT 15", [since])).map(mapAudit),
-      failed_signins: (await rows("SELECT * FROM audit_logs WHERE action IN ('auth.login_failed','auth.login_blocked') AND created_at >= ? ORDER BY created_at DESC LIMIT 15", [since])).map(mapAudit),
-      recent_events: (await rows('SELECT a.*, u.name AS user_name FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 20', [])).map(mapAudit),
-      error_log: log.recent(50).filter((e) => e.level === 'error').map((e) => ({ level: 'ERROR', timestamp: e.at, message: e.message || e.event })),
-    } });
+    const rows = (sql, p) => db.all(sql, p);
+    return {
+      generated_at: new Date().toISOString(),
+      window_days: windowDays,
+      uptime_ms: Math.round(process.uptime() * 1000),
+      stats, series,
+      setup_checks: { items: checks, success: checks.filter((c) => c.ok).length, failed: checks.filter((c) => !c.ok).length },
+      successful_signins: (await rows("SELECT a.*, u.name AS user_name FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.login' AND a.created_at >= ? ORDER BY a.created_at DESC LIMIT 20", [since])).map(mapAudit),
+      failed_signins: (await rows(`SELECT * FROM audit_logs WHERE action IN ${FAILED_LOGIN} AND created_at >= ? ORDER BY created_at DESC LIMIT 20`, [since])).map(mapAudit),
+      recent_events: (await rows('SELECT a.*, u.name AS user_name FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 40', [])).map(mapAudit),
+      error_log: log.recent(100).filter((e) => e.level === 'error').map((e) => ({ level: 'ERROR', timestamp: e.at, message: e.message || e.event })),
+    };
+  }
+  const windowFrom = (q) => { const n = Number(q.window); return [7, 30, 90].includes(n) ? n : 30; };
+
+  router.get('/admin/app-health', requireAuth, requireSuper, async (req, res) => {
+    res.json({ data: await healthData(windowFrom(req.query)) });
+  });
+
+  router.get('/admin/app-health/export', requireAuth, requireSuper, async (req, res) => {
+    const d = await healthData(windowFrom(req.query));
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T-]/g, '').slice(0, 15);
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="app-health_${stamp}.pdf"`);
+    doc.pipe(res);
+    doc.fontSize(20).fillColor('#111820').text('App Health', { continued: false });
+    doc.moveDown(0.2).fontSize(10).fillColor('#566171').text(`UITS VMTL · last ${d.window_days} days · generated ${new Date(d.generated_at).toLocaleString()}`);
+    doc.moveDown(0.8);
+    const h = Math.floor(d.uptime_ms / 3600000); const m = Math.floor((d.uptime_ms % 3600000) / 60000);
+    const kpis = [
+      ['Current uptime', h ? `${h}h ${m}m` : `${m}m`], ['Server starts', String(d.stats.server_starts)],
+      ['Successful sign-ins', String(d.stats.successful_signins)], ['Failed sign-ins', String(d.stats.failed_signins)],
+      ['Requests', String(d.stats.requests)], ['Operational events', String(d.stats.events)],
+    ];
+    doc.fontSize(13).fillColor('#111820').text('Summary'); doc.moveDown(0.3);
+    doc.fontSize(11).fillColor('#222b35');
+    kpis.forEach(([k, v]) => doc.text(`${k}: `, { continued: true }).fillColor('#009540').text(v).fillColor('#222b35'));
+    doc.moveDown(0.8).fontSize(13).fillColor('#111820').text('Recent operational events'); doc.moveDown(0.3).fontSize(9).fillColor('#222b35');
+    d.recent_events.slice(0, 30).forEach((e) => doc.text(`${e.created_at}  ·  ${e.action}  ·  ${e.description || e.user || '—'}`));
+    doc.end();
   });
 
   // ---- System Controls ---------------------------------------------------
@@ -156,16 +261,20 @@ module.exports = function register(router) {
   }
   router.get('/admin/messaging', requireAuth, requireSuper, async (req, res) => res.json(await messagingPayload()));
   router.put('/admin/messaging', requireAuth, requireSuper, async (req, res) => {
-    const em = req.body.email || {};
-    await settingSet('mail_enabled', em.enabled ? '1' : '0', 'boolean');
-    for (const k of ['host', 'port', 'username', 'encryption', 'from_address', 'from_name']) if (k in em) await settingSet(`mail_${k}`, String(em[k] ?? ''), 'string');
-    if (em.password) await settingSet('mail_password', String(em.password), 'string');
-    const smsBody = req.body.sms || {};
-    await settingSet('sms_enabled', smsBody.enabled ? '1' : '0', 'boolean');
-    if ('provider' in smsBody) await settingSet('sms_provider', String(smsBody.provider || 'hubtel'), 'string');
-    if ('sender_id' in smsBody) await settingSet('sms_sender_id', String(smsBody.sender_id || ''), 'string');
-    const known = {}; for (const meta of Object.values(SMS_PROVIDERS)) for (const [fk, , secret] of meta.fields) known[fk] = secret;
-    for (const [k, v] of Object.entries(smsBody.fields || {})) { if (!(k in known)) continue; if (known[k]) { if (v) await settingSet(k, String(v), 'string'); } else await settingSet(k, String(v ?? ''), 'string'); }
+    if (req.body.email) {
+      const em = req.body.email;
+      await settingSet('mail_enabled', em.enabled ? '1' : '0', 'boolean');
+      for (const k of ['host', 'port', 'username', 'encryption', 'from_address', 'from_name']) if (k in em) await settingSet(`mail_${k}`, String(em[k] ?? ''), 'string');
+      if (em.password) await settingSet('mail_password', String(em.password), 'string');
+    }
+    if (req.body.sms) {
+      const smsBody = req.body.sms;
+      await settingSet('sms_enabled', smsBody.enabled ? '1' : '0', 'boolean');
+      if ('provider' in smsBody) await settingSet('sms_provider', String(smsBody.provider || 'hubtel'), 'string');
+      if ('sender_id' in smsBody) await settingSet('sms_sender_id', String(smsBody.sender_id || ''), 'string');
+      const known = {}; for (const meta of Object.values(SMS_PROVIDERS)) for (const [fk, , secret] of meta.fields) known[fk] = secret;
+      for (const [k, v] of Object.entries(smsBody.fields || {})) { if (!(k in known)) continue; if (known[k]) { if (v) await settingSet(k, String(v), 'string'); } else await settingSet(k, String(v ?? ''), 'string'); }
+    }
     await audit.from(req, { action: 'messaging.updated', description: `${req.session.user.name} updated messaging (email/SMS) settings` });
     res.json(await messagingPayload());
   });
@@ -179,17 +288,46 @@ module.exports = function register(router) {
     res.json({ data: await sms.send(to, 'UITS VMTL test message — your SMS integration is working.') });
   });
 
-  // ---- Database connections (read-only inspection) -----------------------
+  // ---- Database connections ----------------------------------------------
   router.get('/admin/database', requireAuth, requireSuper, async (req, res) => {
-    const tables = ['roles', 'role_capabilities', 'departments', 'org_units', 'users', 'vehicles', 'drivers', 'vehicle_requests', 'request_approvals', 'trips', 'trip_stops', 'maintenance_records', 'odometer_readings', 'fuel_logs', 'audit_logs', 'system_settings', 'notifications', 'push_subscriptions'];
     const counts = [];
-    for (const t of tables) { try { counts.push({ table: t, rows: (await db.get(`SELECT COUNT(*) AS n FROM ${t}`)).n }); } catch (_) { counts.push({ table: t, rows: null }); } }
+    for (const t of dbProfiles.TABLES) { try { counts.push({ table: t, rows: Number((await db.get(`SELECT COUNT(*) AS n FROM ${t}`)).n) }); } catch (_) { counts.push({ table: t, rows: null }); } }
     res.json({ data: {
-      active: { name: runtime.mode(), driver: runtime.mode(), host: runtime.isPostgres() ? (process.env.DATABASE_URL ? 'postgres' : null) : 'local', database: runtime.isPostgres() ? 'postgres' : (process.env.VMTL_DB || 'data/vmtl.sqlite'), username: null, password: '[redacted]', version: null, size_mb: null },
-      profiles: [{ name: runtime.mode(), driver: runtime.mode(), active: true }],
+      encryption_configured: dbProfiles.encryptionConfigured(),
+      active: await dbProfiles.activeStore(),
+      providers: dbProfiles.PROVIDERS,
+      profiles: await dbProfiles.list(),
       tables: counts,
-      migration_note: 'Schema is created idempotently on boot (SQLite) / via migrations (PostgreSQL).',
     } });
+  });
+  router.post('/admin/database/profiles', requireAuth, requireSuper, async (req, res) => {
+    const data = validate(req.body, { name: { required: true, type: 'string', maxLength: 120 }, provider: { type: 'string' }, host: { type: 'string' }, port: { type: 'string' }, database: { type: 'string' }, username: { type: 'string' }, ssl_mode: { type: 'string' }, password: { type: 'string' }, connection: { type: 'string' } });
+    const p = await dbProfiles.create(data);
+    await audit.from(req, { action: 'database.profile_saved', description: `${req.session.user.name} saved database profile ${data.name}` });
+    res.status(201).json({ data: p });
+  });
+  router.put('/admin/database/profiles/:id', requireAuth, requireSuper, async (req, res) => {
+    const p = await dbProfiles.update(req.params.id, req.body || {}); if (!p) throw notFound('Profile not found.');
+    await audit.from(req, { action: 'database.profile_saved', description: `${req.session.user.name} updated database profile ${p.name}` });
+    res.json({ data: p });
+  });
+  router.delete('/admin/database/profiles/:id', requireAuth, requireSuper, async (req, res) => {
+    if (!(await dbProfiles.remove(req.params.id))) throw notFound('Profile not found.');
+    await audit.from(req, { action: 'database.profile_removed', description: `${req.session.user.name} removed a database profile` });
+    res.json({ ok: true });
+  });
+  router.post('/admin/database/profiles/:id/test', requireAuth, requireSuper, async (req, res) => {
+    const result = await dbProfiles.test(req.params.id);
+    await audit.from(req, { action: 'database.profile_tested', description: `${req.session.user.name} tested a database profile — ${result.ok ? 'connected' : 'failed'}` });
+    res.json({ data: result });
+  });
+  router.post('/admin/database/profiles/:id/select', requireAuth, requireSuper, async (req, res) => { await dbProfiles.select(req.params.id); res.json({ ok: true }); });
+  router.post('/admin/database/migrate', requireAuth, requireSuper, async (req, res) => {
+    const id = req.body.profile_id; if (!id) throw badRequest('Select a migration target first.');
+    if (String(req.body.confirmation || '').toUpperCase() !== 'MIGRATE') throw badRequest('Type MIGRATE to confirm.');
+    const out = await dbProfiles.migrate(id);
+    await audit.from(req, { action: 'database.migrated', description: `${req.session.user.name} copied the data store into a PostgreSQL target` });
+    res.json({ data: out });
   });
 
   // ---- Documentation -----------------------------------------------------
@@ -200,6 +338,98 @@ module.exports = function register(router) {
     const meta = DOCS[req.params.slug];
     if (!meta) throw notFound('Document not found.');
     res.json({ data: { slug: req.params.slug, title: meta.title, content: docContent(req.params.slug) } });
+  });
+
+  // ---- Broadcasts --------------------------------------------------------
+  router.get('/admin/broadcasts', requireAuth, requireSuper, async (req, res) => {
+    const rows = await db.all("SELECT a.*, u.name AS user_name FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id WHERE a.action = 'broadcast.sent' ORDER BY a.created_at DESC, a.id DESC LIMIT 40", []);
+    res.json({ data: rows.map((a) => ({ id: a.id, description: a.description, by: a.user_name, created_at: a.created_at, meta: a.new_values ? JSON.parse(a.new_values) : null })) });
+  });
+  router.post('/admin/broadcasts', requireAuth, requireSuper, async (req, res) => {
+    const data = validate(req.body, { title: { required: true, type: 'string', maxLength: 160 }, message: { required: true, type: 'string', maxLength: 2000 }, audience: { type: 'string', maxLength: 40 } });
+    const audience = String(req.body.audience || 'all');
+    const ch = req.body.channels || {};
+    const recips = audience === 'all'
+      ? await db.all('SELECT id, email, phone, name FROM users WHERE active = 1 AND deleted_at IS NULL')
+      : await db.all('SELECT u.id, u.email, u.phone, u.name FROM users u JOIN roles r ON r.id = u.role_id WHERE r.slug = ? AND u.active = 1 AND u.deleted_at IS NULL', [audience]);
+    let inApp = 0; let emailed = 0; let texted = 0;
+    for (const u of recips) {
+      if (ch.in_app !== false) { try { await notifications.toUser(u.id, 'broadcast', { title: data.title, message: data.message }); inApp++; } catch (_) { /* skip */ } }
+      if (ch.email && u.email) { try { const r = await email.send(u.email, data.title, data.message); if (r && r.ok) emailed++; } catch (_) { /* skip */ } }
+      if (ch.sms && u.phone) { try { const r = await sms.send(u.phone, `${data.title}: ${data.message}`); if (r && r.ok) texted++; } catch (_) { /* skip */ } }
+    }
+    await audit.record({ userId: req.session.user.id, actorName: req.session.user.name, action: 'broadcast.sent', description: `${req.session.user.name} broadcast “${data.title}” to ${recips.length} ${audience === 'all' ? 'recipients' : audience}`, newValues: { title: data.title, audience, recipients: recips.length, in_app: inApp, emailed, texted }, ip: req.ip });
+    res.json({ data: { recipients: recips.length, in_app: inApp, emailed, texted } });
+  });
+
+  // ---- Codebase guide ----------------------------------------------------
+  router.get('/admin/codebase-guide', requireAuth, requireSuper, (req, res) => res.json({ data: CODEBASE_GUIDE }));
+
+  // ---- Application logs (server runtime log — app owner only) -------------
+  router.get('/admin/application-logs', requireAuth, requireSuper, (req, res) => {
+    const level = String(req.query.level || 'all');
+    let rows = log.recent(400);
+    if (level !== 'all') rows = rows.filter((e) => e.level === level);
+    res.json({ data: rows.map((e) => ({ level: e.level, timestamp: e.at, event: e.event, message: e.message || e.event, data: e.data != null ? JSON.stringify(e.data) : null })) });
+  });
+
+  // ---- Navigation settings ----------------------------------------------
+  router.get('/admin/navigation', requireAuth, requireSuper, async (req, res) => {
+    res.json({ data: { hidden: (await settings.get('nav_hidden', [])) || [] } });
+  });
+  router.put('/admin/navigation', requireAuth, requireSuper, async (req, res) => {
+    const hidden = Array.isArray(req.body.hidden) ? req.body.hidden.map(String) : [];
+    await settingSetJson('nav_hidden', hidden);
+    await audit.from(req, { action: 'navigation.updated', description: `${req.session.user.name} updated navigation visibility (${hidden.length} hidden)` });
+    res.json({ data: { hidden } });
+  });
+
+  // ---- Report configuration ---------------------------------------------
+  async function reportConfig() {
+    return {
+      org_name: (await settings.get('report_org_name', 'University Information Technology Services')),
+      title_prefix: (await settings.get('report_title_prefix', 'UITS VMTL')),
+      footer: (await settings.get('report_footer', 'KNUST · University Information Technology Services')),
+      default_range_days: Number(await settings.get('report_default_range_days', 30)) || 30,
+      include_logo: (await settings.get('report_include_logo', '1')) !== '0',
+      paper: (await settings.get('report_paper', 'A4')) || 'A4',
+    };
+  }
+  router.get('/admin/report-config', requireAuth, requireSuper, async (req, res) => res.json({ data: await reportConfig() }));
+  router.put('/admin/report-config', requireAuth, requireSuper, async (req, res) => {
+    const b = req.body || {};
+    await settings.set('report_org_name', String(b.org_name ?? ''));
+    await settings.set('report_title_prefix', String(b.title_prefix ?? ''));
+    await settings.set('report_footer', String(b.footer ?? ''));
+    await settings.set('report_default_range_days', String(Number(b.default_range_days) || 30));
+    await settings.set('report_include_logo', b.include_logo ? '1' : '0');
+    await settings.set('report_paper', String(b.paper || 'A4'));
+    await audit.from(req, { action: 'report_config.updated', description: `${req.session.user.name} updated report configuration` });
+    res.json({ data: await reportConfig() });
+  });
+
+  // ---- Unified API (tokens) ---------------------------------------------
+  const crypto = require('crypto');
+  const API_SCOPES = ['vehicles.read', 'trips.read', 'requests.read', 'analytics.read'];
+  async function apiTokens() { return (await settings.get('api_tokens', [])) || []; }
+  router.get('/admin/api-tokens', requireAuth, requireSuper, async (req, res) => {
+    res.json({ data: { scopes: API_SCOPES, base_url: `${req.protocol}://${req.get('host')}/api/v1`, tokens: (await apiTokens()).map((t) => ({ id: t.id, label: t.label, prefix: t.prefix, scopes: t.scopes, created_at: t.created_at, last_used_at: t.last_used_at || null })) } });
+  });
+  router.post('/admin/api-tokens', requireAuth, requireSuper, async (req, res) => {
+    const data = validate(req.body, { label: { required: true, type: 'string', maxLength: 80 } });
+    const scopes = Array.isArray(req.body.scopes) ? req.body.scopes.filter((s) => API_SCOPES.includes(s)) : API_SCOPES.slice();
+    const secret = 'vmtl_' + crypto.randomBytes(24).toString('hex');
+    const token = { id: crypto.randomUUID(), label: data.label, prefix: secret.slice(0, 11), hash: crypto.createHash('sha256').update(secret).digest('hex'), scopes, created_at: new Date().toISOString(), last_used_at: null };
+    const tokens = await apiTokens(); tokens.push(token); await settingSetJson('api_tokens', tokens);
+    await audit.from(req, { action: 'api_token.created', description: `${req.session.user.name} created API token ${data.label}` });
+    res.status(201).json({ data: { id: token.id, label: token.label, token: secret, scopes } });
+  });
+  router.delete('/admin/api-tokens/:id', requireAuth, requireSuper, async (req, res) => {
+    const tokens = await apiTokens(); const next = tokens.filter((t) => t.id !== req.params.id);
+    if (next.length === tokens.length) throw notFound('Token not found.');
+    await settingSetJson('api_tokens', next);
+    await audit.from(req, { action: 'api_token.revoked', description: `${req.session.user.name} revoked an API token` });
+    res.json({ ok: true });
   });
 
   // Helpers that force the 'directory'/'messaging' group on write.

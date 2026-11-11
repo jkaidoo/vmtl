@@ -1,15 +1,17 @@
 'use strict';
 // Documentation viewer (minimal Markdown rendering).
 window.VMTL_PAGE = async function () {
-  const view = VMTL.view;
-  view.innerHTML = VMTL.pageHead('Documentation', 'Project and system reference.') + '<div class="grid cols-2" style="grid-template-columns:260px 1fr"><div class="card" id="docList"><div class="loading"><span class="spinner"></span></div></div><div class="card pad" id="docView"><div class="dim">Select a document.</div></div></div>';
-  let docs; try { docs = (await VMTL.api('/admin/documentation')).data; } catch (e) { view.querySelector('#docList').innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; return; }
-  view.querySelector('#docList').innerHTML = docs.map((d) => `<a class="nav-link" data-slug="${d.slug}" style="border-radius:0"><span><div style="font-weight:600">${VMTL.esc(d.title)}</div><div class="dim" style="font-size:12px">${VMTL.esc(d.summary)}</div></span></a>`).join('');
+  const view = VMTL.view; const esc = VMTL.esc;
+  view.innerHTML = VMTL.pageHead('Documentation', 'Project and system reference.') + '<div class="doc-layout"><div class="card" id="docList"><div class="loading"><span class="spinner"></span></div></div><div class="card" id="docCard"><div class="card-body"><div class="dim">Select a document.</div></div></div></div>';
+  let docs; try { docs = (await VMTL.api('/admin/documentation')).data; } catch (e) { view.querySelector('#docList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  view.querySelector('#docList').innerHTML = `<div class="doc-nav">${docs.map((d) => `<button class="doc-nav-item" data-slug="${d.slug}" type="button"><span class="t">${esc(d.title)}</span><span class="s">${esc(d.summary)}</span></button>`).join('')}</div>`;
+  const items = view.querySelectorAll('[data-slug]');
   const open = async (slug) => {
-    const panel = view.querySelector('#docView'); panel.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
-    try { const d = (await VMTL.api(`/admin/documentation/${slug}`)).data; panel.innerHTML = md(d.content); } catch (e) { panel.innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; }
+    items.forEach((b) => b.classList.toggle('active', b.dataset.slug === slug));
+    const panel = view.querySelector('#docCard'); panel.innerHTML = '<div class="card-body"><div class="loading"><span class="spinner"></span></div></div>';
+    try { const d = (await VMTL.api(`/admin/documentation/${slug}`)).data; panel.innerHTML = `<div class="card-body doc-content">${md(d.content)}</div>`; } catch (e) { panel.innerHTML = `<div class="card-body"><div class="empty">${esc(e.message)}</div></div>`; }
   };
-  view.querySelectorAll('[data-slug]').forEach((a) => a.onclick = () => open(a.dataset.slug));
+  items.forEach((a) => a.onclick = () => open(a.dataset.slug));
   if (docs.length) open(docs[0].slug);
 };
 // Tiny Markdown: headings, bold, lists, paragraphs (content is trusted, server-authored).

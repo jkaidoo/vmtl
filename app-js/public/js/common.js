@@ -10,7 +10,9 @@
   // ---- helpers ----------------------------------------------------------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
-  VMTL.esc = esc; VMTL.el = el;
+  VMTL.esc = esc; VMTL.el = el; VMTL.VERSION = 'v1.0';
+  // Capture the PWA install prompt so the account menu can offer "Install app".
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__vmtlInstallPrompt = e; const b = document.getElementById('installBtn'); if (b) b.classList.remove('hidden'); });
 
   // ---- formatting (ports lib/format.ts) --------------------------------
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -96,23 +98,41 @@
 
   // ---- icons (minimal inline set) --------------------------------------
   const I = {
-    dashboard: 'M3 13h8V3H3zM13 21h8V11h-8zM13 3v6h8V3zM3 21h8v-6H3z',
-    requests: 'M8 2h8l4 4v16H4V2zM14 2v6h6', approvals: 'M9 11l3 3 8-8M4 4h10v6M4 20h16', trips: 'M3 7h11l3 4h4v6h-3M3 7v10h3M7 17h7',
-    vehicles: 'M5 11l1-4h12l1 4M3 11h18v6H3zM7 17a2 2 0 100 4 2 2 0 000-4zM17 17a2 2 0 100 4 2 2 0 000-4z',
-    drivers: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87',
-    wrench: 'M14 7a4 4 0 01-5 5L4 17l3 3 5-5a4 4 0 005-5z', fuel: 'M3 22h11V3H3zM14 8h3l3 3v8a2 2 0 01-4 0v-6h-2M7 8h4',
-    analytics: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7', reports: 'M8 2h8l4 4v16H4V2zM9 13h6M9 17h6M9 9h2',
-    users: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87',
-    org: 'M12 3v6M5 21v-4a2 2 0 012-2h10a2 2 0 012 2v4M9 3h6v6H9zM3 15h6v6H3zM15 15h6v6h-6z',
-    settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12a7 7 0 00-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 00-1.7-1L14.5 2h-5l-.3 2.5a7 7 0 00-1.7 1l-2.4-1-2 3.4L3.1 11a7 7 0 000 2l-2 1.6 2 3.4 2.4-1a7 7 0 001.7 1L9.5 22h5l.3-2.5a7 7 0 001.7-1l2.4 1 2-3.4-2-1.6a7 7 0 00.1-1z',
-    audit: 'M8 2h8l4 4v16H4V2zM9 8h6M9 12h6M9 16h4', gift: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7a3 3 0 10-3-3M12 7a3 3 0 013-3',
-    plane: 'M22 2L11 13M22 2l-7 20-4-9-9-4z', health: 'M22 12h-4l-3 9L9 3l-3 9H2', shield: 'M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z',
-    sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', key: 'M14 7a4 4 0 11-5 5l-5 5v3h3l1-1h2v-2h2l2-2a4 4 0 015-5z',
-    message: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z', database: 'M12 3c5 0 8 1.3 8 3s-3 3-8 3-8-1.3-8-3 3-3 8-3zM4 6v12c0 1.7 3 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3 3 8 3s8-1.3 8-3',
-    book: 'M4 19V5a2 2 0 012-2h12v18H6a2 2 0 01-2-2zM4 19a2 2 0 012-2h12', help: 'M12 18h.01M9.1 9a3 3 0 115.8 1c0 2-3 2-3 4M12 2a10 10 0 100 20 10 10 0 000-20z',
-    bell: 'M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0', logout: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
-    menu: 'M3 12h18M3 6h18M3 18h18', sun: 'M12 17a5 5 0 100-10 5 5 0 000 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
-    moon: 'M21 12.8A8.5 8.5 0 1111.2 3a6.6 6.6 0 009.8 9.8z', monitor: 'M3 4h18v12H3zM8 20h8M12 16v4', plus: 'M12 5v14M5 12h14',
+    dashboard: 'M3 3h7v9H3z M14 3h7v5h-7z M14 12h7v9h-7z M3 16h7v5H3z',
+    requests: 'M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1z M8 5H6a1 1 0 00-1 1v15a1 1 0 001 1h12a1 1 0 001-1V6a1 1 0 00-1-1h-2 M9 11h6 M9 15h4',
+    approvals: 'M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1z M8 5H6a1 1 0 00-1 1v15a1 1 0 001 1h12a1 1 0 001-1V6a1 1 0 00-1-1h-2 M9 14l2 2 4-4',
+    trips: 'M6.5 20a2.5 2.5 0 100-5 2.5 2.5 0 000 5z M17.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5z M9 17.5h6.5a2.5 2.5 0 002.5-2.5V9',
+    vehicles: 'M4 13l1.8-5.4A2 2 0 017.7 6h8.6a2 2 0 011.9 1.6L20 13v4H4z M4 13h16 M8 17a1.6 1.6 0 100 3.2 1.6 1.6 0 000-3.2z M16 17a1.6 1.6 0 100 3.2 1.6 1.6 0 000-3.2z',
+    drivers: 'M12 2a10 10 0 100 20 10 10 0 000-20z M12 8a4 4 0 100 8 4 4 0 000-8z M12 2v6 M3.5 15.5l5-2 M20.5 15.5l-5-2',
+    wrench: 'M14.7 6.3a4 4 0 00-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 005.4-5.4l-2.6 2.6-2.4-2.4z',
+    fuel: 'M4 21V5a2 2 0 012-2h5a2 2 0 012 2v16 M3 21h11 M4 11h9 M13 7h2l2 2v8a2 2 0 004 0V8l-2.5-2.5',
+    analytics: 'M3 3v18h18 M7 16v-5 M12 16V8 M17 16v-9',
+    reports: 'M7 2h8l4 4v15a1 1 0 01-1 1H7a1 1 0 01-1-1V3a1 1 0 011-1z M15 2v4h4 M9 12h7 M9 16h5 M9 8h3',
+    users: 'M16 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2 M9.5 11a4 4 0 100-8 4 4 0 000 8z M22 21v-2a4 4 0 00-3-3.9 M17 3.1a4 4 0 010 7.8',
+    org: 'M9 3h6v4H9z M4 17h5v4H4z M15 17h5v4h-5z M12 7v4 M6.5 17v-2h11v2',
+    settings: 'M12 15a3 3 0 100-6 3 3 0 000 6z M19 12a7 7 0 00-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 00-1.7-1L14.5 2h-5l-.3 2.5a7 7 0 00-1.7 1l-2.4-1-2 3.4L3.1 11a7 7 0 000 2l-2 1.6 2 3.4 2.4-1a7 7 0 001.7 1L9.5 22h5l.3-2.5a7 7 0 001.7-1l2.4 1 2-3.4-2-1.6a7 7 0 00.1-1z',
+    audit: 'M7 2h8l4 4v15a1 1 0 01-1 1H7a1 1 0 01-1-1V3a1 1 0 011-1z M15 2v4h4 M8.5 12l1.4 1.4L13 10.5 M8.5 17l1.4 1.4L13 15.5',
+    gift: 'M20 12v9a1 1 0 01-1 1H5a1 1 0 01-1-1v-9 M3 8h18v4H3z M12 22V8 M12 8H8a2 2 0 110-4c3 0 4 4 4 4z M12 8h4a2 2 0 100-4c-3 0-4 4-4 4z',
+    plane: 'M22 2L11 13 M22 2l-7 20-4-9-9-4z',
+    health: 'M3 12h4l3 8 4-16 3 8h4',
+    shield: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z M9 12l2 2 4-4',
+    sliders: 'M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6',
+    key: 'M14.5 7.5a4 4 0 11-5.2 5.2L4 18v2h2l1-1h2v-2h2l2.3-2.3a4 4 0 014.2-4.9z M16.5 7.5h.01',
+    message: 'M4 4h16a1 1 0 011 1v10a1 1 0 01-1 1H9l-5 4V5a1 1 0 011-1z',
+    database: 'M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
+    book: 'M12 6a4 3 0 00-4-3H3v14h5a4 3 0 014 3 4 3 0 014-3h5V3h-5a4 3 0 00-4 3z M12 6v15',
+    help: 'M12 2a10 10 0 100 20 10 10 0 000-20z M9.2 9a3 3 0 015.6 1c0 2-3 2.3-3 4 M12 17h.01',
+    bell: 'M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9 M13.7 21a2 2 0 01-3.4 0',
+    logout: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4 M16 17l5-5-5-5 M21 12H9',
+    menu: 'M3 12h18 M3 6h18 M3 18h18',
+    sun: 'M12 17a5 5 0 100-10 5 5 0 000 10z M12 1v2 M12 21v2 M4.2 4.2l1.4 1.4 M18.4 18.4l1.4 1.4 M1 12h2 M21 12h2 M4.2 19.8l1.4-1.4 M18.4 5.6l1.4-1.4',
+    moon: 'M21 12.8A8.5 8.5 0 1111.2 3a6.6 6.6 0 009.8 9.8z',
+    monitor: 'M3 4h18v12H3z M8 20h8 M12 16v4', plus: 'M12 5v14 M5 12h14',
+    mail: 'M4 5h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z M3 7l9 6 9-6',
+    megaphone: 'M3 11l15-5v12L3 13z M3 11v2a1 1 0 001 1h1v-4H4a1 1 0 00-1 1z M7 14v3a1 1 0 001 1h1a1 1 0 001-1v-2.5',
+    code: 'M16 18l6-6-6-6 M8 6l-6 6 6 6',
+    terminal: 'M4 17l6-6-6-6 M12 19h8',
+    layout: 'M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z M3 9h18 M9 20V9',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(I[name] || 'M12 12h.01').split('M').filter(Boolean).map((p) => `<path d="M${p}"/>`).join('')}</svg>`;
   VMTL.icon = icon;
@@ -149,15 +169,25 @@
       { key: 'rbac', to: '/rbac.html', label: 'RBAC', icon: 'shield', superOnly: true },
       { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', superOnly: true },
       { key: 'directory-auth', to: '/directory-auth.html', label: 'Directory authentication', icon: 'key', superOnly: true },
-      { key: 'messaging', to: '/messaging.html', label: 'Messaging', icon: 'message', superOnly: true },
+      { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', superOnly: true },
+      { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', superOnly: true },
+      { key: 'broadcasts', to: '/broadcasts.html', label: 'Broadcasts', icon: 'megaphone', superOnly: true },
       { key: 'database', to: '/database-connections.html', label: 'Database connections', icon: 'database', superOnly: true },
+      { key: 'unified-api', to: '/unified-api.html', label: 'Unified API', icon: 'code', superOnly: true },
+      { key: 'report-config', to: '/report-configuration.html', label: 'Report configuration', icon: 'reports', superOnly: true },
+      { key: 'navigation', to: '/navigation-settings.html', label: 'Navigation menu', icon: 'layout', superOnly: true },
       { key: 'documentation', to: '/documentation.html', label: 'Documentation', icon: 'book', superOnly: true },
+      { key: 'codebase-guide', to: '/codebase-guide.html', label: 'Codebase guide', icon: 'terminal', superOnly: true },
     ] },
-    { label: 'Help', items: [{ key: 'faqs', to: '/faqs.html', label: 'FAQs', icon: 'help' }] },
+    { label: 'Help', items: [
+      { key: 'how-it-works', to: '/how-it-works.html', label: 'How it works', icon: 'book' },
+      { key: 'faqs', to: '/faqs.html', label: 'FAQs', icon: 'help' },
+    ] },
   ];
 
   function visible(item) {
-    if (VMTL.requesterOnly()) return item.key === 'requests' || item.key === 'faqs';
+    if (VMTL.requesterOnly()) return item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';
+    if (((VMTL.meta && VMTL.meta.nav_hidden) || []).includes(item.key) && item.key !== 'navigation') return false;
     if (item.superOnly) return VMTL.isSuper();
     if (item.cap) return VMTL.can(item.cap);
     if (item.roles) return VMTL.roleSlug() && item.roles.includes(VMTL.roleSlug());
@@ -199,8 +229,14 @@
                 <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <div class="menu hidden" id="userMenu" role="menu">
-                <div class="menu-head"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : '')}${u.email ? ' · ' + esc(u.email) : ''}</span></div>
+                <div class="menu-head"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : (u.is_super_admin ? 'System Administrator' : ''))}</span></div>
+                <a class="menu-item" href="/how-it-works.html" role="menuitem">${icon('book')}<span>How it works</span></a>
+                <a class="menu-item" href="/faqs.html" role="menuitem">${icon('help')}<span>Help &amp; FAQs</span></a>
+                <button class="menu-item" id="testNotifBtn" role="menuitem" type="button">${icon('bell')}<span>Send test notification</span></button>
+                <button class="menu-item hidden" id="installBtn" role="menuitem" type="button">${icon('plus')}<span>Install app</span></button>
+                <div class="menu-sep"></div>
                 <button class="menu-item danger" id="logoutBtn" role="menuitem" type="button">${icon('logout')}<span>Sign out</span></button>
+                <div class="menu-foot" id="menuFoot"></div>
               </div>
             </div>
           </div>
@@ -226,6 +262,18 @@
     userBtn.onclick = (e) => { e.stopPropagation(); const open = userMenu.classList.toggle('hidden'); userBtn.setAttribute('aria-expanded', String(!open)); };
     document.addEventListener('click', (e) => { if (!userMenu.contains(e.target) && !userBtn.contains(e.target)) closeUserMenu(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUserMenu(); });
+    // Any menu item closes the dropdown after acting.
+    userMenu.querySelectorAll('.menu-item').forEach((it) => it.addEventListener('click', () => setTimeout(closeUserMenu, 0)));
+    // Send a test notification to myself.
+    app.querySelector('#testNotifBtn').onclick = async () => { try { await api('/notifications/test', { method: 'POST' }); toast('Test notification sent.', 'success'); refreshBell(); } catch (e) { toast((e && e.message) || 'Could not send.', 'err'); } };
+    // Install app (PWA) — shown only when the browser offers it.
+    const installBtn = app.querySelector('#installBtn');
+    if (window.__vmtlInstallPrompt) installBtn.classList.remove('hidden');
+    installBtn.onclick = async () => { const p = window.__vmtlInstallPrompt; if (!p) return; p.prompt(); try { await p.userChoice; } catch (_) { /* ignore */ } window.__vmtlInstallPrompt = null; installBtn.classList.add('hidden'); };
+    // Footer: version + device line (walkin-style).
+    const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    const foot = app.querySelector('#menuFoot');
+    if (foot) foot.textContent = `Version ${VMTL.VERSION || 'v1.0'} · ${standalone ? 'App' : 'Web'} · ${screen.width}×${screen.height}`;
     app.querySelector('#logoutBtn').onclick = async () => { try { await api('/logout', { method: 'POST' }); } catch (_) {} location.href = '/login.html'; };
     app.querySelector('#bellBtn').onclick = showNotifications;
     refreshBell();

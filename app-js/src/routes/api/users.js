@@ -8,6 +8,7 @@ const { has } = require('../../services/authz');
 const orgScope = require('../../services/orgScope');
 const present = require('../../services/present');
 const audit = require('../../services/audit');
+const directoryAuth = require('../../services/directoryAuth');
 const { hashPassword } = require('../../util/password');
 const { requireAuth } = require('../../middleware/auth');
 const { validate } = require('../../util/validate');
@@ -69,6 +70,33 @@ module.exports = function register(router) {
     const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, phone, active, is_super_admin, avatar, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ${db.now()}, ${db.now()})`,
       [data.name, email, hashPassword(data.password), data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null, data.active ? 1 : 0, data.avatar || null]);
     await audit.from(req, { action: 'user.created', description: `User ${data.name} (${email}) was created`, entityType: 'user', entityId: r.lastInsertRowid });
+    res.status(201).json({ data: await userDto(r.lastInsertRowid) });
+  });
+
+  // Search the directory (LDAP/AD) for people to add as staff.
+  router.get('/users/directory/search', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    res.json(await directoryAuth.searchDirectory(req.query.q || '', 25));
+  });
+
+  // Create a local staff account from a directory entry (no password; they sign
+  // in through the directory). Role + org unit are chosen by the administrator.
+  router.post('/users/directory/import', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    if (!(await directoryAuth.isEnabled())) throw badRequest('Directory sign-in is not enabled.');
+    const data = validate(req.body, {
+      username: { type: 'string', maxLength: 255 }, name: { required: true, type: 'string', maxLength: 255 },
+      email: { type: 'string', maxLength: 255 }, role_id: { required: true, type: 'integer' },
+      department_id: { type: 'integer' }, org_unit_id: { type: 'integer' },
+    });
+    const provider = await directoryAuth.activeProvider();
+    const base = (data.email && data.email.trim()) ? data.email.trim() : `${String(data.username || data.name).replace(/\s+/g, '.').toLowerCase()}@directory.local`;
+    const email = base.toLowerCase();
+    if (await db.get('SELECT id FROM users WHERE lower(email) = ?', [email])) throw badRequest('The given data was invalid.', { email: ['A user with that email already exists.'] });
+    await guardAssignment(req, data);
+    const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, active, is_super_admin, directory_provider, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, 1, 0, ?, ${db.now()}, ${db.now()})`,
+      [data.name, email, data.role_id, data.department_id || null, data.org_unit_id || null, provider]);
+    await audit.from(req, { action: 'user.imported', description: `${data.name} (${email}) was added from the ${provider.toUpperCase()} directory`, entityType: 'user', entityId: r.lastInsertRowid });
     res.status(201).json({ data: await userDto(r.lastInsertRowid) });
   });
 
