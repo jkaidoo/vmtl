@@ -16,6 +16,7 @@ require('./api/trips')(router);
 require('./api/vehicles')(router);
 require('./api/drivers')(router);
 require('./api/fuel')(router);
+require('./api/tracking')(router);
 require('./api/maintenance')(router);
 require('./api/org-units')(router);
 require('./api/users')(router);

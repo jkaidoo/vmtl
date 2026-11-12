@@ -28,7 +28,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 // Pages a requester-only (Staff) user may open; everything else sends them home.
 const REQUESTER_ALLOWED = new Set(['/requests.html', '/request-create.html', '/request-detail.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html', '/settings.html']);
 // Deep admin tier — the break-glass System Administrator only.
-const SUPER_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/messaging.html', '/sms.html', '/email.html', '/broadcasts.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
+const SUPER_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/broadcasts.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
 const PUBLIC_PAGES = new Set(['/login.html', '/404.html', '/500.html', '/offline.html']);
 
@@ -85,15 +85,19 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
   if (isProd) app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(requestId);
+  // Google Maps JavaScript API endpoints (Live Map). The Maps JS key is a
+  // referrer-restricted client key, so the script, its tiles/markers and its
+  // XHRs must be allow-listed here while the rest of the CSP stays locked down.
+  const GMAPS = ['https://maps.googleapis.com', 'https://maps.gstatic.com'];
   app.use(helmet({
     contentSecurityPolicy: { useDefaults: false, directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", ...inlineScriptHashes()],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:'],
-      fontSrc: ["'self'"],
-      connectSrc: ["'self'"],
-      workerSrc: ["'self'"],
+      scriptSrc: ["'self'", ...inlineScriptHashes(), 'https://maps.googleapis.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', ...GMAPS, 'https://*.googleapis.com', 'https://*.ggpht.com', 'https://*.google.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      connectSrc: ["'self'", ...GMAPS, 'https://*.googleapis.com'],
+      workerSrc: ["'self'", 'blob:'],
       manifestSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -133,6 +137,7 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
   app.use('/api', rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_IP_BACKSTOP_PER_MIN || 12000), key: rateLimit.ip, message: 'Too many requests from this network. Please try again shortly.' }));
   app.use('/api', rateLimit({ windowMs: 60_000, max: (req) => (req.session && req.session.user ? perUser : perIp), key: rateLimit.userOrIp }));
 
+  app.use('/api', require('./middleware/idempotency'));
   app.use('/api', apiRouter);
 
   // ---- Page guards --------------------------------------------------------

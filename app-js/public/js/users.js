@@ -27,7 +27,9 @@ window.VMTL_PAGE = async function () {
     { key: 'last', label: 'Last sign-in', get: (u) => u.last_login_at || '' },
   ];
   const addBtn = `<button class="btn btn-primary" id="add">${VMTL.icon('plus')} New staff account</button>`;
-  const dirBtnHtml = VMTL.meta.directory_enabled ? `<button class="btn" id="dir">${VMTL.icon('key')} Add from directory</button>` : '';
+  // Both ways to add a staff account are always offered: import from the
+  // directory (LDAP/AD) or create a local account.
+  const dirBtnHtml = `<button class="btn" id="dir">${VMTL.icon('key')} Add from directory</button>`;
 
   view.innerHTML = VMTL.pageHead('Users', 'Staff accounts within your organisation scope.') +
     `<div class="card">

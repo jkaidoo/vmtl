@@ -130,6 +130,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .menu-item.danger { color: var(--danger); }
 .menu-sep { height: 1px; background: var(--border); margin: 6px 4px; }
 .menu-foot { padding: 9px 10px 4px; margin-top: 4px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-3); text-align: center; }
+.offline-banner { position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; background: var(--warning); color: #fff; text-align: center; padding: 9px 14px; font-size: 13px; font-weight: 500; }
+.offline-banner.hidden { display: none; }
 
 /* SPA content cross-fade when navigating between pages */
 @keyframes spaIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -454,3 +456,41 @@ table.data tbody tr.click:hover { background: var(--surface-2); }
 .hiw-body p { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.5; }
 .hiw-you-note { margin-top: 7px !important; color: var(--primary-600); font-weight: 600; font-size: 13px !important; }
 @media (prefers-reduced-motion: reduce) { .faq, .hiw-intro, .hiw-step, .hiw-flow::after { animation: none; opacity: 1; transform: none; } }
+
+/* ---- Live map (tracking) ------------------------------------------------- */
+.track-wrap { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: stretch; }
+.track-map-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.track-map { position: relative; height: calc(100vh - 210px); min-height: 420px; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); box-shadow: var(--shadow-sm); }
+.track-map-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 24px; color: var(--text-2); }
+.track-map-empty p { margin: 0; max-width: 360px; }
+.track-note { padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); font-size: 13.5px; }
+.track-note.warn { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); background: var(--warning-tint); }
+.track-side { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; max-height: calc(100vh - 150px); }
+.track-side-head { padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.track-live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--primary-600); text-transform: uppercase; letter-spacing: .05em; }
+.track-live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent); animation: trackPulse 1.8s infinite; }
+.track-live.off { color: var(--text-3); } .track-live.off .dot { background: var(--text-3); animation: none; }
+@keyframes trackPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.track-list { overflow-y: auto; flex: 1; }
+.track-row { display: flex; gap: 10px; width: 100%; text-align: left; padding: 11px 14px; background: none; border: none; border-bottom: 1px solid var(--border); cursor: pointer; color: var(--text); transition: background .12s; }
+.track-row:hover { background: var(--surface-2); }
+.track-row.sel { background: var(--primary-tint); }
+.track-row-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent); }
+.track-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.track-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.track-row-top strong { font-size: 14.5px; }
+.track-dist { font-size: 12.5px; font-weight: 600; color: var(--primary-600); white-space: nowrap; }
+.track-row-sub { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-row-meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; flex-wrap: wrap; }
+.track-chip { padding: 1px 8px; border-radius: var(--radius-pill); font-weight: 700; font-size: 11px; }
+.track-chip.live { background: var(--primary-tint); color: var(--primary-600); }
+.track-chip.idle { background: var(--info-tint); color: var(--info); }
+.track-chip.stale { background: var(--surface-3); color: var(--text-2); }
+.track-info { font-size: 13px; line-height: 1.6; min-width: 170px; }
+.track-info strong { font-size: 14px; } .track-info-sub { color: #666; margin-bottom: 4px; }
+.track-info .dim { display: inline-block; min-width: 72px; color: #888; }
+.gm-style .track-mk-label { text-shadow: 0 1px 2px rgba(255,255,255,.8); }
+@media (max-width: 900px) { .track-wrap { grid-template-columns: 1fr; } .track-map { height: 52vh; min-height: 320px; } .track-side { max-height: none; } .track-list { max-height: 46vh; } }
+.mc-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; color: var(--text-2); line-height: 1.55; }
+.mc-steps li { padding-left: 4px; } .mc-steps strong { color: var(--text); }
+.mc-steps code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; font-size: 12.5px; color: var(--text); }

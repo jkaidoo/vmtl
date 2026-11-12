@@ -28,20 +28,142 @@
   VMTL.fmtDuration = (minutes) => { if (minutes == null) return '—'; let ms = Math.round(minutes * 60000); const h = Math.floor(ms / 3600000); ms -= h * 3600000; const m = Math.floor(ms / 60000); ms -= m * 60000; const s = Math.floor(ms / 1000); ms -= s * 1000; return `${pad(h)}:${pad(m)}:${pad(s)}:${pad(ms, 3)}`; };
   VMTL.badge = (label, color) => `<span class="badge ${color || 'grey'}">${esc(label)}</span>`;
 
-  // ---- API client -------------------------------------------------------
+  // ---- Offline-first data layer (IndexedDB read-cache + write outbox) ----
+  // Mirrors walkin's principles: GET responses are cached and served when the
+  // network is gone; a whitelist of field operations (trip operation, request
+  // creation, fuel log) is queued in a durable outbox and replayed — once each,
+  // via X-Op-Id idempotency — when the connection returns.
+  const OFFLINE = (() => {
+    let dbp;
+    const openDB = () => dbp || (dbp = new Promise((res, rej) => {
+      let r; try { r = indexedDB.open('vmtl-offline', 1); } catch (e) { return rej(e); }
+      r.onupgradeneeded = () => { const d = r.result; ['cache', 'outbox'].forEach((s) => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'key' }); }); };
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+    const reqP = (q) => new Promise((res, rej) => { q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+    async function idbGet(store, key) { const d = await openDB(); const row = await reqP(d.transaction(store).objectStore(store).get(key)); return row ? row.value : undefined; }
+    async function idbAll(store) { const d = await openDB(); const rows = await reqP(d.transaction(store).objectStore(store).getAll()); return rows.map((x) => x.value); }
+    async function idbPut(store, key, value) { const d = await openDB(); return new Promise((res, rej) => { const t = d.transaction(store, 'readwrite'); t.objectStore(store).put({ key, value }); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+    async function idbDel(store, key) { const d = await openDB(); return new Promise((res, rej) => { const t = d.transaction(store, 'readwrite'); t.objectStore(store).delete(key); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+
+    const SAFE = [/^\/trips\/\d+\/.+$/, /^\/vehicle-requests(\/goodwill|\/external)?$/, /^\/fuel-logs$/];
+    const isSafeWrite = (path, method) => method === 'POST' && SAFE.some((re) => re.test(path));
+    const uuid = () => { try { return crypto.randomUUID(); } catch (_) { return 'op-' + Date.now() + '-' + Math.random().toString(16).slice(2); } };
+    let subs = [];
+    const onChange = (f) => { subs.push(f); return () => { subs = subs.filter((x) => x !== f); }; };
+    const notify = () => subs.forEach((f) => { try { f(); } catch (_) { /* ignore */ } });
+
+    const cacheGet = (p) => idbGet('cache', p).catch(() => undefined);
+    const cachePut = (p, data) => idbPut('cache', p, data).catch(() => {});
+    const enqueue = (op) => idbPut('outbox', op.op_id, op).then(notify).catch(() => {});
+    const queued = () => idbAll('outbox').then((l) => l.sort((a, b) => a.at - b.at)).catch(() => []);
+    const pendingCount = () => queued().then((l) => l.length);
+
+    let syncing = false;
+    async function sync() {
+      if (syncing || navigator.onLine === false) return { synced: 0, failed: 0 };
+      syncing = true; let synced = 0; let failed = 0;
+      try {
+        for (const op of await queued()) {
+          try {
+            const r = await fetch(`/api${op.path}`, { method: op.method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Op-Id': op.op_id }, credentials: 'include', body: op.body !== undefined ? JSON.stringify(op.body) : undefined });
+            if (r.ok) { await idbDel('outbox', op.op_id); synced++; }
+            else if (r.status >= 400 && r.status < 500) { await idbDel('outbox', op.op_id); failed++; } // permanent (e.g. validation) → drop
+            else { failed++; } // 5xx → keep for next sync
+          } catch (_) { break; } // connection dropped again → stop; keep the rest
+        }
+      } finally { syncing = false; notify(); }
+      return { synced, failed };
+    }
+    return { isSafeWrite, uuid, cacheGet, cachePut, enqueue, queued, pendingCount, sync, onChange };
+  })();
+  VMTL.offline = OFFLINE;
+
+  // ---- API client (offline-aware) ---------------------------------------
   async function api(path, opts = {}) {
-    const init = { method: opts.method || 'GET', headers: { Accept: 'application/json' }, credentials: 'include' };
+    const method = opts.method || 'GET';
+    const init = { method, headers: { Accept: 'application/json' }, credentials: 'include' };
+    const opId = OFFLINE.uuid();
     if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
-    const res = await fetch(`/api${path}`, init);
+    if (method !== 'GET') init.headers['X-Op-Id'] = opId; // idempotent retry
+    const queueIt = async () => { await OFFLINE.enqueue({ op_id: opId, path, method, body: opts.body, at: Date.now() }); return { data: { _queued: true, op_id: opId }, queued: true }; };
+    if (OFFLINE.isSafeWrite(path, method) && navigator.onLine === false) return queueIt();
+    let res;
+    try { res = await fetch(`/api${path}`, init); }
+    catch (netErr) {
+      if (OFFLINE.isSafeWrite(path, method)) return queueIt();
+      if (method === 'GET') { const cached = await OFFLINE.cacheGet(path); if (cached !== undefined) return Object.assign({}, cached, { _stale: true }); }
+      const e = new Error('You are offline — this isn’t available yet.'); e.offline = true; throw e;
+    }
     if (res.status === 204) return null;
     let data = null; try { data = await res.json(); } catch (_) { /* non-json */ }
     if (!res.ok) {
       if (res.status === 401 && !path.startsWith('/login') && location.pathname !== '/login.html') { location.href = '/login.html'; }
       const err = new Error((data && data.error) || `Request failed (${res.status})`); err.status = res.status; err.errors = data && data.errors; throw err;
     }
+    if (method === 'GET' && data !== null) OFFLINE.cachePut(path, data); // last-known-good read
     return data;
   }
   VMTL.api = api;
+
+  // ---- On-device push notifications (Web Push / VAPID) ------------------
+  function urlB64ToUint8(base64) {
+    const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+    const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+  async function pushSubscription() { if (!pushSupported()) return null; try { const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); } catch (_) { return null; } }
+  async function enablePush() {
+    if (!pushSupported()) throw new Error('This device/browser does not support push notifications.');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Notifications permission was not granted.');
+    const info = await api('/push/vapid-public-key');
+    if (!info.configured || !info.public_key) throw new Error('Push is not configured on the server.');
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(info.public_key) });
+    const json = sub.toJSON();
+    await api('/push/subscribe', { method: 'POST', body: { endpoint: sub.endpoint, keys: json.keys, contentEncoding: 'aes128gcm' } });
+    return true;
+  }
+  async function disablePush() {
+    const sub = await pushSubscription();
+    if (sub) { try { await api('/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }); } catch (_) { /* ignore */ } try { await sub.unsubscribe(); } catch (_) { /* ignore */ } }
+    return true;
+  }
+  VMTL.pushSupported = pushSupported; VMTL.pushSubscription = pushSubscription; VMTL.enablePush = enablePush; VMTL.disablePush = disablePush;
+
+  // ---- driver location beacon ------------------------------------------
+  // A driver's device shares its GPS fix while they operate a trip, so the Live
+  // Map can show where each vehicle is. The server only keeps the fix when the
+  // driver has an in-progress trip ({tracked:true}); otherwise the beacon backs
+  // off. One permission prompt, then quiet background reporting. Nothing is
+  // shared for other roles, and nothing is stored when no trip is active.
+  let beaconStarted = false;
+  function startDriverBeacon() {
+    if (beaconStarted || VMTL.roleSlug() !== 'driver' || !('geolocation' in navigator) || !window.isSecureContext) return;
+    beaconStarted = true;
+    let timer = null, delay = 20000, stopped = false;
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(beat, delay); };
+    function beat() {
+      if (stopped) return;
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const c = pos.coords || {};
+        try {
+          const r = await api('/tracking/location', { method: 'POST', body: { lat: c.latitude, lng: c.longitude, heading: c.heading, speed: c.speed, accuracy: c.accuracy } });
+          delay = r && r.tracked ? 15000 : 45000; // tight while on a trip, relaxed otherwise
+        } catch (_) { delay = 60000; }
+        schedule();
+      }, (err) => { if (err && err.code === 1) { stopped = true; return; } delay = 45000; schedule(); },
+        { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 });
+    }
+    timer = setTimeout(beat, 3000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !stopped && beaconStarted) schedule(); });
+  }
+  VMTL.startDriverBeacon = startDriverBeacon;
 
   // ---- theme (light / dark / system) -----------------------------------
   function themePref() { try { const t = localStorage.getItem('theme'); return t === 'light' || t === 'dark' ? t : 'system'; } catch (_) { return 'system'; } }
@@ -133,6 +255,7 @@
     code: 'M16 18l6-6-6-6 M8 6l-6 6 6 6',
     terminal: 'M4 17l6-6-6-6 M12 19h8',
     layout: 'M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z M3 9h18 M9 20V9',
+    map: 'M12 21s-7-5.5-7-11a7 7 0 1114 0c0 5.5-7 11-7 11z M12 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(I[name] || 'M12 12h.01').split('M').filter(Boolean).map((p) => `<path d="M${p}"/>`).join('')}</svg>`;
   VMTL.icon = icon;
@@ -150,6 +273,7 @@
     ] },
     { label: 'Fleet', items: [
       { key: 'vehicles', to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
+      { key: 'tracking', to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
       { key: 'drivers', to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
       { key: 'maintenance', to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
@@ -169,6 +293,7 @@
       { key: 'rbac', to: '/rbac.html', label: 'RBAC', icon: 'shield', superOnly: true },
       { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', superOnly: true },
       { key: 'directory-auth', to: '/directory-auth.html', label: 'Directory authentication', icon: 'key', superOnly: true },
+      { key: 'maps-config', to: '/maps-config.html', label: 'Maps configuration', icon: 'map', superOnly: true },
       { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', superOnly: true },
       { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', superOnly: true },
       { key: 'broadcasts', to: '/broadcasts.html', label: 'Broadcasts', icon: 'megaphone', superOnly: true },
@@ -232,6 +357,8 @@
                 <div class="menu-head"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : (u.is_super_admin ? 'System Administrator' : ''))}</span></div>
                 <a class="menu-item" href="/how-it-works.html" role="menuitem">${icon('book')}<span>How it works</span></a>
                 <a class="menu-item" href="/faqs.html" role="menuitem">${icon('help')}<span>Help &amp; FAQs</span></a>
+                <button class="menu-item" id="offlineBtn" role="menuitem" type="button">${icon('database')}<span>Offline &amp; sync</span><span class="pill hidden" id="syncCount" style="margin-left:auto;background:var(--warning-tint);color:var(--warning)"></span></button>
+                <button class="menu-item hidden" id="pushBtn" role="menuitem" type="button">${icon('bell')}<span id="pushLabel">Turn on device notifications</span></button>
                 <button class="menu-item" id="testNotifBtn" role="menuitem" type="button">${icon('bell')}<span>Send test notification</span></button>
                 <button class="menu-item hidden" id="installBtn" role="menuitem" type="button">${icon('plus')}<span>Install app</span></button>
                 <div class="menu-sep"></div>
@@ -266,6 +393,26 @@
     userMenu.querySelectorAll('.menu-item').forEach((it) => it.addEventListener('click', () => setTimeout(closeUserMenu, 0)));
     // Send a test notification to myself.
     app.querySelector('#testNotifBtn').onclick = async () => { try { await api('/notifications/test', { method: 'POST' }); toast('Test notification sent.', 'success'); refreshBell(); } catch (e) { toast((e && e.message) || 'Could not send.', 'err'); } };
+    // Device (OS) push notifications toggle.
+    const pushBtn = app.querySelector('#pushBtn');
+    const pushLabel = app.querySelector('#pushLabel');
+    const refreshPush = async () => {
+      if (!pushSupported()) return; // leave hidden
+      pushBtn.classList.remove('hidden');
+      if (Notification.permission === 'denied') { pushLabel.textContent = 'Notifications blocked in browser'; pushBtn.disabled = true; return; }
+      const sub = await pushSubscription();
+      pushBtn.dataset.on = sub ? '1' : '0';
+      pushLabel.textContent = sub ? 'Turn off device notifications' : 'Turn on device notifications';
+    };
+    pushBtn.onclick = async () => {
+      pushBtn.disabled = true;
+      try {
+        if (pushBtn.dataset.on === '1') { await disablePush(); toast('Device notifications turned off.', 'success'); }
+        else { await enablePush(); toast('Device notifications are on.', 'success'); }
+      } catch (e) { toast((e && e.message) || 'Could not change notifications.', 'err'); }
+      finally { pushBtn.disabled = false; refreshPush(); }
+    };
+    refreshPush();
     // Install app (PWA) — shown only when the browser offers it.
     const installBtn = app.querySelector('#installBtn');
     if (window.__vmtlInstallPrompt) installBtn.classList.remove('hidden');
@@ -277,6 +424,42 @@
     app.querySelector('#logoutBtn').onclick = async () => { try { await api('/logout', { method: 'POST' }); } catch (_) {} location.href = '/login.html'; };
     app.querySelector('#bellBtn').onclick = showNotifications;
     refreshBell();
+
+    // ---- Offline indicator + sync ----------------------------------------
+    const banner = el('<div class="offline-banner hidden" id="offlineBanner"></div>');
+    app.appendChild(banner);
+    const syncCountEl = app.querySelector('#syncCount');
+    const refreshSyncBadge = async () => { const n = await OFFLINE.pendingCount(); if (syncCountEl) { syncCountEl.textContent = n; syncCountEl.classList.toggle('hidden', n === 0); } };
+    const opLabel = (op) => {
+      const p = op.path;
+      if (/\/start$/.test(p)) return 'Start trip'; if (/\/complete$/.test(p)) return 'Complete trip';
+      if (/\/notify-ready$/.test(p)) return 'Signal ready'; if (/\/no-show$/.test(p)) return 'Mark no-show';
+      if (/\/correct-odometer$/.test(p)) return 'Correct odometer'; if (/\/stops/.test(p)) return 'Add trip stop';
+      if (/\/vehicle-requests/.test(p)) return 'New request'; if (/\/fuel-logs$/.test(p)) return 'Fuel log';
+      return `${op.method} ${p}`;
+    };
+    async function offlineSyncModal() {
+      const ops = await OFFLINE.queued();
+      const intro = navigator.onLine === false
+        ? '<div class="alert-accent amber mb">You are offline. Pending changes stay on this device and sync automatically when you reconnect.</div>'
+        : (ops.length ? '<div class="dim mb" style="font-size:13px">These changes were made offline and are waiting to sync.</div>' : '<div class="dim">Nothing is waiting to sync.</div>');
+      const list = ops.length ? `<div class="log-list">${ops.map((o) => `<div class="log-item"><span>${esc(opLabel(o))}</span><span class="when">${new Date(o.at).toLocaleString()}</span></div>`).join('')}</div>` : '';
+      const m = openModal(`<div class="modal-head"><h3>Offline &amp; sync</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body">${intro}${list}</div><div class="modal-foot"><button class="btn" data-close>Close</button><button class="btn btn-primary" id="syncNow" ${ops.length && navigator.onLine ? '' : 'disabled'}>Sync now</button></div>`);
+      const btn = m.el.querySelector('#syncNow');
+      if (btn) btn.onclick = async () => { btn.disabled = true; btn.textContent = 'Syncing…'; const r = await OFFLINE.sync(); m.close(); if (r.synced) toast(`${r.synced} change${r.synced === 1 ? '' : 's'} synced.`, 'success'); else if (r.failed) toast('Some changes could not sync yet.', 'err'); refreshSyncBadge(); };
+    }
+    const updateOnline = async () => {
+      const off = navigator.onLine === false;
+      banner.textContent = off ? 'You are offline — changes are saved on this device and will sync when you reconnect.' : '';
+      banner.classList.toggle('hidden', !off);
+      if (!off) { const r = await OFFLINE.sync(); if (r.synced) toast(`${r.synced} offline change${r.synced === 1 ? '' : 's'} synced.`, 'success'); }
+      refreshSyncBadge();
+    };
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+    OFFLINE.onChange(refreshSyncBadge);
+    app.querySelector('#offlineBtn').onclick = offlineSyncModal;
+    updateOnline();
   }
 
   async function refreshBell() {
@@ -381,6 +564,7 @@
     try { const meta = await api('/meta'); VMTL.meta = meta; } catch (_) { VMTL.meta = { enums: {}, org_units: [], roles: [], departments: [] }; }
     buildShell(activeKey);
     registerSW();
+    startDriverBeacon();
     return VMTL;
   };
 

@@ -348,6 +348,29 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   UNIQUE (user_id, endpoint_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+-- Idempotency ledger for offline sync ----------------------------------------
+CREATE TABLE IF NOT EXISTS sync_ops (
+  op_id      TEXT PRIMARY KEY,
+  status     INTEGER NOT NULL DEFAULT 200,
+  result     TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Live vehicle positions (latest fix per vehicle) ----------------------------
+CREATE TABLE IF NOT EXISTS vehicle_positions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_id  INTEGER NOT NULL UNIQUE REFERENCES vehicles(id) ON DELETE CASCADE,
+  lat         REAL NOT NULL,
+  lng         REAL NOT NULL,
+  heading     REAL,
+  speed       REAL,
+  accuracy    REAL,
+  trip_id     INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  recorded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_positions_recorded ON vehicle_positions(recorded_at DESC);
 `);
 
 // --- Additive migrations for pre-existing databases --------------------------
