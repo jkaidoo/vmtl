@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "KNUST UITS Vehicle Management & Trip Logging — request, approval, assignment, trips, reporting and analytics",
   "main": "server.js",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",

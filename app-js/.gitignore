@@ -1,5 +1,8 @@
 node_modules/
+# Environment files (hold secrets) — never commit. Templates (*.example) are OK.
 .env
+.env.*
+!.env.example
 # Local database data (embedded Postgres + SQLite dev files)
 data/
 *.sqlite

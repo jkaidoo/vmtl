@@ -68,7 +68,7 @@ function sessionSecret(env = process.env) {
 function createSessionStore() {
   if (runtime.sessionMode() === 'postgres') {
     const RuntimeStore = require('./middleware/sessionStore');
-    return new RuntimeStore({ ttlMs: sessionPolicy.WEB_IDLE_MAX_MS });
+    return new RuntimeStore({ ttlMs: sessionPolicy.MAX_COOKIE_MS });
   }
   const SqliteStore = require('better-sqlite3-session-store')(session);
   return new SqliteStore({ client: require('./db/sqlite'), expired: { clear: true, intervalMs: 15 * 60 * 1000 } });
@@ -127,7 +127,7 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
     store: sessionStore || createSessionStore(),
     secret,
     resave: false, rolling: false, saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: 'strict', secure: isProd, maxAge: sessionPolicy.WEB_IDLE_MAX_MS },
+    cookie: { httpOnly: true, sameSite: 'strict', secure: isProd, maxAge: sessionPolicy.MAX_COOKIE_MS },
   }));
   app.use(idle);
 

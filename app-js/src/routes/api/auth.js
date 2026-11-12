@@ -6,6 +6,7 @@ const { verifyPassword } = require('../../util/password');
 const { userForClient, sessionSnapshot } = require('../../services/serializers');
 const { requireAuth } = require('../../middleware/auth');
 const audit = require('../../services/audit');
+const sessionPolicy = require('../../config/sessionPolicy');
 const { badRequest } = require('../../middleware/errorHandler');
 
 // Map the client-declared device to a session mode (drives the idle policy).
@@ -49,6 +50,7 @@ module.exports = function register(router) {
     req.session.mode = mode;
     req.session.createdAt = Date.now();
     req.session.lastSeenAt = Date.now();
+    req.session.cookie.maxAge = sessionPolicy.idleMaxMs(mode); // 30 min web, 30 days installed PWA
     await db.run(`UPDATE users SET last_login_at = ${db.now()} WHERE id = ?`, [user.id]);
     await audit.record({ userId: user.id, actorName: user.name, action: 'auth.login', description: `${user.name} signed in (${mode})`, ip: req.ip, userAgent: req.headers['user-agent'] });
 
