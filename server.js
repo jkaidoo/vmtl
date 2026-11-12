@@ -11,7 +11,9 @@ const runtime = require('./src/db/runtime');
 const { createApp, checkDatabase } = require('./src/app');
 
 const PORT = Number(process.env.PORT || 8000);
-const HOST = process.env.HOST || '127.0.0.1';
+// Bind to all interfaces in production (containers/PaaS like Railway route to
+// 0.0.0.0, not localhost) and to loopback in dev. HOST overrides either way.
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS || 10_000);
 
 process.on('unhandledRejection', (reason) => {
