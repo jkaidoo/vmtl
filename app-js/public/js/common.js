@@ -136,32 +136,85 @@
   }
   VMTL.pushSupported = pushSupported; VMTL.pushSubscription = pushSubscription; VMTL.enablePush = enablePush; VMTL.disablePush = disablePush;
 
+  // ---- keep awake (Screen Wake Lock) -----------------------------------
+  // Holds the display on while a live screen is open — the driver's active trip
+  // or the Live map — so the OS doesn't sleep it (which would freeze GPS sharing
+  // and map updates). The lock is dropped when the tab is hidden, so it is
+  // re-acquired on return. Reference-counted: many callers, one lock.
+  const _wake = { sentinel: null, holders: 0 };
+  async function _wakeEnsure() {
+    if (_wake.holders <= 0 || _wake.sentinel || document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+    try { _wake.sentinel = await navigator.wakeLock.request('screen'); _wake.sentinel.addEventListener('release', () => { _wake.sentinel = null; }); } catch (_) { /* denied / unsupported */ }
+  }
+  VMTL.keepAwake = function keepAwake() {
+    _wake.holders++; _wakeEnsure();
+    let released = false;
+    return () => { if (released) return; released = true; _wake.holders = Math.max(0, _wake.holders - 1); if (_wake.holders === 0 && _wake.sentinel) { try { _wake.sentinel.release(); } catch (_) {} _wake.sentinel = null; } };
+  };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _wakeEnsure(); });
+
+  // ---- service-worker message bus --------------------------------------
+  // The SW (e.g. a periodic background sync) asks open pages to refresh by
+  // posting a message; we re-broadcast it as a DOM event pages can subscribe to.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => { try { window.dispatchEvent(new CustomEvent('vmtl:sw', { detail: e.data || {} })); } catch (_) {} });
+  }
+
+  // ---- periodic background sync ----------------------------------------
+  // Best-effort refresh while backgrounded: Chromium + installed PWA only, with
+  // an OS-governed cadence (minutes→hours). No-op everywhere else.
+  VMTL.registerPeriodicSync = async function registerPeriodicSync(tag, minIntervalMs) {
+    try {
+      if (!('serviceWorker' in navigator)) return false;
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg.periodicSync) return false;
+      const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+      if (status.state !== 'granted') return false;
+      await reg.periodicSync.register(tag, { minInterval: minIntervalMs });
+      return true;
+    } catch (_) { return false; }
+  };
+
   // ---- driver location beacon ------------------------------------------
   // A driver's device shares its GPS fix while they operate a trip, so the Live
   // Map can show where each vehicle is. The server only keeps the fix when the
   // driver has an in-progress trip ({tracked:true}); otherwise the beacon backs
-  // off. One permission prompt, then quiet background reporting. Nothing is
-  // shared for other roles, and nothing is stored when no trip is active.
+  // off. One permission prompt, then quiet reporting while the app is open. The
+  // screen is held awake during an active trip; nothing is shared for other
+  // roles, and nothing is stored when no trip is active.
   let beaconStarted = false;
   function startDriverBeacon() {
     if (beaconStarted || VMTL.roleSlug() !== 'driver' || !('geolocation' in navigator) || !window.isSecureContext) return;
     beaconStarted = true;
-    let timer = null, delay = 20000, stopped = false;
+    let timer = null, delay = 20000, stopped = false, lastCoords = null, wakeRelease = null, sending = false;
     const schedule = () => { clearTimeout(timer); timer = setTimeout(beat, delay); };
+    const setTracked = (on) => {
+      if (on && !wakeRelease) wakeRelease = VMTL.keepAwake();     // keep screen alive on an active trip
+      if (!on && wakeRelease) { wakeRelease(); wakeRelease = null; }
+    };
+    async function send(coords) {
+      if (!coords || sending) return;
+      sending = true;
+      try {
+        const r = await api('/tracking/location', { method: 'POST', body: { lat: coords.lat, lng: coords.lng, heading: coords.heading, speed: coords.speed, accuracy: coords.accuracy } });
+        if (r && r.tracked) { delay = 15000; setTracked(true); } else { delay = 45000; setTracked(false); }
+      } catch (_) { delay = 60000; /* offline: hold lastCoords and resend on reconnect */ }
+      finally { sending = false; }
+    }
     function beat() {
       if (stopped) return;
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const c = pos.coords || {};
-        try {
-          const r = await api('/tracking/location', { method: 'POST', body: { lat: c.latitude, lng: c.longitude, heading: c.heading, speed: c.speed, accuracy: c.accuracy } });
-          delay = r && r.tracked ? 15000 : 45000; // tight while on a trip, relaxed otherwise
-        } catch (_) { delay = 60000; }
+        lastCoords = { lat: c.latitude, lng: c.longitude, heading: c.heading, speed: c.speed, accuracy: c.accuracy };
+        await send(lastCoords);
         schedule();
-      }, (err) => { if (err && err.code === 1) { stopped = true; return; } delay = 45000; schedule(); },
+      }, (err) => { if (err && err.code === 1) { stopped = true; setTracked(false); return; } delay = 45000; schedule(); },
         { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 });
     }
     timer = setTimeout(beat, 3000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !stopped && beaconStarted) schedule(); });
+    // On reconnect, push the latest known fix at once so the map updates without waiting for the next cycle.
+    window.addEventListener('online', () => { if (!stopped && lastCoords) send(lastCoords); });
   }
   VMTL.startDriverBeacon = startDriverBeacon;
 

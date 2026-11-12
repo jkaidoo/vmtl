@@ -29,12 +29,28 @@ window.VMTL_PAGE = async function () {
     pollTimer: null, geoWatch: null, selected: null, config: null, vehicles: [], destroyed: false,
   };
 
+  // Keep the display awake while the live map is open (dropped automatically on leave).
+  const releaseWake = VMTL.keepAwake ? VMTL.keepAwake() : null;
+  // Refresh immediately when the service worker (periodic background sync) asks.
+  const onSwRefresh = (e) => { if (e.detail && e.detail.type === 'tracking-refresh' && !state.destroyed) poll(); };
+  window.addEventListener('vmtl:sw', onSwRefresh);
+  if (VMTL.registerPeriodicSync) VMTL.registerPeriodicSync('vmtl-tracking', 15 * 60 * 1000);
+
   // ---- cleanup on SPA leave ------------------------------------------------
   VMTL.onLeave(() => {
     state.destroyed = true;
     if (state.pollTimer) clearTimeout(state.pollTimer);
     if (state.geoWatch != null && navigator.geolocation) navigator.geolocation.clearWatch(state.geoWatch);
+    if (releaseWake) releaseWake();
+    window.removeEventListener('vmtl:sw', onSwRefresh);
   });
+
+  function setLive(mode) {
+    const live = document.getElementById('trackLive'); if (!live) return;
+    live.classList.toggle('off', mode !== 'live');
+    const label = mode === 'live' ? 'Live' : mode === 'offline' ? 'Offline · last known' : 'Reconnecting…';
+    live.innerHTML = `<span class="dot"></span>${label}`;
+  }
 
   const banner = () => document.getElementById('trackBanner');
   function showBanner(html, kind) {
@@ -218,14 +234,16 @@ window.VMTL_PAGE = async function () {
   // ---- polling -------------------------------------------------------------
   async function poll() {
     if (state.destroyed) return;
+    if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; } // avoid overlapping cycles
     try {
       const r = await VMTL.api('/tracking/vehicles');
       state.vehicles = r.data || [];
-      document.getElementById('trackLive').classList.remove('off');
+      if (r._stale || navigator.onLine === false) { setLive('offline'); showBanner('You are offline — showing the last known positions.', 'warn'); }
+      else { setLive('live'); showBanner('', ''); }
       syncMarkers();
       renderList();
     } catch (e) {
-      const live = document.getElementById('trackLive'); if (live) live.classList.add('off');
+      setLive(navigator.onLine === false ? 'offline' : 'down');
     }
     if (!state.destroyed) state.pollTimer = setTimeout(poll, 5000);
   }

@@ -1,7 +1,7 @@
 'use strict';
 /* Service worker: offline app-shell with a network-first strategy. The API is
  * never cached (always fresh, offline-detectable). Bump CACHE on each deploy. */
-const CACHE = 'vmtl-v1';
+const CACHE = 'vmtl-v2';
 const SHELL = ['/css/styles.css', '/js/common.js', '/knust-logo.png', '/offline.html'];
 
 self.addEventListener('install', (e) => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {})); });
@@ -27,3 +27,16 @@ self.addEventListener('push', (e) => {
   e.waitUntil(self.registration.showNotification(title, { body: payload.body || '', icon: '/knust-logo.png', badge: '/knust-logo.png', data: payload.data || {} }));
 });
 self.addEventListener('notificationclick', (e) => { e.notification.close(); e.waitUntil(self.clients.openWindow('/dashboard.html')); });
+
+// Periodic background sync (Chromium + installed PWA): nudge any open Live map to
+// refresh on an OS-governed cadence. There is no DOM here, so we message clients;
+// a closed app does nothing (the web has no background location tracking).
+self.addEventListener('periodicsync', (e) => {
+  if (e.tag !== 'vmtl-tracking') return;
+  e.waitUntil((async () => {
+    try {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const c of clients) c.postMessage({ type: 'tracking-refresh' });
+    } catch (_) {}
+  })());
+});
