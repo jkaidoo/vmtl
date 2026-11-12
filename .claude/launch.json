@@ -4,7 +4,7 @@
     {
       "name": "vmtl-js",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["app-js/server.js"],
+      "runtimeArgs": ["server.js"],
       "port": 8000
     }
   ]
