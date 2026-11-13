@@ -8,7 +8,7 @@ const roles = require('./roles');
 // A signed-in user with their role, org unit, capabilities and lockdown flag.
 async function userForClient(userId) {
   const u = await db.get(
-    `SELECT u.id, u.name, u.email, u.phone, u.active, u.is_super_admin, u.directory_provider, u.last_login_at, u.avatar,
+    `SELECT u.id, u.name, u.email, u.phone, u.active, u.is_super_admin, u.directory_provider, u.last_login_at, u.avatar, u.totp_enabled,
             u.role_id, r.slug AS role_slug, u.org_unit_id, o.name AS org_unit_name, o.path AS org_unit_path, o.type AS org_unit_type
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id
@@ -25,6 +25,7 @@ async function userForClient(userId) {
     org_unit: u.org_unit_id ? { id: u.org_unit_id, name: u.org_unit_name, type: u.org_unit_type, path: u.org_unit_path } : null,
     capabilities: caps,
     requester_only: !u.is_super_admin && roles.isRequesterOnly(caps),
+    two_factor: !!u.totp_enabled,
   };
 }
 

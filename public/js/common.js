@@ -419,6 +419,7 @@
                 <a class="menu-item" href="/faqs.html" role="menuitem">${icon('help')}<span>Help &amp; FAQs</span></a>
                 <button class="menu-item" id="offlineBtn" role="menuitem" type="button">${icon('database')}<span>Offline &amp; sync</span><span class="pill hidden" id="syncCount" style="margin-left:auto;background:var(--warning-tint);color:var(--warning)"></span></button>
                 <button class="menu-item hidden" id="pushBtn" role="menuitem" type="button">${icon('bell')}<span id="pushLabel">Turn on device notifications</span></button>
+                <button class="menu-item" id="securityBtn" role="menuitem" type="button">${icon('shield')}<span>Security${u.two_factor ? '' : ''}</span>${u.two_factor ? '<span class="pill" style="margin-left:auto;background:var(--success-tint);color:var(--success)">2FA</span>' : ''}</button>
                 <button class="menu-item" id="testNotifBtn" role="menuitem" type="button">${icon('bell')}<span>Send test notification</span></button>
                 <button class="menu-item hidden" id="installBtn" role="menuitem" type="button">${icon('plus')}<span>Install app</span></button>
                 <div class="menu-sep"></div>
@@ -453,6 +454,7 @@
     userMenu.querySelectorAll('.menu-item').forEach((it) => it.addEventListener('click', () => setTimeout(closeUserMenu, 0)));
     // Send a test notification to myself.
     app.querySelector('#testNotifBtn').onclick = async () => { try { await api('/notifications/test', { method: 'POST' }); toast('Test notification sent.', 'success'); refreshBell(); } catch (e) { toast((e && e.message) || 'Could not send.', 'err'); } };
+    app.querySelector('#securityBtn').onclick = securityModal;
     // Device (OS) push notifications toggle.
     const pushBtn = app.querySelector('#pushBtn');
     const pushLabel = app.querySelector('#pushLabel');
@@ -520,6 +522,50 @@
     OFFLINE.onChange(refreshSyncBadge);
     app.querySelector('#offlineBtn').onclick = offlineSyncModal;
     updateOnline();
+  }
+
+  // Security: two-factor sign-in + active-session (device) management.
+  async function securityModal() {
+    const m = openModal('<div class="modal-head"><h3>Security</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body" id="secBody"><div class="loading"><span class="spinner"></span></div></div>', { large: true });
+    const body = m.el.querySelector('#secBody');
+    async function render() {
+      let tfa = { enabled: !!(VMTL.user && VMTL.user.two_factor) };
+      try { tfa = (await api('/me/2fa')).data; } catch (_) { /* keep default */ }
+      let sessions = [];
+      try { sessions = (await api('/me/sessions')).data; } catch (_) { /* best effort */ }
+      body.innerHTML = `
+        <div class="card pad mb"><div class="between" style="gap:10px;flex-wrap:wrap"><div><strong>Two-factor sign-in</strong><div class="dim" style="font-size:12.5px;max-width:420px">${tfa.enabled ? 'On — a code from your authenticator app is required at sign-in.' : 'Add a one-time code from an authenticator app as a second step at sign-in.'}</div></div>
+          <button class="btn btn-sm ${tfa.enabled ? '' : 'btn-primary'}" id="tfaToggle">${tfa.enabled ? 'Turn off' : 'Turn on'}</button></div></div>
+        <div class="card pad"><strong>Signed-in devices</strong><div class="dim" style="font-size:12px;margin:2px 0 8px">Sessions currently signed in to your account.</div>
+          ${sessions.length ? sessions.map((s) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--border)"><div><strong>${esc(s.mode)}</strong>${s.current ? ' <span class="badge green" style="font-size:9px">this device</span>' : ''}<div class="dim" style="font-size:11.5px">since ${s.created_at ? VMTL.fmtDateTime(s.created_at) : '—'} · last seen ${s.last_seen_at ? VMTL.fmtDateTime(s.last_seen_at) : '—'}</div></div>${s.current ? '' : `<button class="btn btn-sm" data-revoke="${esc(s.sid)}">Sign out</button>`}</div>`).join('') : '<div class="dim">No other sessions.</div>'}</div>`;
+      body.querySelector('#tfaToggle').onclick = () => (tfa.enabled ? disable2fa() : enable2fa());
+      body.querySelectorAll('[data-revoke]').forEach((b) => b.onclick = async () => { try { await api(`/me/sessions/${encodeURIComponent(b.dataset.revoke)}`, { method: 'DELETE' }); toast('Signed out that device.', 'success'); render(); } catch (e) { toast(e.message, 'err'); } });
+    }
+    async function enable2fa() {
+      let setup; try { setup = (await api('/me/2fa/setup', { method: 'POST' })).data; } catch (e) { return toast(e.message, 'err'); }
+      body.innerHTML = `<div class="card pad"><strong>Set up two-factor sign-in</strong>
+        <ol style="font-size:13px;padding-left:18px;margin:8px 0"><li>Open an authenticator app (Google Authenticator, Authy, 1Password…).</li><li>Add an account with this key, then enter the code it shows.</li></ol>
+        <div class="field"><input value="${esc(setup.secret)}" readonly onclick="this.select()" style="font-family:var(--mono,monospace)"></div>
+        <div class="field"><label>6-digit code</label><input id="tfaCode" inputmode="numeric" placeholder="123456"></div>
+        <div class="row gap-sm"><button class="btn" id="tfaCancel">Cancel</button><button class="btn btn-primary" id="tfaConfirm">Confirm</button></div></div>`;
+      body.querySelector('#tfaCancel').onclick = render;
+      body.querySelector('#tfaConfirm').onclick = async () => {
+        try {
+          const r = (await api('/me/2fa/enable', { method: 'POST', body: { code: body.querySelector('#tfaCode').value.trim() } })).data;
+          if (VMTL.user) VMTL.user.two_factor = true;
+          body.innerHTML = `<div class="card pad"><div class="alert-accent green mb"><strong>Two-factor is on.</strong> Save these recovery codes — each works once if you lose your device.</div><div class="row wrap" style="gap:8px">${r.recovery_codes.map((c) => `<code style="font-family:var(--mono,monospace);font-size:13px">${esc(c)}</code>`).join('')}</div><div class="mt"><button class="btn btn-primary" id="tfaDone">Done</button></div></div>`;
+          body.querySelector('#tfaDone').onclick = render;
+        } catch (e) { VMTL.showErrors(e); }
+      };
+    }
+    async function disable2fa() {
+      const code = window.prompt('Enter a current authenticator code to turn off 2FA (or leave blank to use your password):');
+      if (code === null) return;
+      const payload = { code: String(code || '').trim() };
+      if (!payload.code) { const pw = window.prompt('Enter your account password to turn off 2FA:'); if (pw === null) return; payload.password = pw; }
+      try { await api('/me/2fa/disable', { method: 'POST', body: payload }); if (VMTL.user) VMTL.user.two_factor = false; toast('Two-factor turned off.', 'success'); render(); } catch (e) { toast(e.message, 'err'); }
+    }
+    render();
   }
 
   async function refreshBell() {
