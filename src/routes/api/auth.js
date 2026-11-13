@@ -57,24 +57,6 @@ module.exports = function register(router) {
       return res.status(401).json({ error: 'Those credentials do not match our records.' });
     }
 
-    // Two-factor: when enabled for this account, a valid TOTP (or recovery) code
-    // is required before a session is created.
-    if (user.totp_enabled) {
-      const code = String(req.body.otp || req.body.code || '').trim();
-      if (!code) return res.json({ mfa_required: true });
-      const totp = require('../../services/totp');
-      let codeOk = totp.verify(user.totp_secret, code);
-      if (!codeOk && code.includes('-')) {
-        let recovery = []; try { recovery = JSON.parse(user.totp_recovery || '[]'); } catch (_) { recovery = []; }
-        const h = totp.hashCode(code);
-        if (recovery.includes(h)) { codeOk = true; await db.run('UPDATE users SET totp_recovery = ? WHERE id = ?', [JSON.stringify(recovery.filter((x) => x !== h)), user.id]); }
-      }
-      if (!codeOk) {
-        await audit.record({ userId: user.id, actorName: user.name, action: 'auth.mfa_failed', description: `Failed 2FA for ${user.name}`, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(401).json({ error: 'That verification code is not valid.' });
-      }
-    }
-
     const mode = sessionModeFor(req.body.device_name);
     await new Promise((resolve, reject) => req.session.regenerate((err) => (err ? reject(err) : resolve())));
     req.session.user = sessionSnapshot(user);
@@ -106,38 +88,6 @@ module.exports = function register(router) {
     if (avatar != null && (typeof avatar !== 'string' || avatar.length > 2_000_000)) throw badRequest('Invalid avatar.');
     await db.run(`UPDATE users SET avatar = ?, updated_at = ${db.now()} WHERE id = ?`, [avatar || null, req.session.user.id]);
     res.json({ user: await userForClient(req.session.user.id) });
-  });
-
-  // ---- Two-factor sign-in (TOTP), self-service -----------------------------
-  const totp = require('../../services/totp');
-  router.get('/me/2fa', requireAuth, async (req, res) => {
-    const u = await db.get('SELECT totp_enabled FROM users WHERE id = ?', [req.session.user.id]);
-    res.json({ data: { enabled: !!(u && u.totp_enabled) } });
-  });
-  router.post('/me/2fa/setup', requireAuth, async (req, res) => {
-    const secret = totp.generateSecret();
-    await db.run('UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?', [secret, req.session.user.id]);
-    res.json({ data: { secret, otpauth_url: totp.otpauthUrl(secret, req.session.user.email || `user-${req.session.user.id}`) } });
-  });
-  router.post('/me/2fa/enable', requireAuth, async (req, res) => {
-    const u = await db.get('SELECT totp_secret FROM users WHERE id = ?', [req.session.user.id]);
-    if (!u || !u.totp_secret) throw badRequest('Start the 2FA setup first.');
-    if (!totp.verify(u.totp_secret, req.body.code)) throw badRequest('That code is not valid — check your authenticator and try again.', { code: ['Invalid code.'] });
-    const codes = totp.generateRecoveryCodes();
-    await db.run('UPDATE users SET totp_enabled = 1, totp_recovery = ? WHERE id = ?', [JSON.stringify(codes.map(totp.hashCode)), req.session.user.id]);
-    await audit.from(req, { action: 'auth.mfa_enabled', description: `${req.session.user.name} turned on two-factor sign-in` });
-    res.json({ data: { enabled: true, recovery_codes: codes } });
-  });
-  router.post('/me/2fa/disable', requireAuth, async (req, res) => {
-    const u = await db.get('SELECT password_hash, totp_secret FROM users WHERE id = ?', [req.session.user.id]);
-    const code = String(req.body.code || '').trim();
-    const pw = String(req.body.password || '');
-    const okCode = code && totp.verify(u.totp_secret, code);
-    const okPw = pw && u.password_hash && require('../../util/password').verifyPassword(pw, u.password_hash);
-    if (!okCode && !okPw) throw badRequest('Enter a current code or your password to turn off 2FA.', { code: ['Required.'] });
-    await db.run('UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_recovery = NULL WHERE id = ?', [req.session.user.id]);
-    await audit.from(req, { action: 'auth.mfa_disabled', description: `${req.session.user.name} turned off two-factor sign-in` });
-    res.json({ data: { enabled: false } });
   });
 
   // ---- Active sessions (your signed-in devices) ----------------------------

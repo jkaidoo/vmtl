@@ -402,10 +402,5 @@ ensureColumn('users', 'can_drive', 'INTEGER NOT NULL DEFAULT 0'); // a Transport
 // Driver pre-trip inspection checklist, captured at trip start (JSON).
 ensureColumn('trips', 'start_checklist', 'TEXT');
 
-// Two-factor sign-in (TOTP). totp_recovery is a JSON array of hashed codes.
-ensureColumn('users', 'totp_secret', 'TEXT');
-ensureColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('users', 'totp_recovery', 'TEXT');
-
 module.exports = db;
 module.exports.ensureColumn = ensureColumn;
