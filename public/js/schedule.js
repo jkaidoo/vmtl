@@ -1,61 +1,150 @@
 'use strict';
-// Scheduling calendar — a weekly gantt of vehicle bookings so conflicts are
-// visible before assignment. Rows are vehicles (OU-scoped); each trip is a block
-// positioned across the week; overlapping bookings on the same vehicle are flagged.
+// Scheduling calendar — a real calendar for vehicle bookings. Desktop shows a
+// week time-grid (hours down, days across) with events placed by time and
+// overlapping bookings laid out side by side; mobile shows a day-by-day agenda.
+// Styled with the KNUST design tokens; trip status sets the colour.
 window.VMTL_PAGE = async function () {
   const view = VMTL.view;
   const esc = VMTL.esc;
-  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const STATUS = { scheduled: 'var(--info)', in_progress: 'var(--primary)', completed: 'var(--text-2)', cancelled: 'var(--danger)', no_show: 'var(--warning)' };
+  const DAY_FULL = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const STATUS = {
+    scheduled: { c: 'var(--info)', t: 'var(--info-tint)', label: 'Scheduled' },
+    in_progress: { c: 'var(--primary)', t: 'var(--primary-tint)', label: 'In progress' },
+    completed: { c: 'var(--text-2)', t: 'var(--surface-2)', label: 'Completed' },
+    cancelled: { c: 'var(--danger)', t: 'var(--danger-tint)', label: 'Cancelled' },
+    no_show: { c: 'var(--warning)', t: 'var(--warning-tint)', label: 'No-show' },
+  };
+  const st = (s) => STATUS[s] || STATUS.scheduled;
   const startOfWeek = (d) => { d = new Date(d); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); d.setHours(0, 0, 0, 0); return d; };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const parse = (s) => new Date(String(s).replace(' ', 'T'));
+  const HOUR_H = 46; // px per hour (desktop grid)
   let weekStart = startOfWeek(new Date());
+  let events = [];
+  const mq = window.matchMedia('(max-width: 820px)');
 
-  view.innerHTML = VMTL.pageHead('Schedule', 'Weekly vehicle bookings — spot conflicts before they happen.') +
-    `<div class="card pad mb"><div class="between" style="flex-wrap:wrap;gap:8px">
-       <div class="row gap-sm"><button class="btn btn-sm" id="prev">← Prev</button><button class="btn btn-sm" id="today">This week</button><button class="btn btn-sm" id="next">Next →</button></div>
-       <strong id="range"></strong>
-       <div class="dim" style="font-size:11.5px">${['scheduled', 'in_progress', 'completed', 'no_show', 'cancelled'].map((s) => `<span style="color:${STATUS[s]}">■</span> ${s.replace('_', ' ')}`).join('  ')}</div>
-     </div></div>
-     <div id="grid"><div class="loading"><span class="spinner"></span></div></div>`;
-
-  const dayIndex = (dateStr, from) => Math.round((Date.parse(`${String(dateStr).slice(0, 10)}T00:00:00`) - Date.parse(`${from}T00:00:00`)) / 86400000);
+  view.innerHTML = VMTL.pageHead('Calendar', 'Vehicle bookings across the week.') +
+    `<div class="cal-top">
+       <div class="row gap-sm" style="align-items:center">
+         <button class="icon-btn cal-nav" id="prev" aria-label="Previous week">‹</button>
+         <button class="icon-btn cal-nav" id="next" aria-label="Next week">›</button>
+         <button class="btn btn-sm" id="today">Today</button>
+         <strong id="range" style="font-size:16px;margin-left:4px"></strong>
+       </div>
+       <div class="cal-legend">${Object.keys(STATUS).map((k) => `<span><i style="background:${STATUS[k].c}"></i>${STATUS[k].label}</span>`).join('')}</div>
+     </div>
+     <div id="calBody"><div class="loading"><span class="spinner"></span></div></div>`;
 
   async function load() {
     const from = iso(weekStart);
-    const endD = new Date(weekStart); endD.setDate(endD.getDate() + 6); const to = iso(endD);
-    view.querySelector('#range').textContent = `${VMTL.fmtDate(from)} – ${VMTL.fmtDate(to)}`;
+    const endD = new Date(weekStart); endD.setDate(endD.getDate() + 6);
+    view.querySelector('#range').textContent = weekStart.getMonth() === endD.getMonth()
+      ? `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()}–${endD.getDate()}, ${endD.getFullYear()}`
+      : `${MONTHS[weekStart.getMonth()].slice(0, 3)} ${weekStart.getDate()} – ${MONTHS[endD.getMonth()].slice(0, 3)} ${endD.getDate()}, ${endD.getFullYear()}`;
     let d;
-    try { d = (await VMTL.api(`/schedule?from=${from}&to=${to}`)).data; } catch (e) { view.querySelector('#grid').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
-    render(d, from);
+    try { d = (await VMTL.api(`/schedule?from=${from}&to=${iso(endD)}`)).data; }
+    catch (e) { view.querySelector('#calBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    events = [];
+    for (const v of d.vehicles) for (const t of v.trips) {
+      const s = parse(t.scheduled_start); const e = parse(t.scheduled_end);
+      if (isNaN(s)) continue;
+      events.push({ ...t, vehicle_number: v.vehicle_number, start: s, end: isNaN(e) || e <= s ? new Date(s.getTime() + 60 * 60000) : e });
+    }
+    draw();
   }
+  function draw() { mq.matches ? renderAgenda() : renderWeek(); }
 
-  function render(d, from) {
-    const head = `<div class="pad" style="background:var(--surface);font-weight:600;font-size:12px">Vehicle</div>` +
-      DAYS.map((dn, i) => { const dd = new Date(weekStart); dd.setDate(dd.getDate() + i); return `<div class="pad" style="background:var(--surface);font-weight:600;font-size:12px;text-align:center">${dn}<div class="dim" style="font-weight:400">${dd.getDate()}</div></div>`; }).join('');
+  // ---- Desktop: week time-grid --------------------------------------------
+  function dayEvents(dayDate) {
+    return events.filter((e) => sameDay(e.start, dayDate)).map((e) => {
+      const startMin = e.start.getHours() * 60 + e.start.getMinutes();
+      let endMin = sameDay(e.end, dayDate) ? e.end.getHours() * 60 + e.end.getMinutes() : 24 * 60;
+      if (endMin <= startMin) endMin = startMin + 45;
+      return { ...e, startMin, endMin };
+    }).sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  }
+  // Lay overlapping events into side-by-side lanes (per overlap cluster).
+  function pack(evs) {
+    let i = 0;
+    while (i < evs.length) {
+      let j = i; let clusterEnd = evs[i].endMin;
+      while (j + 1 < evs.length && evs[j + 1].startMin < clusterEnd) { j += 1; clusterEnd = Math.max(clusterEnd, evs[j].endMin); }
+      const cluster = evs.slice(i, j + 1); const laneEnds = [];
+      for (const e of cluster) { let k = 0; for (; k < laneEnds.length; k++) if (e.startMin >= laneEnds[k]) break; laneEnds[k] = e.endMin; e.lane = k; }
+      const n = laneEnds.length; for (const e of cluster) e.lanes = n;
+      i = j + 1;
+    }
+    return evs;
+  }
+  function renderWeek() {
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
+    const all = days.flatMap((d) => dayEvents(d));
+    let minH = 8; let maxH = 18;
+    if (all.length) { minH = Math.min(minH, Math.floor(Math.min(...all.map((e) => e.startMin)) / 60)); maxH = Math.max(maxH, Math.ceil(Math.max(...all.map((e) => e.endMin)) / 60)); }
+    minH = Math.max(5, minH); maxH = Math.min(23, Math.max(maxH, minH + 6));
+    const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
+    const spanMin = (maxH - minH) * 60; const bodyH = (maxH - minH) * HOUR_H;
+    const today = new Date();
 
-    const rows = d.vehicles.length ? d.vehicles.map((v) => {
-      const conflict = new Set();
-      for (let i = 0; i < v.trips.length; i++) for (let j = i + 1; j < v.trips.length; j++) {
-        const a = v.trips[i]; const b = v.trips[j];
-        if (a.scheduled_start < b.scheduled_end && b.scheduled_start < a.scheduled_end) { conflict.add(a.id); conflict.add(b.id); }
-      }
-      const blocks = v.trips.map((t, k) => {
-        const s = Math.max(0, dayIndex(t.scheduled_start, from));
-        let e = Math.min(6, dayIndex(t.scheduled_end, from)); if (e < s) e = s;
-        const left = (s / 7) * 100; const width = ((e - s + 1) / 7) * 100;
-        const bad = conflict.has(t.id);
-        return `<div title="${esc(t.trip_number)} · ${esc(t.destination || '')}${t.driver_name ? ` · ${esc(t.driver_name)}` : ''} · ${esc(t.status)}" style="position:absolute;left:${left}%;width:calc(${width}% - 4px);top:${4 + (k % 2) * 22}px;height:20px;margin:0 2px;border-radius:4px;background:${STATUS[t.status] || 'var(--info)'};color:#fff;font-size:10px;line-height:20px;padding:0 6px;overflow:hidden;white-space:nowrap;${bad ? 'outline:2px solid var(--danger);outline-offset:-1px;' : ''}">${esc(t.destination || t.trip_number)}</div>`;
+    const gutter = `<div class="cal-gutter"><div class="cal-corner"></div>${hours.map((h) => `<div class="cal-hour" style="height:${HOUR_H}px"><span>${String(h).padStart(2, '0')}:00</span></div>`).join('')}</div>`;
+    const cols = days.map((d) => {
+      const evs = pack(dayEvents(d));
+      const blocks = evs.map((e) => {
+        const top = ((e.startMin - minH * 60) / spanMin) * bodyH;
+        const h = Math.max(20, ((e.endMin - e.startMin) / spanMin) * bodyH - 2);
+        const w = 100 / e.lanes; const left = e.lane * w; const s = st(e.status);
+        return `<div class="cal-ev" title="${esc(e.trip_number)} · ${esc(e.destination || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}" style="top:${top}px;height:${h}px;left:calc(${left}% + 2px);width:calc(${w}% - 4px);background:${s.t};border-left:3px solid ${s.c}">
+          <div class="cal-ev-t">${esc(e.destination || e.trip_number)}</div><div class="cal-ev-s">${VMTL.fmtTime(e.scheduled_start)} · ${esc(e.vehicle_number || '')}</div></div>`;
       }).join('');
-      const rowH = Math.max(28, 8 + Math.min(Math.max(v.trips.length, 1), 2) * 22);
-      return `<div class="pad" style="background:var(--surface);font-size:12.5px"><strong>${esc(v.vehicle_number)}</strong>${conflict.size ? ' <span class="badge red" style="font-size:9px">clash</span>' : ''}<div class="dim" style="font-size:11px">${esc([v.make, v.model].filter(Boolean).join(' '))}</div></div><div style="grid-column:span 7;background:var(--surface);position:relative;min-height:${rowH}px">${blocks}</div>`;
-    }).join('') : `<div style="grid-column:1/-1;background:var(--surface);text-align:center;padding:24px" class="dim">No vehicles in scope for this week.</div>`;
+      const isToday = sameDay(d, today);
+      return `<div class="cal-col">
+        <div class="cal-dayhead${isToday ? ' is-today' : ''}"><span class="cal-dow">${DAY_FULL[(d.getDay() + 6) % 7]}</span><span class="cal-dnum">${d.getDate()}</span></div>
+        <div class="cal-track" style="height:${bodyH}px;background-size:100% ${HOUR_H}px">${blocks}</div>
+      </div>`;
+    }).join('');
 
-    view.querySelector('#grid').innerHTML = `<div style="display:grid;grid-template-columns:150px repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;min-width:720px">${head}${rows}</div>`;
+    view.querySelector('#calBody').innerHTML = `<div class="cal-wrap"><div class="cal-aside">${miniMonth()}</div>
+      <div class="cal-grid-wrap"><div class="cal-grid" style="--rows:${hours.length}">${gutter}${cols}</div></div></div>`;
+    wireMini();
   }
 
-  view.querySelector('#prev').onclick = () => { weekStart = new Date(weekStart.setDate(weekStart.getDate() - 7)); load(); };
-  view.querySelector('#next').onclick = () => { weekStart = new Date(weekStart.setDate(weekStart.getDate() + 7)); load(); };
+  // ---- Mobile: day agenda --------------------------------------------------
+  function renderAgenda() {
+    const today = new Date();
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
+    const rows = days.map((d) => {
+      const evs = events.filter((e) => sameDay(e.start, d)).sort((a, b) => a.start - b.start);
+      const isToday = sameDay(d, today);
+      return `<div class="agd-day">
+        <div class="agd-date${isToday ? ' is-today' : ''}"><span class="agd-num">${String(d.getDate()).padStart(2, '0')}</span><span class="agd-dow">${DAY_FULL[(d.getDay() + 6) % 7].toUpperCase()}</span></div>
+        <div class="agd-events">${evs.length ? evs.map((e) => { const s = st(e.status); return `<div class="agd-ev" style="background:${s.t};border-left:3px solid ${s.c}"><div class="agd-ev-main"><div class="agd-ev-t">${esc(e.destination || e.trip_number)}</div><div class="agd-ev-sub">${esc(e.vehicle_number || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}</div></div><div class="agd-ev-time">${VMTL.fmtTime(e.scheduled_start)}<br><span>${VMTL.fmtTime(e.scheduled_end)}</span></div></div>`; }).join('') : '<div class="agd-empty">No trips</div>'}</div>
+      </div>`;
+    }).join('');
+    view.querySelector('#calBody').innerHTML = `<div class="agd">${rows}</div>`;
+  }
+
+  // ---- Mini month (desktop aside) -----------------------------------------
+  function miniMonth() {
+    const ref = new Date(weekStart); const y = ref.getFullYear(); const m = ref.getMonth();
+    const first = startOfWeek(new Date(y, m, 1));
+    const cells = []; const today = new Date();
+    for (let i = 0; i < 42; i++) { const d = new Date(first); d.setDate(d.getDate() + i); cells.push(d); if (i >= 34 && d.getMonth() !== m && d > ref) break; }
+    const inWeek = (d) => { const diff = Math.floor((d - weekStart) / 86400000); return diff >= 0 && diff < 7; };
+    const grid = cells.map((d) => {
+      const cls = [d.getMonth() === m ? '' : 'mini-out', sameDay(d, today) ? 'mini-today' : '', inWeek(d) ? 'mini-week' : ''].filter(Boolean).join(' ');
+      return `<button class="mini-day ${cls}" data-d="${iso(d)}">${d.getDate()}</button>`;
+    }).join('');
+    return `<div class="mini"><div class="mini-head">${MONTHS[m]} ${y}</div><div class="mini-dow">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span>${x}</span>`).join('')}</div><div class="mini-grid">${grid}</div></div>
+      <div class="mini-legend">${Object.keys(STATUS).map((k) => `<div><i style="background:${STATUS[k].c}"></i>${STATUS[k].label}</div>`).join('')}</div>`;
+  }
+  function wireMini() { view.querySelectorAll('.mini-day').forEach((b) => b.onclick = () => { weekStart = startOfWeek(new Date(b.dataset.d + 'T00:00:00')); load(); }); }
+
+  view.querySelector('#prev').onclick = () => { weekStart.setDate(weekStart.getDate() - 7); weekStart = new Date(weekStart); load(); };
+  view.querySelector('#next').onclick = () => { weekStart.setDate(weekStart.getDate() + 7); weekStart = new Date(weekStart); load(); };
   view.querySelector('#today').onclick = () => { weekStart = startOfWeek(new Date()); load(); };
+  const onMq = () => draw();
+  mq.addEventListener('change', onMq); VMTL.onLeave(() => mq.removeEventListener('change', onMq));
   await load();
 };
