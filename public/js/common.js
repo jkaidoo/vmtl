@@ -548,6 +548,7 @@
       trip_delay_warning: `Possible delay to trip ${d.trip_number || ''}`,
       ou_change_pending: `${d.name || 'A staff member'}'s unit changed: ${d.from || '—'} → ${d.to || '—'} — review in Clients`,
       ou_auto_moved: `${d.name || 'A staff member'} was automatically moved to ${d.to || 'a new unit'}`,
+      compliance_digest: `Fleet compliance: ${d.total || 0} item(s) need attention${d.summary ? ` — ${d.summary}` : ''}`,
     };
     return map[n.type] || n.type;
   }

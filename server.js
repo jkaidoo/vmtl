@@ -45,6 +45,10 @@ boot().then(() => {
     const sweep = () => require('./src/services/staffSync').sweepAgedPendingMoves().catch(() => {});
     sweep();
     setInterval(sweep, 60 * 60 * 1000).unref();
+    // Daily fleet-compliance digest (self-dedups to one send per day).
+    const digest = () => require('./src/services/complianceDigest').sendDigest().catch(() => {});
+    digest();
+    setInterval(digest, 12 * 60 * 60 * 1000).unref();
   });
 }).catch(() => process.exit(1));
 

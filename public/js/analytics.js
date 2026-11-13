@@ -37,5 +37,8 @@ function render(body, d) {
     </div>
     <h3 class="mt">Fuel spend &amp; economy</h3>
     <div class="grid cols-4 mb">${kpi('Total spend', VMTL.fmtCedis(d.fuel.summary.total_cost))}${kpi('Litres', VMTL.fmtDecimal(d.fuel.summary.total_litres))}${kpi('Economy', d.fuel.summary.km_per_litre != null ? d.fuel.summary.km_per_litre + ' km/L' : '—')}${kpi('Cost / km', d.fuel.summary.cost_per_km != null ? VMTL.fmtCedis(d.fuel.summary.cost_per_km) : '—')}</div>
-    <div class="grid cols-2">${card('Fuel cost by vehicle', barChart(d.fuel.by_vehicle, 'label', 'cost', 'var(--danger)'))}${card('Monthly fuel spend', barChart(d.fuel.by_month, 'period', 'cost', 'var(--danger)'))}</div>`;
+    <div class="grid cols-2">${card('Fuel cost by vehicle', barChart(d.fuel.by_vehicle, 'label', 'cost', 'var(--danger)'))}${card('Monthly fuel spend', barChart(d.fuel.by_month, 'period', 'cost', 'var(--danger)'))}</div>
+    <h3 class="mt">Maintenance spend</h3>
+    <div class="grid cols-4 mb">${kpi('Maintenance cost', VMTL.fmtCedis(d.maintenance.summary.total_cost))}${kpi('Service records', d.maintenance.summary.records)}${kpi('Running cost', VMTL.fmtCedis((Number(d.fuel.summary.total_cost) || 0) + (Number(d.maintenance.summary.total_cost) || 0)))}${kpi('Fuel share', (function(){const f=Number(d.fuel.summary.total_cost)||0;const t=f+(Number(d.maintenance.summary.total_cost)||0);return t>0?Math.round(f/t*100)+'%':'—';})())}</div>
+    <div class="grid cols-2">${card('Maintenance cost by vehicle', barChart(d.maintenance.by_vehicle, 'label', 'cost', 'var(--warning)'))}${card('Monthly maintenance spend', barChart(d.maintenance.by_month, 'period', 'cost', 'var(--warning)'))}</div>`;
 }

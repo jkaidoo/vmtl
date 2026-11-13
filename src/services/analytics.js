@@ -100,6 +100,7 @@ async function build(filters) {
       most_active_vehicles: byVehicle.slice(0, 5),
     },
     fuel: await fuel(filters),
+    maintenance: await maintenanceCost(filters),
   };
 }
 
@@ -141,4 +142,27 @@ async function fuel(filters) {
   };
 }
 
-module.exports = { build, fuel, fetchTrips, tripWhere, fuelWhere };
+// Maintenance spend (from maintenance_records), mirroring the fuel aggregation.
+function maintWhere(filters) {
+  const where = ['m.deleted_at IS NULL']; const params = [];
+  if (filters.date_from) { where.push('substr(m.service_date,1,10) >= substr(?,1,10)'); params.push(filters.date_from); }
+  if (filters.date_to) { where.push('substr(m.service_date,1,10) <= substr(?,1,10)'); params.push(filters.date_to); }
+  if (filters.vehicle_id) { where.push('m.vehicle_id = ?'); params.push(Number(filters.vehicle_id)); }
+  if (filters.org_unit_id) { where.push('v.org_unit_id = ?'); params.push(Number(filters.org_unit_id)); }
+  if (filters.org_unit_ids) { const ids = filters.org_unit_ids.length ? filters.org_unit_ids : [0]; where.push(`v.org_unit_id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
+  return { sql: where.join(' AND '), params };
+}
+async function maintenanceCost(filters) {
+  const { sql, params } = maintWhere(filters);
+  const rows = await db.all(`SELECT m.*, v.vehicle_number FROM maintenance_records m LEFT JOIN vehicles v ON v.id = m.vehicle_id WHERE ${sql}`, params);
+  const totalCost = rows.reduce((a, r) => a + Number(r.cost || 0), 0);
+  const byVehMap = new Map();
+  for (const r of rows) { const k = r.vehicle_id; if (!byVehMap.has(k)) byVehMap.set(k, { label: r.vehicle_number || `#${k}`, cost: 0, count: 0 }); const g = byVehMap.get(k); g.cost += Number(r.cost || 0); g.count += 1; }
+  const byVehicle = [...byVehMap.values()].map((g) => ({ label: g.label, cost: r2(g.cost), count: g.count })).sort((a, b) => b.cost - a.cost);
+  const byMonthMap = new Map();
+  for (const r of rows) { const p = period(r.service_date); if (!byMonthMap.has(p)) byMonthMap.set(p, { period: p, cost: 0, count: 0 }); const g = byMonthMap.get(p); g.cost += Number(r.cost || 0); g.count += 1; }
+  const byMonth = [...byMonthMap.values()].map((g) => ({ period: g.period, cost: r2(g.cost), count: g.count })).sort((a, b) => a.period.localeCompare(b.period));
+  return { summary: { total_cost: r2(totalCost), records: rows.length }, by_vehicle: byVehicle, by_month: byMonth };
+}
+
+module.exports = { build, fuel, maintenanceCost, fetchTrips, tripWhere, fuelWhere };
