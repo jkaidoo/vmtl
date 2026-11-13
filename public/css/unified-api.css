@@ -1,0 +1,96 @@
+
+    .ua-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; grid-template-areas: "connection settings" "test settings" "fields fields"; }
+    .ua-grid > .card { margin: 0; padding: 14px 16px; min-width: 0; }
+    #uaConnection { grid-area: connection; }
+    #uaSettings { grid-area: settings; }
+    #uaTest { grid-area: test; }
+    #uaFields { grid-area: fields; }
+    #uaSearchDiagnostics { grid-column: 1 / -1; }
+    #uaDiagnosticReport { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+    .controls-page .page-heading { margin-bottom: 12px; }
+    .controls-page .page-heading p { margin-bottom: 0; font-size: var(--fs-md); }
+    #uaSettingsForm { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px 12px; }
+    #uaSettingsForm > .ua-switch-row, #uaSettingsForm > .hint, #uaSettingsForm > .flex,
+    #uaSettingsForm > .field:has([name="url"]) { grid-column: 1 / -1; }
+    #uaSettingsForm .field { margin-bottom: 0; min-width: 0; }
+    #uaSettingsForm .field > span { margin-bottom: 4px; }
+    #uaSettingsForm .hint { margin: 0; }
+    .ua-grid .input { padding: 7px 10px; font-size: var(--fs-md); }
+    .ua-grid .btn { font-size: var(--fs-sm); padding: 6px 10px; }
+    .ua-field-list { max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; }
+    .ua-field-list:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .ua-result-table td, .ua-result-table th { padding: 7px 10px; }
+    #uaTest .table-wrap { max-height: 340px; overflow: auto; }
+    .ua-wide { grid-column: 1 / -1; }
+    .ua-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .ua-head h2 { margin: 0; font-size: 1.05rem; }
+    .ua-head p { margin: 3px 0 0; font-size: var(--fs-md); }
+    .ua-state { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: var(--r-sm); background: var(--surface-2); }
+    .ua-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); }
+    .ua-dot.ok { background: var(--success); } .ua-dot.bad { background: var(--danger); } .ua-dot.off { background: var(--border-strong); }
+    .ua-state b { display: block; font-size: var(--fs-base); } .ua-state small { color: var(--text-3); }
+    .ua-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .ua-src-tag { font-size: var(--fs-xs); color: var(--text-3); margin-left: 6px; font-weight: var(--fw-medium); }
+    .ua-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0; }
+    .ua-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .ua-col h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; font-size: var(--fs-base); }
+    .ua-col h3 .count { font-weight: var(--fw-medium); font-size: var(--fs-sm); color: var(--text-3); }
+    .ua-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); }
+    .ua-field .name { min-width: 0; flex: 1; }
+    .ua-field.dragging { opacity: .55; background: var(--surface-2); }
+    .ua-grip { flex: none; align-self: stretch; display: grid; place-items: center; width: 14px; margin-left: 0; color: var(--text-3); font-size: var(--fs-md); letter-spacing: -3px; user-select: none; cursor: grab; touch-action: none; border-radius: var(--r-sm); }
+    .ua-grip:hover { color: var(--text); background: var(--surface-2); }
+    .ua-field.dragging .ua-grip { cursor: grabbing; }
+    .ua-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+    .ua-field.renaming .ua-tools { display: none; }
+    .ua-rename-form .input { max-width: 320px; }
+    .ua-rename-form code { display: block; margin-top: 4px; }
+    .ua-grid .ua-tools .btn { padding: 3px 5px; min-width: 26px; min-height: 28px; }
+    .ua-move:disabled { visibility: hidden; }
+    .ua-field .name b { display: block; font-weight: var(--fw-medium); font-size: var(--fs-md); }
+    .ua-field .name code { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); overflow-wrap: anywhere; }
+    .ua-field.off .name b { color: var(--text-3); }
+    .ua-learned { font-size: 10.5px; padding: 1px 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-3); margin-left: 6px; vertical-align: 1px; }
+    .ua-test-form { display: flex; gap: 8px; }
+    .ua-test-form .input { flex: 1; min-width: 0; }
+    .ua-person { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; }
+    .ua-person img, .ua-person .ph { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; background: var(--surface-2); display: grid; place-items: center; font-weight: var(--fw-bold); color: var(--text-3); }
+    .ua-person h3 { margin: 0; font-size: 1.05rem; }
+    .ua-result-table td.v { overflow-wrap: anywhere; }
+    .ua-result-table tr.off td:not(:last-child) { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+    @media (max-width: 1100px) { .ua-cols { grid-template-columns: minmax(0, 1fr); } .ua-field-list { max-height: 260px; } }
+    @media (max-width: 860px) { .ua-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "connection" "settings" "test" "fields"; } }
+    @media (max-width: 480px) { .ua-test-form { flex-direction: column; } #uaSettingsForm { grid-template-columns: minmax(0, 1fr); } }
+
+.ua-console { --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-base:14px; --r-sm:7px; --r-pill:999px; --fw-medium:500; --fw-bold:700; --border-strong:var(--border); font-size:14px; line-height:1.5; }
+.ua-console .page-heading h1 { font-size:28px; letter-spacing:-.7px; margin:0 0 14px; }
+.ua-console .page-heading p { color:var(--text-2); }
+.ua-console .muted { color:var(--text-2); }
+.ua-console .faint, .ua-console .hint { color:var(--text-3); font-size:12px; }
+.ua-console .mono { font-family:var(--mono); }
+.ua-console .flex { display:flex; align-items:center; }
+.ua-console .card { border:1px solid var(--border); border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.05); background:var(--surface); }
+.ua-console .ua-grid input.input, .ua-console .ua-grid select.input { width:100%; min-height:36px; border:1px solid var(--border); border-radius:7px; color:var(--text); background:var(--surface); }
+.ua-console .ua-grid .btn { min-height:32px; border-radius:7px; font-size:12px; font-weight:500; white-space:nowrap; }
+.ua-console .ua-grid .btn-primary { background:#009540; color:#fff; border-color:#009540; }
+.ua-console .ua-grid label.field { display:flex; flex-direction:column; gap:0; font-size:13px; color:var(--text-2); }
+.ua-console .ua-grid .btn-ghost { border-color:transparent; background:transparent; color:var(--text-2); }
+.ua-console .ua-grid .badge { display:inline-flex; gap:5px; align-items:center; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:500; }
+.ua-console .ua-grid .badge.resolved { color:var(--success); background:var(--success-tint,#e4f5ee); }
+.ua-console .ua-grid .badge.pending { color:var(--warning,#b45309); background:var(--warning-tint,#fbf0e0); }
+.ua-console .ua-grid .badge::before { content:'•'; }
+.ua-console .ua-grid .banner { border-radius:7px; padding:10px; background:var(--surface-2); }
+.ua-console .ua-grid .switch { width:38px; height:22px; min-width:38px; padding:2px; }
+.ua-console .ua-grid .switch .switch-knob { width:18px; height:18px; }
+.ua-console .ua-grid .switch[aria-checked=true] { background:#009540; }
+.ua-console .ua-grid .switch[aria-checked=true] .switch-knob { transform:translateX(16px); }
+.ua-console .ua-result-table { width:100%; font-size:13px; border-collapse:collapse; }
+.ua-console .ua-result-table th { text-align:left; font-size:11px; color:var(--text-3); }
+.ua-console .ua-result-table td { border-top:1px solid var(--border); }
+.ua-console .ua-person img, .ua-console .ua-person .ph { width:64px; height:64px; }
+.ua-console #uaSearchMatches { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; margin-top:12px; }
+.ua-console .ua-search-match { display:flex; align-items:center; gap:10px; text-align:left; white-space:normal; padding:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:7px; cursor:pointer; }
+.ua-console .ua-search-match img { width:48px; height:48px; border-radius:50%; object-fit:cover; }
+.ua-console .ua-search-match small { display:block; color:var(--text-3); }
+.ua-console .ua-lookup-head { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.ua-console [hidden] { display:none !important; }

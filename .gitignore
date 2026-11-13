@@ -9,6 +9,8 @@ data/
 *.sqlite-shm
 *.sqlite-wal
 npm-debug.log*
+# Local browser verification artifacts and preview helpers
+.playwright-cli/
 # Local-only files kept in the working tree but out of git (handoff notes, spec,
 # spreadsheet, logo, launcher). Anchored to the repo root so nested files with the
 # same name (e.g. public/knust-logo.png) are NOT affected.

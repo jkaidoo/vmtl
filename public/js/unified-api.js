@@ -1,137 +1,355 @@
 'use strict';
-// Unified API — manage Bearer access tokens for the read API, with an endpoint
-// reference. Tokens are shown once at creation; only their hash is stored.
 window.VMTL_PAGE = async function () {
-  const view = VMTL.view; const esc = VMTL.esc;
-  view.innerHTML = VMTL.pageHead('Unified API', 'Programmatic read access for external integrations.') + '<div id="b"><div class="loading"><span class="spinner"></span></div></div>';
-  let d; const load = async () => { d = (await VMTL.api('/admin/api-tokens')).data; render(); };
+  if (!document.querySelector('link[href="/css/unified-api.css"]')) {
+    const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/unified-api.css'; document.head.appendChild(style);
+  }
+  if (!window.VMTL_UNIFIED_TOKENS) await new Promise((resolve, reject) => {
+    const script = document.createElement('script'); script.src = '/js/unified-api-tokens.js'; script.onload = resolve; script.onerror = reject; document.head.appendChild(script);
+  });
+  const esc = VMTL.esc;
+  const toast = (message, kind) => VMTL.toast(message, kind === 'ok' ? 'success' : kind);
+  const api = async (path, options = {}) => {
+    const response = await fetch('/api' + path, { method: options.method || 'GET', credentials: 'include', headers: { Accept: 'application/json', ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Request failed');
+    return body.data;
+  };
+  const listModal = (title, list) => VMTL.openModal(`<div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-close>×</button></div><div class="modal-body table-wrap"><table class="data"><thead><tr>${list.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${list.rows.map(row => `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`, { large: true });
+  const copyTextModal = (title, text) => VMTL.openModal(`<div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-close>×</button></div><div class="modal-body"><textarea readonly style="width:100%;height:300px">${esc(text)}</textarea></div>`);
+  VMTL.view.innerHTML = "<div class=\"ua-console controls-page\">    <div class=\"page-heading\"><h1>Unified API</h1><p class=\"muted\">Live student, staff and admissions records from the university databases: connection, what appears on lookups, and a test lookup.</p></div>\n    <div class=\"ua-grid\">\n      <section class=\"card card-pad\" id=\"uaConnection\" aria-labelledby=\"uaConnTitle\"></section>\n      <section class=\"card card-pad\" id=\"uaSettings\" aria-labelledby=\"uaSetTitle\"></section>\n      <section class=\"card card-pad ua-wide\" id=\"uaFields\" aria-labelledby=\"uaFieldsTitle\"></section>\n      <section class=\"card card-pad ua-wide\" id=\"uaTest\" aria-labelledby=\"uaTestTitle\"></section>\n      <section class=\"card card-pad\" id=\"uaSearchDiagnostics\" aria-labelledby=\"uaSearchTitle\">\n        <div class=\"ua-head\"><div><h2 id=\"uaSearchTitle\">Test staff search</h2><p class=\"muted\">Tests from this app server using the saved settings. Save setting changes before running.</p></div></div>\n        <form class=\"ua-test-form\" id=\"uaSearchForm\"><input class=\"input\" name=\"q\" aria-label=\"Staff name or ID to test\" placeholder=\"Known staff surname or ID\" minlength=\"2\" maxlength=\"100\" required><button class=\"btn btn-primary\" type=\"submit\">Run diagnostics</button></form>\n        <div id=\"uaSearchResult\" role=\"status\" aria-live=\"polite\"></div>\n        <button class=\"btn btn-sm\" id=\"uaCopyDiagnostics\" type=\"button\" hidden>Copy troubleshooting report</button>\n        <pre id=\"uaDiagnosticReport\" hidden></pre>\n      </section>\n    </div>\n<details class=\"card pad\" style=\"margin-top:12px\"><summary>External integration access tokens</summary><div id=\"uaTokens\" style=\"margin-top:12px\"></div></details></div>";
+  const connEl = document.getElementById('uaConnection');
+  const setEl = document.getElementById('uaSettings');
+  const fieldsEl = document.getElementById('uaFields');
+  const testEl = document.getElementById('uaTest');
+  const TYPE_NAMES = { STUDENT: 'Students', STAFF: 'Staff', PROSPECTIVE: 'Admissions' };
+  const sw = (on, label, attrs = '') => `<button class="switch" type="button" role="switch" aria-checked="${on}" aria-label="${esc(label)}" ${attrs}><span class="switch-knob"></span></button>`;
+  let settings = {}; let fields = { STUDENT: [], STAFF: [] }; let lastTest = null;
 
-  const ENDPOINTS = [
-    ['GET', '/v1/vehicles', 'vehicles.read', 'Active fleet vehicles'],
-    ['GET', '/v1/trips', 'trips.read', 'Recent trips'],
-    ['GET', '/v1/requests', 'requests.read', 'Recent vehicle requests'],
-    ['GET', '/v1/analytics/summary', 'analytics.read', 'Fleet counts summary'],
-  ];
-
-  function render() {
-    view.querySelector('#b').innerHTML = `
-      <div id="inbound"></div>
-      <div class="card pad mb"><div class="between"><div><h3 style="margin:0">Base URL</h3><code class="rec-id" style="font-family:var(--mono);font-size:13px">${esc(d.base_url)}</code></div><div class="dim" style="font-size:13px;max-width:360px;text-align:right">Authenticate with <code>Authorization: Bearer &lt;token&gt;</code>. Read-only, scope-gated.</div></div></div>
-      <div class="card mb"><div class="card-head"><h3 style="margin:0">Access tokens</h3><button class="btn btn-primary btn-sm" id="newTok">${VMTL.icon('plus')} New token</button></div>
-        <div class="card-body" style="padding-top:8px"><div class="table-wrap"><table class="data"><thead><tr><th>LABEL</th><th>TOKEN</th><th>SCOPES</th><th>CREATED</th><th>LAST USED</th><th></th></tr></thead><tbody>
-          ${d.tokens.length ? d.tokens.map((t) => `<tr><td><strong>${esc(t.label)}</strong></td><td><code class="rec-id" style="font-family:var(--mono)">${esc(t.prefix)}…</code></td><td>${(t.scopes || []).map((s) => `<span class="chip">${esc(s)}</span>`).join(' ')}</td><td class="dim">${VMTL.fmtDate(t.created_at)}</td><td class="dim">${t.last_used_at ? VMTL.fmtDateTime(t.last_used_at) : 'Never'}</td><td><button class="btn btn-sm" data-revoke="${t.id}">Revoke</button></td></tr>`).join('') : '<tr><td colspan="6" class="dim">No tokens yet.</td></tr>'}
-        </tbody></table></div></div></div>
-      <div class="card"><div class="card-head"><h3 style="margin:0">Endpoints</h3></div><div class="card-body" style="padding-top:8px"><div class="table-wrap"><table class="data"><thead><tr><th>METHOD</th><th>PATH</th><th>SCOPE</th><th>DESCRIPTION</th></tr></thead><tbody>
-        ${ENDPOINTS.map(([m, p, s, desc]) => `<tr><td><span class="chip">${m}</span></td><td><code style="font-family:var(--mono)">${esc(p)}</code></td><td><span class="audit-chip">${esc(s)}</span></td><td>${esc(desc)}</td></tr>`).join('')}
-      </tbody></table></div></div></div>`;
-    view.querySelector('#newTok').onclick = () => createToken();
-    view.querySelectorAll('[data-revoke]').forEach((b) => b.onclick = async () => { if (await VMTL.confirm('Revoke this token? Integrations using it will stop working.', { danger: true, confirmLabel: 'Revoke' })) { try { await VMTL.api(`/admin/api-tokens/${b.dataset.revoke}`, { method: 'DELETE' }); VMTL.toast('Token revoked.', 'success'); load(); } catch (e) { VMTL.showErrors(e); } } });
-    renderInbound();
+  async function load() {
+    try {
+      const out = await api('/admin/unified-api-console/settings');
+      settings = out.settings; fields = out.fields;
+    } catch (e) { toast(e.message, 'err'); return; }
+    renderSettings(); renderFields(); renderTest(); checkConnection();
   }
 
-  // Inbound connection: pull live staff data from the KNUST Unified API to learn
-  // each person's organisational unit after they sign in.
-  async function renderInbound() {
-    const host = view.querySelector('#inbound'); if (!host) return;
-    let c = {};
-    try { c = (await VMTL.api('/admin/unified-api-client')).data; } catch (_) { c = {}; }
-    host.innerHTML = `
-      <div class="card pad mb" style="border-left:3px solid var(--info)">
-        <div class="between" style="flex-wrap:wrap;gap:8px"><div><h3 style="margin:0">Staff data source (inbound)</h3><div class="dim" style="font-size:12.5px;margin-top:2px">Pull each signed-in staff member's department, college, rank and designation from the KNUST Unified API. Used only to set their organisational unit — never vehicle data.</div></div>
-          <span class="chip" style="color:${c.enabled ? 'var(--success)' : 'var(--text-2)'}">${c.enabled ? 'Configured' : (c.switched_on ? 'Not configured' : 'Off')}</span></div>
-        <div class="form-grid" style="margin-top:12px">
-          <div class="field col-2"><label>Unified API base URL</label><input id="uUrl" value="${esc(c.url || '')}" placeholder="https://unified-api.cloud.knust.edu.gh"></div>
-          <div class="field col-2"><label>API key ${c.has_key ? '(set — blank keeps it)' : ''}</label><input id="uKey" type="password" autocomplete="new-password" placeholder="X-Api-Key"></div>
-          <div class="field"><label>Enabled</label><button type="button" class="switch" role="switch" id="uOn" aria-checked="${c.switched_on ? 'true' : 'false'}"><span class="switch-knob"></span></button></div>
-        </div>
-        <div class="row gap-sm" style="margin-top:12px;flex-wrap:wrap"><button class="btn btn-primary" id="uSave">Save connection</button><button class="btn" id="uTest">Test</button><span id="uResult" class="dim" style="font-size:12.5px"></span></div>
-      </div>
-      <div class="card pad mb">
-        <h3>Staff data fields</h3>
-        <p class="dim">Choose fields shown in manual searches and imported during staff sync. Turning a field off preserves existing stored values. Name, email and username are for preview only; account identity comes from directory sign-in. Organisational-unit updates use the enabled college, faculty and department fields.</p>
-        <div class="form-grid">${(c.fields || []).map((f) => `<div class="field"><label for="uf-${esc(f.key)}">${esc(f.label)}</label><button type="button" id="uf-${esc(f.key)}" class="switch" role="switch" aria-label="${esc(f.label)}" data-staff-field="${esc(f.key)}" aria-checked="${f.enabled ? 'true' : 'false'}"><span class="switch-knob"></span></button></div>`).join('')}</div>
-        <div class="row gap-sm" style="margin-top:12px"><button class="btn btn-primary" id="uFieldsSave">Save data fields</button><span id="uFieldsStatus" role="status"></span></div>
-      </div>
-      <div class="card pad mb">
-        <h3>Manual staff search</h3>
-        <p class="dim">Search by name, staff ID or official email. Open a result to view its profile. Searching does not create or update an account. Save connection and field changes before searching.</p>
-        <form id="uSearchForm" class="row gap-sm"><div class="field" style="flex:1"><label for="uQuery">Name, staff ID or email</label><input id="uQuery" minlength="2" maxlength="100" required autocomplete="off" placeholder="Enter at least two characters"></div><button class="btn" type="submit">Search</button></form>
-        <div id="uSearchStatus" role="status" style="margin-top:12px"></div><div id="uSearchResults"></div>
-      </div>`;
-    host.querySelectorAll('[data-staff-field]').forEach((b) => b.onclick = () => b.setAttribute('aria-checked', String(b.getAttribute('aria-checked') !== 'true')));
-    let searchSequence = 0;
-    host.querySelector('#uFieldsSave').onclick = async () => {
-      const button = host.querySelector('#uFieldsSave'); button.disabled = true;
-      try {
-        const fields = Object.fromEntries([...host.querySelectorAll('[data-staff-field]')].map((b) => [b.dataset.staffField, b.getAttribute('aria-checked') === 'true']));
-        const r = (await VMTL.api('/admin/unified-api-client/fields', { method: 'PUT', body: { fields } })).data;
-        c.fields = r.fields; ++searchSequence;
-        host.querySelector('#uSearchResults').innerHTML = ''; host.querySelector('#uSearchStatus').textContent = '';
-        host.querySelector('#uFieldsStatus').textContent = 'Data fields saved.';
-      } catch (e) { host.querySelector('#uFieldsStatus').textContent = e.message; }
-      finally { button.disabled = false; }
-    };
-    const displayValue = (v) => {
-      if (v == null) return '—';
-      if (Array.isArray(v)) return v.map(displayValue).join(', ');
-      if (typeof v === 'object') return displayValue(v.value ?? v.text ?? v.name ?? JSON.stringify(v));
-      return String(v);
-    };
-    const showFields = (fields) => Object.entries(fields || {}).map(([key, value]) => `<div style="padding:4px 0"><strong>${esc((c.fields || []).find((f) => f.key === key)?.label || key)}:</strong> ${esc(displayValue(value))}</div>`).join('') || '<p class="dim">All preview fields are switched off.</p>';
-    host.querySelector('#uSearchForm').onsubmit = async (event) => {
-      event.preventDefault();
-      const q = host.querySelector('#uQuery').value.trim(); const mine = ++searchSequence;
-      const status = host.querySelector('#uSearchStatus'); const results = host.querySelector('#uSearchResults');
-      results.innerHTML = '';
-      if (q.length < 2) { status.textContent = 'Enter at least two characters.'; return; }
-      status.textContent = 'Searching…';
-      try {
-        const r = (await VMTL.api(`/admin/unified-api-client/search?q=${encodeURIComponent(q)}`)).data;
-        if (mine !== searchSequence) return;
-        if (r.status !== 'ok') { status.textContent = r.reason || 'Staff search is unavailable.'; return; }
-        status.textContent = r.results.length ? `${r.results.length} match(es)${r.results.length === 20 ? ' — refine your search for more precise results' : ''}.` : 'No staff found.';
-        results.innerHTML = r.results.map((person, i) => `<article class="card pad" style="margin-top:12px">${showFields(person.fields)}<button type="button" class="btn btn-sm" data-profile="${i}">View profile</button><div data-profile-details="${i}"></div></article>`).join('');
-        results.querySelectorAll('[data-profile]').forEach((button) => button.onclick = async () => {
-          const person = r.results[Number(button.dataset.profile)];
-          const details = results.querySelector(`[data-profile-details="${button.dataset.profile}"]`);
-          button.disabled = true; details.textContent = 'Loading profile…';
-          try {
-            const profile = (await VMTL.api(`/admin/unified-api-client/profile/${encodeURIComponent(person.id_number)}`)).data;
-            if (mine !== searchSequence) return;
-            details.innerHTML = profile.status === 'found' ? showFields(profile.fields) : esc(profile.reason || 'Staff profile not found.');
-          } catch (e) { details.textContent = e.message; }
-          finally { button.disabled = false; }
-        });
-      } catch (e) { if (mine === searchSequence) status.textContent = e.message; }
-    };
-    host.querySelector('#uOn').onclick = (e) => { const b = e.currentTarget; b.setAttribute('aria-checked', b.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); };
-    host.querySelector('#uSave').onclick = async () => {
-      const body = { url: host.querySelector('#uUrl').value.trim(), enabled: host.querySelector('#uOn').getAttribute('aria-checked') === 'true' };
-      const key = host.querySelector('#uKey').value; if (key) body.key = key;
-      try { await VMTL.api('/admin/unified-api-client', { method: 'PUT', body }); VMTL.toast('Connection saved.', 'success'); renderInbound(); } catch (e) { VMTL.showErrors(e); }
-    };
-    host.querySelector('#uTest').onclick = async () => {
-      const out = host.querySelector('#uResult'); out.textContent = 'Testing…';
-      try { const r = (await VMTL.api('/admin/unified-api-client/test', { method: 'POST', body: {} })).data; const chk = (r.checks || [])[0] || {}; out.innerHTML = r.enabled && chk.ok ? `<span style="color:var(--success)">✓ Reached the Unified API (${esc(chk.detail || '')})</span>` : `<span style="color:var(--danger)">✕ ${esc(chk.detail || chk.code || 'Not configured')}</span>`; }
-      catch (e) { out.innerHTML = `<span style="color:var(--danger)">✕ ${esc(e.message)}</span>`; }
-    };
+  // ---- Connection ---------------------------------------------------------
+  function connShell(state, title, detail, extra = '') {
+    connEl.innerHTML = `<div class="ua-head"><div><h2 id="uaConnTitle">Connection</h2><p class="muted">Checks the API's <code>/health</code> endpoint.</p></div><button class="btn btn-sm" id="uaCheck" type="button">Check connection</button></div>
+      <div class="ua-state" role="status"><span class="ua-dot ${state}"></span><div><b>${esc(title)}</b><small>${detail}</small></div></div>${extra}`;
+    connEl.querySelector('#uaCheck').onclick = checkConnection;
+  }
+  async function checkConnection() {
+    connShell('', 'Checking…', 'Contacting the Unified API');
+    connEl.querySelector('#uaCheck').disabled = true;
+    let s;
+    try { s = await api('/admin/unified-api-console/status'); } catch (e) { connShell('bad', 'Check failed', esc(e.message)); return; }
+    if (!s.enabled) {
+      const why = !s.switched_on ? 'Live lookups and automatic staff enrichment are switched off.'
+        : 'Add the API URL and key to turn on live lookups and staff enrichment.';
+      connShell('off', s.switched_on ? 'Not set up' : 'Switched off', why);
+      return;
+    }
+    if (!s.reachable) {
+      connShell('bad', 'Not reachable', `${esc(s.host)} · ${esc(s.reason === 'timeout' ? 'timed out' : s.reason || 'no response')}. Existing staff data is preserved.`);
+      return;
+    }
+    const term = 'Academic year and semester: as set on the Unified API’s Settings page';
+    const sources = Object.entries(s.sources || {});
+    const healthy = String(s.status).toLowerCase() === 'ok';
+    connShell(healthy ? 'ok' : 'bad', healthy ? 'Connected' : `Connected, API reports “${s.status}”`,
+      `${esc(s.host)}${s.ms != null ? ` · ${s.ms} ms` : ''}<br>${term}`,
+      sources.length ? `<div class="ua-sources">${sources.map(([name, v]) => { const ok = v === true || v === 'ok' || v?.ok === true || v?.status === 'ok'; return `<span class="badge ${ok ? 'resolved' : 'pending'}">${esc(name)}: ${ok ? 'up' : esc(typeof v === 'object' ? v?.status || v?.error || 'down' : String(v))}</span>`; }).join('')}</div>` : '');
   }
 
-  function createToken() {
-    const scopes = d.scopes || [];
-    const m = VMTL.openModal(`<div class="modal-head"><h3>New API token</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><div class="field"><label>Label</label><input id="tLabel" placeholder="e.g. Analytics dashboard" required></div><div class="field"><label>Scopes</label><div class="row wrap" style="gap:12px;padding-top:4px">${scopes.map((s) => `<label class="checkbox"><input type="checkbox" class="tScope" value="${s}" checked> ${esc(s)}</label>`).join('')}</div></div></div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="gen">Generate token</button></div>`);
-    m.el.querySelector('#gen').onclick = async () => {
-      const label = m.el.querySelector('#tLabel').value.trim(); if (!label) return VMTL.toast('Add a label.', 'err');
-      const sel = [...m.el.querySelectorAll('.tScope:checked')].map((i) => i.value);
-      try {
-        const r = (await VMTL.api('/admin/api-tokens', { method: 'POST', body: { label, scopes: sel } })).data;
-        m.close();
-        const m2 = VMTL.openModal(`<div class="modal-head"><h3>Token created</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><div class="alert-accent amber mb"><strong>Copy this token now.</strong> It is shown only once.</div><div class="field"><label>${esc(label)}</label><input value="${esc(r.token)}" readonly onclick="this.select()" style="font-family:var(--mono)"></div><div class="btn-row"><button class="btn" id="copyTok">Copy token</button></div></div><div class="modal-foot"><button class="btn btn-primary" data-close>Done</button></div>`);
-        m2.el.querySelector('#copyTok').onclick = async () => { try { await navigator.clipboard.writeText(r.token); VMTL.toast('Copied.', 'success'); } catch (_) { m2.el.querySelector('input').select(); } };
-        load();
-      } catch (e) { VMTL.showErrors(e); }
+  // ---- Settings -----------------------------------------------------------
+  const sourceTag = (src) => src === 'env' ? '<span class="ua-src-tag">from environment variable</span>' : '';
+  function renderSettings() {
+    const s = settings;
+    setEl.innerHTML = `<div class="ua-head"><div><h2 id="uaSetTitle">Integration settings</h2><p class="muted">Saved here, these override the <code>UNIFIED_API_*</code> environment variables.</p></div></div>
+      <form id="uaSettingsForm" autocomplete="off">
+        <div class="ua-switch-row"><span><b>Use live lookups</b><br><small class="faint">Off: live lookups and automatic staff enrichment are paused.</small></span>${sw(s.switched_on, 'Use live lookups', 'id="uaEnabled"')}</div>
+        <label class="field"><span>API URL ${sourceTag(s.source?.url)}</span><input class="input mono" name="url" type="url" value="${esc(s.url || '')}" placeholder="http://10.0.0.20:4100"></label>
+        <label class="field"><span>API key ${s.key_configured ? `<span class="badge resolved" style="margin-left:6px">Set</span>${sourceTag(s.source?.key)}` : '<span class="badge pending" style="margin-left:6px">Not set</span>'}</span><input class="input" name="key" type="password" autocomplete="new-password" placeholder="${s.key_configured ? 'Leave blank to keep the current key' : 'Paste the X-Api-Key value'}"></label>
+        <label class="field"><span>Timeout (ms)</span><input class="input" name="timeout_ms" type="number" min="1000" max="60000" step="500" value="${esc(s.timeout_ms || 8000)}"></label>
+        <p class="hint">The key is kept on the server and never sent back to the browser.</p>
+        <div class="flex" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" type="submit">Save settings</button>${s.source?.key === 'saved' ? '<button class="btn btn-ghost" type="button" id="uaClearKey">Remove saved key</button>' : ''}</div>
+      </form>`;
+    const enabledBtn = setEl.querySelector('#uaEnabled');
+    enabledBtn.onclick = () => enabledBtn.setAttribute('aria-checked', String(enabledBtn.getAttribute('aria-checked') !== 'true'));
+    setEl.querySelector('form').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.currentTarget));
+      const body = { url: fd.url, timeout_ms: fd.timeout_ms, enabled: enabledBtn.getAttribute('aria-checked') === 'true' };
+      if (fd.key) body.key = fd.key;
+      await saveSettings(body, 'Settings saved.');
     };
+    const clear = setEl.querySelector('#uaClearKey');
+    if (clear) clear.onclick = () => saveSettings({ clear_key: true }, 'Saved key removed.');
+  }
+  async function saveSettings(body, message) {
+    try { settings = await api('/admin/unified-api-console/settings', { method: 'PUT', body }); toast(message, 'ok'); renderSettings(); checkConnection(); }
+    catch (e) { toast(e.message, 'err'); }
   }
 
-  try { await load(); } catch (e) { view.querySelector('#b').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  // ---- Lookup fields ------------------------------------------------------
+  function renderFields() {
+    fieldsEl.innerHTML = `<div class="ua-head"><div><h2 id="uaFieldsTitle">Fields shown on lookup</h2><p class="muted">Toggle fields to show on profiles. Drag or use arrows to reorder; click the pencil to rename. Switched-off fields move to the bottom. New API fields appear after lookup.</p></div></div>
+      <div class="ua-cols">${['STUDENT', 'STAFF', 'PROSPECTIVE'].map((type) => {
+        const list = fields[type] || []; const on = list.filter((f) => f.visible).length;
+        return `<div class="ua-col"><h3>${TYPE_NAMES[type]} <span class="count">${on} of ${list.length} shown</span></h3>
+          <div class="flex" style="gap:6px;margin:6px 0 8px"><button class="btn btn-ghost btn-sm" type="button" data-all="${type}" data-on="1">Show all</button><button class="btn btn-ghost btn-sm" type="button" data-all="${type}" data-on="0">Hide all</button></div>
+          <div class="ua-field-list" data-type="${type}" tabindex="0" role="region" aria-label="${TYPE_NAMES[type]} lookup fields">${list.map((f, i) => `<div class="ua-field ${f.visible ? '' : 'off'}" data-key="${esc(f.key)}">
+            <span class="ua-grip reorder-handle" aria-hidden="true" title="Drag to reorder">⋮⋮</span>
+            <div class="name"><b>${esc(f.label)}${f.built_in ? '' : '<span class="ua-learned">from API</span>'}</b><code>${esc(f.key)}${f.custom ? ` · default: ${esc(f.default_label)}` : ''}</code></div>
+            <div class="ua-tools">
+              <button class="btn btn-ghost btn-sm ua-rename" type="button" data-rename title="Rename how this field is labelled" aria-label="Rename ${esc(f.label)}">✎</button>
+              <button class="btn btn-ghost btn-sm ua-move" type="button" data-move="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(f.label)} up">↑</button>
+              <button class="btn btn-ghost btn-sm ua-move" type="button" data-move="1" ${i === list.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(f.label)} down">↓</button>
+              ${sw(f.visible, `Show ${f.label} for ${TYPE_NAMES[type].toLowerCase()}`, `data-type="${type}" data-key="${esc(f.key)}"`)}
+            </div></div>`).join('')}</div>
+        </div>`;
+      }).join('')}</div>`;
+    fieldsEl.querySelectorAll('.switch[data-key]').forEach((b) => b.onclick = () => setVisible(b.dataset.type, { [b.dataset.key]: b.getAttribute('aria-checked') !== 'true' }));
+    fieldsEl.querySelectorAll('[data-all]').forEach((b) => b.onclick = () => setVisible(b.dataset.all, Object.fromEntries((fields[b.dataset.all] || []).map((f) => [f.key, b.dataset.on === '1']))));
+    fieldsEl.querySelectorAll('.ua-field-list').forEach(wireOrdering);
+    fieldsEl.querySelectorAll('[data-rename]').forEach((b) => b.onclick = () => startRename(b.closest('.ua-field')));
+  }
+
+  // Rename a field's label in place: Enter or Save keeps it, Esc cancels, and
+  // Reset goes back to the default label. The new label is used on every
+  // profile, the client PDF and the test lookup.
+  function startRename(row) {
+    const type = row.closest('.ua-field-list').dataset.type; const key = row.dataset.key;
+    const f = (fields[type] || []).find((x) => x.key === key); if (!f) return;
+    const name = row.querySelector('.name'); const before = name.innerHTML;
+    row.classList.add('renaming');
+    name.innerHTML = `<form class="ua-rename-form"><input class="input" name="label" maxlength="60" value="${esc(f.label)}" aria-label="Label for ${esc(f.key)}" placeholder="${esc(f.default_label)}"><div class="flex" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-sm" type="button" data-cancel>Cancel</button>${f.custom ? `<button class="btn btn-ghost btn-sm" type="button" data-reset>Reset to "${esc(f.default_label)}"</button>` : ''}</div><code>${esc(f.key)}</code></form>`;
+    const form = name.querySelector('form'); const input = form.elements.label;
+    input.focus(); input.select();
+    const done = () => { row.classList.remove('renaming'); renderFields(); };
+    const save = async (label) => {
+      try { fields = await api('/admin/unified-api-console/field-label', { method: 'PUT', body: { type, key, label } }); toast(label ? 'Label saved' : 'Label reset', 'ok'); if (lastTest?.type === type) { const nf = fields[type].find((x) => x.key === key); for (const t of lastTest.fields) if (t.key === key) t.label = nf.label; renderTest(); } done(); }
+      catch (err) { toast(err.message, 'err'); }
+    };
+    form.addEventListener('submit', (e) => { e.preventDefault(); const label = input.value.trim(); if (label === f.label) { done(); return; } save(label === f.default_label ? '' : label); });
+    form.querySelector('[data-cancel]').onclick = () => { name.innerHTML = before; row.classList.remove('renaming'); renderFields(); };
+    form.querySelector('[data-reset]')?.addEventListener('click', () => save(''));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); done(); } });
+  }
+
+  // ↑/↓ buttons and drag and drop within one type's list; each change saves the full order.
+  function wireOrdering(listEl) {
+    const type = listEl.dataset.type;
+    const keys = () => [...listEl.querySelectorAll('.ua-field')].map((row) => row.dataset.key);
+    listEl.querySelectorAll('[data-move]').forEach((b) => b.onclick = () => {
+      const list = keys(); const key = b.closest('.ua-field').dataset.key;
+      const i = list.indexOf(key); const j = i + Number(b.dataset.move);
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      saveOrder(type, list, key, b.dataset.move);
+    });
+    // Drag by the grip with mouse, pen or touch (pointer events, so it also works on phones).
+    let dragging = null;
+    let pointerY = 0;
+    let scrollFrame = null;
+    let lastFrame = null;
+    const moveRow = () => {
+      const bounds = listEl.getBoundingClientRect();
+      const top = Math.max(0, bounds.top);
+      const bottom = Math.min(window.innerHeight, bounds.bottom);
+      if (bottom <= top) return;
+      const y = Math.max(top + 1, Math.min(bottom - 1, pointerY));
+      for (const row of listEl.querySelectorAll('.ua-field')) {
+        if (row === dragging) continue;
+        const box = row.getBoundingClientRect();
+        if (y < box.top || y > box.bottom) continue;
+        const after = y > box.top + box.height / 2;
+        if (after && row.nextElementSibling !== dragging) row.after(dragging);
+        else if (!after && row.previousElementSibling !== dragging) row.before(dragging);
+        break;
+      }
+    };
+    const autoScroll = (time) => {
+      if (!dragging || !listEl.isConnected) { scrollFrame = null; lastFrame = null; return; }
+      const bounds = listEl.getBoundingClientRect();
+      const top = Math.max(0, bounds.top);
+      const bottom = Math.min(window.innerHeight, bounds.bottom);
+      const edge = Math.min(48, Math.max(0, (bottom - top) / 3));
+      let speed = 0;
+      if (edge > 0 && pointerY < top + edge) speed = -Math.min(1, (top + edge - pointerY) / edge);
+      else if (edge > 0 && pointerY > bottom - edge) speed = Math.min(1, (pointerY - bottom + edge) / edge);
+      const elapsed = lastFrame == null ? 16 : Math.min(40, time - lastFrame);
+      lastFrame = time;
+      if (speed) {
+        listEl.scrollTop += speed * elapsed * 0.65;
+        moveRow();
+      }
+      scrollFrame = requestAnimationFrame(autoScroll);
+    };
+    listEl.addEventListener('pointerdown', (e) => {
+      const grip = e.target.closest('.ua-grip'); if (!grip || e.button > 0 || dragging) return;
+      e.preventDefault();
+      dragging = grip.closest('.ua-field');
+      pointerY = e.clientY;
+      dragging.classList.add('dragging');
+      grip.setPointerCapture(e.pointerId);
+      lastFrame = null;
+      scrollFrame = requestAnimationFrame(autoScroll);
+    });
+    listEl.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      pointerY = e.clientY;
+      moveRow();
+    });
+    const drop = () => {
+      if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
+      scrollFrame = null; lastFrame = null;
+      if (!dragging) return;
+      dragging.classList.remove('dragging'); dragging = null;
+      const before = (fields[type] || []).map((f) => f.key).join(); const after = keys();
+      if (after.join() !== before) saveOrder(type, after);
+    };
+    listEl.addEventListener('pointerup', drop);
+    listEl.addEventListener('pointercancel', drop);
+  }
+  async function saveOrder(type, keys, focusKey, dir) {
+    try {
+      fields = await api('/admin/unified-api-console/field-order', { method: 'PUT', body: { type, keys } });
+      const positions = [...fieldsEl.querySelectorAll('.ua-field-list')].map(el => el.scrollTop);
+      renderFields();
+      fieldsEl.querySelectorAll('.ua-field-list').forEach((el, i) => { el.scrollTop = positions[i] || 0; });
+      // Keep keyboard focus on the moved row's arrow so it can be moved again.
+      if (focusKey) {
+        const row = fieldsEl.querySelector(`.ua-field-list[data-type="${type}"] .ua-field[data-key="${CSS.escape(focusKey)}"]`);
+        const btn = row && (row.querySelector(`[data-move="${dir}"]:not([disabled])`) || row.querySelector('[data-move]:not([disabled])'));
+        if (btn) btn.focus({ preventScroll: true });
+      }
+      if (lastTest?.type === type) { const rank = (k) => { const i = keys.indexOf(k); return i < 0 ? keys.length : i; }; lastTest.fields.sort((a, b) => rank(a.key) - rank(b.key)); renderTest(); }
+    } catch (e) { toast(e.message, 'err'); renderFields(); }
+  }
+  async function setVisible(type, changes) {
+    try {
+      fields = await api('/admin/unified-api-console/fields', { method: 'PUT', body: { [type]: changes } });
+      // Rendering replaces the lists. Restore the position the user is at when
+      // the save finishes, including focus and horizontal table scrolling.
+      const pagePosition = { top: window.scrollY, left: window.scrollX };
+      const roots = [fieldsEl, testEl];
+      const positions = roots.map(root => [...root.querySelectorAll('.ua-field-list, .table-wrap')].map(el => ({ top: el.scrollTop, left: el.scrollLeft })));
+      const active = document.activeElement;
+      const focusRoot = roots.findIndex(root => root.contains(active));
+      const focusKey = active?.dataset.key;
+      const focusType = active?.dataset.type;
+      const focusAll = active?.dataset.all;
+      const focusOn = active?.dataset.on;
+      renderFields();
+      if (lastTest?.type === type) {
+        for (const f of lastTest.fields) if (f.key in changes) f.visible = changes[f.key];
+        const order = new Map(fields[type].map((f, i) => [f.key, i]));
+        lastTest.fields.sort((a, b) => (order.get(a.key) ?? order.size) - (order.get(b.key) ?? order.size));
+        renderTest();
+      }
+      if (focusRoot >= 0) {
+        const selector = focusKey ? `.switch[data-type="${CSS.escape(focusType)}"][data-key="${CSS.escape(focusKey)}"]`
+          : focusAll ? `[data-all="${CSS.escape(focusAll)}"][data-on="${CSS.escape(focusOn)}"]` : null;
+        if (selector) roots[focusRoot].querySelector(selector)?.focus({ preventScroll: true });
+      }
+      roots.forEach((root, i) => root.querySelectorAll('.ua-field-list, .table-wrap').forEach((el, j) => {
+        if (positions[i][j]) { el.scrollTop = positions[i][j].top; el.scrollLeft = positions[i][j].left; }
+      }));
+      window.scrollTo({ ...pagePosition, behavior: 'instant' });
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ---- Test lookup --------------------------------------------------------
+  // A list of courses is counted in courses; any other list in rows.
+  const listNoun = (f) => (/transaction.?history/i.test(f.key) ? ['transaction', 'transactions'] : /course/i.test(`${f.key} ${f.label}`) ? ['course', 'courses'] : ['row', 'rows']);
+  function renderTest(message) {
+    const r = lastTest;
+    let body = message || '';
+    if (!body && r) {
+      const shown = r.fields.filter((f) => f.visible).length;
+      const photo = r.photo_url && r.fields.find((f) => f.key === 'photo_url')?.visible !== false;
+      body = `<div class="ua-person">${photo ? `<img src="${esc(r.photo_url)}" alt="">` : `<span class="ph">${esc((r.full_name || '?').trim().charAt(0))}</span>`}<div><h3>${esc(r.full_name || 'No name returned')}</h3><div class="faint">${esc(TYPE_NAMES[r.type] || r.type)} · <span class="mono">${esc(r.id_number)}</span> · ${r.ms} ms · ${shown} of ${r.fields.length} fields shown on lookup</div></div></div>
+        ${r.errors?.length ? `<div class="banner" style="margin:8px 0"><b>Some fields could not be read</b><div>${r.errors.map((k) => esc(k.replace(/_/g, ' '))).join(', ')}</div></div>` : ''}
+        <div class="table-wrap"><table class="data ua-result-table"><thead><tr><th>Field</th><th>Value</th><th style="width:1%;white-space:nowrap">Show on lookup</th></tr></thead><tbody>
+        ${r.fields.map((f) => `<tr class="${f.visible ? '' : 'off'}"><td>${esc(f.label)}<div class="faint mono" style="font-size:11.5px">${esc(f.key)}${f.stored ? '' : ' · not stored'}</div></td><td class="v">${f.list ? `<button type="button" class="value-link ${f.value === 'Yes' ? 'status-yes' : ''}" data-list-key="${esc(f.key)}">${f.value === 'Yes' ? 'Yes' : f.list.rows.length + ' ' + listNoun(f)[f.list.rows.length === 1 ? 0 : 1] + ': view table'}</button>` : f.value === '' || f.value == null ? '<span class="faint">empty</span>' : /^(Yes|No)$/.test(String(f.value)) ? `<span class="${f.value === 'Yes' ? 'status-yes' : 'status-no'}">${esc(f.value)}</span>` : esc(f.value)}</td><td>${sw(f.visible, `Show ${f.label}`, `data-type="${r.type}" data-key="${esc(f.key)}"`)}</td></tr>`).join('')}
+        </tbody></table></div>
+        <p class="hint">Test lookups do not create or update accounts. Staff field switches control future staff imports; existing values are preserved.</p>`;
+    }
+    testEl.innerHTML = `<div class="ua-head"><div><h2 id="uaTestTitle">Test lookup</h2><p class="muted">Look up a student, staff or admissions ID against the live API and preview the profile, picture and fields returned.</p></div></div>
+      <form class="ua-test-form" id="uaTestForm"><select class="input" name="source"><option value="">All records</option><option value="STUDENT">Students</option><option value="STAFF">Staff</option><option value="PROSPECTIVE">Admissions</option></select><input class="input mono" name="id" placeholder="Student or staff ID" autocomplete="off" required value="${esc(testEl.dataset.id || '')}"><button class="btn btn-primary" type="submit">Look up</button></form>
+      <div id="uaTestResult">${body}</div>`;
+    testEl.querySelector('form').elements.source.value = testEl.dataset.source || '';
+    testEl.querySelector('form').onsubmit = runTest;
+    testEl.querySelectorAll('[data-list-key]').forEach((b) => b.onclick = () => {
+      const f = lastTest.fields.find((x) => x.key === b.dataset.listKey);
+      listModal(f.label, f.list, { subtitle: `${lastTest.full_name || ''} · ${lastTest.id_number}`, noun: listNoun(f) });
+    });
+    testEl.querySelectorAll('.switch[data-key]').forEach((b) => b.onclick = () => setVisible(b.dataset.type, { [b.dataset.key]: b.getAttribute('aria-checked') !== 'true' }));
+  }
+  async function runTest(e) {
+    e.preventDefault();
+    const id = new FormData(e.currentTarget).get('id').trim();
+    testEl.dataset.id = id;
+    testEl.dataset.source = new FormData(e.currentTarget).get('source');
+    const btn = e.currentTarget.querySelector('button'); btn.disabled = true; btn.textContent = 'Looking up…';
+    let r;
+    try { r = await api('/admin/unified-api-console/test-lookup', { method: 'POST', body: { id, source: new FormData(e.currentTarget).get('source') } }); }
+    catch (err) { lastTest = null; renderTest(`<div class="banner" style="margin-top:14px"><b>Test failed</b><div>${esc(err.message)}</div></div>`); return; }
+    if (r.status === 'found') {
+      lastTest = r; renderTest();
+      // The lookup may have taught the server new fields; show them in the toggle list.
+      try { fields = (await api('/admin/unified-api-console/settings')).fields; renderFields(); } catch (_) { /* keep the current list */ }
+      return;
+    }
+    lastTest = null;
+    const reasons = { not_configured: 'The API URL and key are not set.', switched_off: 'Live lookups are switched off in the settings.', timeout: 'The API did not answer in time.' };
+    renderTest(r.status === 'not_found'
+      ? `<div class="banner" style="margin-top:14px"><b>No match</b><div>The API has no student, staff or admissions record for <span class="mono">${esc(id)}</span> (${r.ms} ms).</div></div>`
+      : `<div class="banner" style="margin-top:14px"><b>API unavailable</b><div>${esc(reasons[r.reason] || r.reason || 'No response')}</div></div>`);
+  }
+
+  const searchForm = document.getElementById('uaSearchForm');
+  const searchResult = document.getElementById('uaSearchResult');
+  const reportEl = document.getElementById('uaDiagnosticReport');
+  const copyReport = document.getElementById('uaCopyDiagnostics');
+  searchForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = searchForm.querySelector('button');
+    btn.disabled = true; btn.textContent = 'Testing…';
+    searchResult.textContent = 'Checking health and staff search from the app server…';
+    reportEl.hidden = true; copyReport.hidden = true; document.getElementById('uaSearchMatches')?.replaceChildren();
+    try {
+      const report = await api('/admin/unified-api-console/test-staff-search', { method: 'POST', timeoutMs: 70000, body: { q: new FormData(searchForm).get('q') } });
+      searchResult.innerHTML = report.checks.map(c => `<div class="ua-state" style="margin-top:10px"><span class="ua-dot ${c.ok ? 'ok' : 'bad'}"></span><div><b>${esc(c.endpoint || 'Configuration')}: ${esc(c.code)}</b><small>${c.http_status != null ? `HTTP ${esc(c.http_status)} · ` : ''}${c.ms != null ? `${esc(c.ms)} ms · ` : ''}${c.result_count != null ? `${esc(c.result_count)} matches · ` : ''}${esc(c.hint)}</small></div></div>`).join('');
+      let matches = document.getElementById('uaSearchMatches');
+      if (!matches) { matches = document.createElement('div'); matches.id = 'uaSearchMatches'; searchResult.after(matches); }
+      matches.innerHTML = '';
+      if (report.checks.find(c => c.endpoint === '/staff/search')?.ok) {
+        try {
+          const found = await api('/admin/unified-api-client/search?q=' + encodeURIComponent(new FormData(searchForm).get('q')));
+          if (found.status === 'ok') {
+            matches.innerHTML = found.results.map((person, index) => `<button type="button" class="ua-search-match" data-match="${index}"><img loading="lazy" src="/api/admin/unified-api-client/photo/${encodeURIComponent(person.id_number)}" alt="Staff picture"><span><b>${esc(person.fields.full_name || 'Staff match')}</b><small>${esc(person.fields.id_number || '')}</small><small>${esc(person.fields.email || person.fields.department || '')}</small><small>Open lookup →</small></span></button>`).join('');
+            matches.querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.remove()));
+            matches.querySelectorAll('[data-match]').forEach(button => button.onclick = () => {
+              const person = found.results[Number(button.dataset.match)];
+              const form = testEl.querySelector('form'); form.elements.id.value = person.id_number; form.elements.source.value = 'STAFF'; form.requestSubmit();
+              testEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+          }
+        } catch (_) { /* diagnostics still show whether staff search worked */ }
+      }
+      reportEl.textContent = JSON.stringify(report, null, 2);
+      reportEl.hidden = false; copyReport.hidden = false;
+    } catch (err) { searchResult.textContent = `Diagnostics could not run: ${err.message}`; }
+    finally { btn.disabled = false; btn.textContent = 'Run diagnostics'; }
+  };
+  copyReport.onclick = async () => {
+    try { await navigator.clipboard.writeText(reportEl.textContent); toast('Troubleshooting report copied', 'ok'); }
+    catch (_) { copyTextModal('Troubleshooting report', reportEl.textContent, { title: 'Copy report' }); }
+  };
+
+  await load();
+  await window.VMTL_UNIFIED_TOKENS(document.getElementById("uaTokens"));
 };

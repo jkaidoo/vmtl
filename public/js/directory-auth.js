@@ -233,13 +233,13 @@ window.VMTL_PAGE = async function () {
   }
 
   // ---- Activity -----------------------------------------------------------
-  let actDays = 7;
+  let actDays = 7, actPage = 1, actPerPage = 10, actSearch = '';
   const ago = (iso) => { if (!iso) return '—'; const mins = Math.round((Date.now() - new Date(iso)) / 60000); return mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} d ago`; };
   const KIND = { 'directory.login_success': ['green', 'Signed in'], 'directory.login_failure': ['amber', 'Refused'], 'directory.error': ['red', 'Server error'], 'directory.test': ['grey', 'Test'] };
 
   async function loadActivity() {
     let a;
-    try { a = (await VMTL.api(`/admin/directory-auth/activity?days=${actDays}`)).data; }
+    try { a = (await VMTL.api(`/admin/directory-auth/activity?days=${actDays}&page=${actPage}&per_page=${actPerPage}&search=${encodeURIComponent(actSearch)}`)).data; }
     catch (e) { actEl.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
     const max = Math.max(1, ...a.daily.map((x) => x.success + x.failure + x.error));
     const pct = (n) => Math.round((n / max) * 100);
@@ -281,11 +281,19 @@ window.VMTL_PAGE = async function () {
       </div>
 
       <div class="card pad" style="margin-top:14px">
-        <h3 style="margin:0 0 10px">Latest attempts</h3>
-        ${a.recent.length ? `<div style="overflow:auto"><table class="table" style="width:100%"><thead><tr><th>When</th><th>Result</th><th>Directory</th><th>Username</th><th>Detail</th></tr></thead><tbody>${a.recent.map((e) => { const [color, label] = KIND[e.event_type] || ['grey', e.event_type]; return `<tr><td style="white-space:nowrap">${VMTL.fmtDateTime(e.created_at)}</td><td><span class="badge ${color}">${label}</span></td><td>${esc(e.directory || '—')}</td><td>${esc(e.actor_name || '—')}</td><td class="dim" style="font-size:12px">${esc(e.detail || '')}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">No directory sign-ins in this period.</div>'}
+        <h3 style="margin:0 0 10px">Authentication logs</h3>
+        <form id="actFilters" class="filter-row mb"><div class="field" style="flex:1"><label for="actSearch">Search activity</label><input id="actSearch" placeholder="Person, directory or detail" value="${esc(actSearch)}"></div><button class="btn" type="submit">Search</button><button class="btn" type="button" id="actClear">Clear</button></form>
+        <div class="audit-bar"><div class="dim">${a.meta.total} entries · Page ${a.meta.current_page} of ${a.meta.last_page}</div><div class="right"><label for="actPerPage">Rows per page</label><select id="actPerPage" class="pp">${[10,25,50,100].map(n => `<option ${n === actPerPage ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="btn btn-sm" id="actPrev" ${a.meta.current_page <= 1 ? 'disabled' : ''}>Previous</button><button class="btn btn-sm" id="actNext" ${a.meta.current_page >= a.meta.last_page ? 'disabled' : ''}>Next</button></div></div>
+        ${a.recent.length ? `<div style="overflow:auto"><table class="data"><thead><tr><th>When</th><th>Result</th><th>Directory</th><th>Username</th><th>Detail</th></tr></thead><tbody>${a.recent.map((e) => { const [color, label] = KIND[e.event_type] || ['grey', e.event_type]; return `<tr><td style="white-space:nowrap">${VMTL.fmtDateTime(e.created_at)}</td><td><span class="badge ${color}">${label}</span></td><td>${esc(e.directory || '—')}</td><td>${esc(e.actor_name || '—')}</td><td class="dim" style="font-size:12px">${esc(e.detail || '')}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">No directory sign-ins in this period.</div>'}
       </div>`;
 
-    actEl.querySelectorAll('[data-days]').forEach((b) => b.onclick = () => { actDays = Number(b.dataset.days); loadActivity(); });
+    actEl.querySelectorAll('[data-days]').forEach((b) => b.onclick = () => { actDays = Number(b.dataset.days); actPage = 1; loadActivity(); });
+    actPage = a.meta.current_page;
+    actEl.querySelector('#actFilters').onsubmit = (e) => { e.preventDefault(); actSearch = actEl.querySelector('#actSearch').value.trim(); actPage = 1; loadActivity(); };
+    actEl.querySelector('#actClear').onclick = () => { actSearch = ''; actPage = 1; loadActivity(); };
+    actEl.querySelector('#actPerPage').onchange = (e) => { actPerPage = Number(e.target.value); actPage = 1; loadActivity(); };
+    actEl.querySelector('#actPrev').onclick = () => { actPage -= 1; loadActivity(); };
+    actEl.querySelector('#actNext').onclick = () => { actPage += 1; loadActivity(); };
     actEl.querySelector('#actRefresh').onclick = loadActivity;
   }
 

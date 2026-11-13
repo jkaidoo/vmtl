@@ -10,7 +10,7 @@ window.VMTL_PAGE = async function () {
     `<div class="track-wrap">
        <div class="track-map-col">
          <div id="trackBanner"></div>
-         <div id="trackMap" class="track-map"><div class="track-map-empty"><span class="spinner"></span><p>Loading map…</p></div></div>
+         <div class="track-map-stage"><div id="trackMap" class="track-map"><div class="track-map-empty"><span class="spinner"></span><p>Loading map…</p></div></div><div class="track-map-heading" hidden><strong>Fleet activity</strong><span>Vehicle direction follows GPS heading</span></div><div class="track-map-legend" hidden><span><i class="live"></i>On trip</span><span><i class="idle"></i>Idle</span><span><i class="stale"></i>Last seen</span></div></div>
        </div>
        <aside class="track-side">
          <div class="track-side-head">
@@ -79,8 +79,6 @@ window.VMTL_PAGE = async function () {
     if (sec < 3600) return `${Math.round(sec / 60)} min ago`;
     return `${Math.round(sec / 3600)} h ago`;
   }
-  const COLORS = { live: '#009540', stale: '#9aa0a6', idle: '#1a73e8' };
-  function colorFor(v) { if (v.stale) return COLORS.stale; return v.on_trip ? COLORS.live : COLORS.idle; }
 
   // ---- Google Maps loader --------------------------------------------------
   function loadMaps(key) {
@@ -120,9 +118,10 @@ window.VMTL_PAGE = async function () {
     if (state.destroyed) return false;
     const g = window.google;
     state.gmap = new g.maps.Map(document.getElementById('trackMap'), {
-      center, zoom: (state.config && state.config.default_zoom) || 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
-      styles: document.documentElement.getAttribute('data-theme') === 'dark' ? DARK_STYLE : undefined,
+      ...VMTL.vehicleMapOptions(), center, zoom: (state.config && state.config.default_zoom) || 13,
     });
+    view.querySelectorAll('.track-map-heading,.track-map-legend').forEach(overlay => overlay.hidden = false);
+    VMTL.onLeave(VMTL.watchMapTheme(state.gmap));
     return true;
   }
 
@@ -143,11 +142,10 @@ window.VMTL_PAGE = async function () {
       return;
     }
     list.innerHTML = items.map((v) => {
-      const dotColor = colorFor(v);
       const status = v.stale ? 'Last seen' : (v.on_trip ? 'On trip' : 'Idle');
       const sub = [v.driver_name, v.destination && `→ ${v.destination}`].filter(Boolean).join(' · ') || v.registration_number;
       return `<button class="track-row ${state.selected === v.vehicle_id ? 'sel' : ''}" data-id="${v.vehicle_id}">
-        <span class="track-row-dot" style="background:${dotColor}"></span>
+        <span class="track-row-marker" aria-hidden="true">${VMTL.vehicleMarkerSvg(v)}</span>
         <span class="track-row-main">
           <span class="track-row-top"><strong>${VMTL.esc(v.vehicle_number)}</strong><span class="track-dist">${fmtDist(v._dist)}</span></span>
           <span class="track-row-sub">${VMTL.esc(sub)}</span>
@@ -263,14 +261,3 @@ window.VMTL_PAGE = async function () {
   }
   poll();
 };
-
-// Muted dark map styling to match the app's dark theme.
-const DARK_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#1f2733' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1f2733' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#9aa7b8' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2c3747' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#b7c2d0' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17202b' }] },
-  { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-];

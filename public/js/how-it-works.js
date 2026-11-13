@@ -4,6 +4,14 @@
 // are *yours* (by capability) are highlighted, pulsed, and annotated. A timeline
 // spine draws itself in and the step cards reveal with a stagger.
 window.VMTL_PAGE = function () {
+  if (VMTL.requesterOnly()) {
+    const steps = [
+      ['Request a ride', 'If your account is awaiting access, kindly contact your IT Manager to assign you to the appropriate group. Once assigned, choose New ride request on your dashboard. Enter your travel date, departure and return times, destination, purpose and passenger count, then submit.'],
+      ['Wait for your ride', 'Open your request from your dashboard to check its status. If changes are requested, update and resubmit it. Once a ride is assigned, check the vehicle, driver and travel details, and be ready at your departure time.']
+    ];
+    VMTL.view.innerHTML = VMTL.pageHead('How it works', 'Request a ride and follow its progress.') + `<div class="hiw-flow">${steps.map(([title, desc], i) => `<div class="hiw-step you"><div class="hiw-ic">${VMTL.icon('requests')}</div><div class="hiw-body"><h3>${i + 1}. ${title}</h3><p>${desc}</p></div></div>`).join('')}</div>`;
+    return;
+  }
   const can = (c) => VMTL.can(c);
   const isSuper = VMTL.isSuper();
 

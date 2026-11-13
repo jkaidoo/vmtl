@@ -183,7 +183,7 @@ module.exports = function register(router) {
   router.get('/admin/directory-auth', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: {
     directories: await directoryAuth.list(), offline_days: await directoryAuth.offlineDays(), offline_days_max: directoryAuth.OFFLINE_DAYS_MAX,
   } }));
-  router.get('/admin/directory-auth/activity', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days) }));
+  router.get('/admin/directory-auth/activity', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days, req.query) }));
   router.post('/admin/directory-auth', requireAuth, requireSystemAdmin, async (req, res) => {
     try {
       const entry = await directoryAuth.create(req.body || {});
@@ -405,6 +405,29 @@ module.exports = function register(router) {
   });
   // ---- Unified API (inbound): pull live staff data for OU enrichment -------
   const unifiedApi = require('../../services/unifiedApi');
+  router.get('/admin/unified-api-client/photo/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    const photo = await unifiedApi.staffPhoto(req.params.id);
+    if (!photo) return res.status(404).end();
+    const [, type, data] = photo.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+    res.set({ 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' });
+    res.send(Buffer.from(data, 'base64'));
+  });
+  const unifiedConsole = require('../../services/unifiedApiConsole');
+  const consoleGet = (path, fn) => router.get(`/admin/unified-api-console/${path}`, requireAuth, requireSystemAdmin, async (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: await fn(req) }); });
+  const consoleWrite = (method, path, fn) => router[method](`/admin/unified-api-console/${path}`, requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await fn(req);
+    if (method === 'put') await audit.from(req, { action: 'unified_api.configured', description: `${req.session.user.name} updated Unified API ${path}` });
+    res.set('Cache-Control', 'no-store'); res.json({ data });
+  });
+  consoleGet('settings', async () => ({ settings: await unifiedConsole.publicSettings(), fields: await unifiedConsole.fieldSettings() }));
+  consoleGet('status', () => unifiedConsole.status());
+  consoleWrite('put', 'settings', (req) => unifiedConsole.saveSettings(req.body));
+  consoleWrite('put', 'fields', (req) => unifiedConsole.saveFieldSettings(req.body));
+  consoleWrite('put', 'field-label', (req) => unifiedConsole.saveFieldLabel(req.body));
+  consoleWrite('put', 'field-order', (req) => unifiedConsole.saveFieldOrder(req.body));
+  consoleWrite('post', 'test-staff-search', (req) => unifiedConsole.testStaffSearch(req.body.q));
+  consoleWrite('post', 'test-lookup', (req) => unifiedConsole.testLookup(req.body.id, { source: req.body.source }));
   router.put('/admin/unified-api-client/fields', requireAuth, requireSystemAdmin, async (req, res) => {
     const fields = await unifiedApi.saveFields(req.body.fields);
     await audit.from(req, { action: 'unified_api.fields_configured', description: `${req.session.user.name} updated Unified API staff data fields` });

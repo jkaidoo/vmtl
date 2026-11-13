@@ -2,6 +2,7 @@
 // Dashboard: KPI tiles, today's schedule, vehicle board, maintenance alerts, and
 // a role-appropriate feed (pending approvals / my requests / my trips).
 window.VMTL_PAGE = async function () {
+  if (VMTL.requesterOnly()) return renderClientDashboard();
   const view = VMTL.view;
   view.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
   let data;
@@ -48,3 +49,28 @@ window.VMTL_PAGE = async function () {
   view.querySelector('#refreshDashboard').onclick = () => window.VMTL_PAGE();
   view.querySelectorAll('tr.click[data-href]').forEach((tr) => { tr.onclick = () => { location.href = tr.getAttribute('data-href'); }; });
 };
+
+async function renderClientDashboard() {
+  const view = VMTL.view;
+  const esc = VMTL.esc;
+  const awaiting = !VMTL.user.role || !VMTL.user.org_unit;
+  const actions = !awaiting && VMTL.can('requests.create') ? '<a class="btn btn-primary" href="/request-create.html">New ride request</a>' : '';
+  view.innerHTML = VMTL.pageHead('My dashboard', 'Your ride requests and travel history.', actions) +
+    (awaiting ? '<div class="alert-accent amber mb"><h3>Welcome to UITS VMTL</h3><p>Kindly contact your IT Manager to assign you to the appropriate group.</p></div>' : '') +
+    '<div class="card pad mb"><h3>Your rides</h3><p class="dim">Open a request to see its status and assigned ride.</p><a href="/how-it-works.html">How to request and wait for a ride</a></div><div class="card"><div id="clientRides"></div></div><div class="audit-bar"><span class="dim" id="rideCount"></span><div class="right"><button class="btn btn-sm" id="ridePrev">Previous</button><button class="btn btn-sm" id="rideNext">Next</button></div></div>';
+  let page = 1;
+  const load = async () => {
+    const host = view.querySelector('#clientRides');
+    host.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+    try {
+      const r = await VMTL.api(`/vehicle-requests?page=${page}&per_page=10`);
+      host.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Request</th><th>Destination</th><th>Travel date</th><th>Status</th></tr></thead><tbody>${r.data.map(x => `<tr><td><a href="/requests.html?id=${encodeURIComponent(x.id)}">${esc(x.request_number)}</a></td><td>${esc(x.destination)}</td><td>${VMTL.fmtDate(x.travel_date)}</td><td>${VMTL.statusBadge(x)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">You have not requested any rides yet.</div>';
+      view.querySelector('#rideCount').textContent = `${r.meta.total} requests · Page ${page} of ${r.meta.last_page}`;
+      view.querySelector('#ridePrev').disabled = page <= 1;
+      view.querySelector('#rideNext').disabled = page >= r.meta.last_page;
+    } catch (e) { host.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  };
+  view.querySelector('#ridePrev').onclick = () => { page -= 1; load(); };
+  view.querySelector('#rideNext').onclick = () => { page += 1; load(); };
+  await load();
+}

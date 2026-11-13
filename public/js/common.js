@@ -429,7 +429,7 @@
   ];
 
   function visible(item) {
-    if (VMTL.requesterOnly()) return item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';
+    if (VMTL.requesterOnly()) return item.key === 'dashboard' || item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';
     if (((VMTL.meta && VMTL.meta.nav_hidden) || []).includes(item.key) && item.key !== 'navigation') return false;
     if (item.superOnly) return VMTL.isSuper();
     if (item.systemAdmin) return VMTL.isSuper() || VMTL.can('system.admin');
@@ -443,7 +443,7 @@
     const sections = NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length);
     const allItems = sections.flatMap((s) => s.items);
     const navHtml = sections.map((s) => `<div class="nav-section"><p>${esc(s.label)}</p>${s.items.map((it) => `<a class="nav-link ${it.key === activeKey ? 'active' : ''}" href="${it.to}">${icon(it.icon)}<span>${esc(it.label)}</span></a>`).join('')}</div>`).join('');
-    const home = VMTL.requesterOnly() ? '/requests.html' : '/dashboard.html';
+    const home = '/dashboard.html';
     const brand = `<a class="brand" href="${home}"><img src="/knust-logo.png" alt="KNUST"><div><div class="t1">UITS VMTL</div><div class="t2">Vehicle Management</div></div></a>`;
     const current = allItems.find((it) => it.key === activeKey);
     const title = current ? current.label : 'UITS VMTL';
@@ -469,7 +469,7 @@
             <div class="usermenu">
               <button class="usermenu-trigger" id="userMenuBtn" aria-haspopup="true" aria-expanded="false">
                 <div class="who"><b>${esc(u.name)}</b><span>${esc(u.is_super_admin ? 'App Owner' : (u.role ? u.role.label : ''))}</span></div>
-                <div class="avatar">${esc((u.name || '?').charAt(0))}</div>
+                <div class="avatar">${u.avatar ? `<img src="${esc(u.avatar)}" alt="${esc(u.name || 'Profile')}" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : esc((u.name || '?').charAt(0))}</div>
                 <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <div class="menu hidden" id="userMenu" role="menu">

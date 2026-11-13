@@ -41,9 +41,13 @@ test('disabled import fields preserve stored values and pause pending organisati
   const fs = require('node:fs');
   const vm = require('node:vm');
   let update;
+  let photoEnabled = false;
+  let photoValue = null;
+  let photoCalls = 0;
   const api = {
     enabled: async () => true,
-    fieldSettings: async () => ['id_number', 'rank', 'designation', 'staff_category', 'staff_type', 'college', 'faculty', 'department', 'org_unit'].map((key) => ({ key, enabled: key === 'designation' })),
+    fieldSettings: async () => ['id_number', 'rank', 'designation', 'staff_category', 'staff_type', 'college', 'faculty', 'department', 'org_unit', 'photo_url'].map((key) => ({ key, enabled: key === 'designation' || (key === 'photo_url' && photoEnabled) })),
+    staffPhoto: async () => { photoCalls++; return photoValue; },
     searchStaff: async () => ({ status: 'ok', results: [{ id_number: '42', email: 'person@test' }] }),
     staffProfile: async () => ({ status: 'found', id_number: '42', fields: { rank: 'New rank', designation: 'Officer', department: 'New department' } }),
   };
@@ -64,4 +68,12 @@ test('disabled import fields preserve stored values and pause pending organisati
   assert.doesNotMatch(update.sql, /staff_rank =|staff_id =|department_name =|college_name =|(?:^|, )org_unit_id =/);
   assert.strictEqual(result.pendingOrgUnitId, 3);
   assert.strictEqual(await context.module.exports.sweepAgedPendingMoves(), 0);
+  assert.strictEqual(photoCalls, 0);
+  photoEnabled = true;
+  await context.module.exports.syncUser(1, 'person@test', { force: true });
+  assert.doesNotMatch(update.sql, /avatar =/);
+  photoValue = 'data:image/png;base64,example';
+  await context.module.exports.syncUser(1, 'person@test', { force: true });
+  assert.match(update.sql, /avatar = \?/);
+  assert.ok(update.params.includes(photoValue));
 });

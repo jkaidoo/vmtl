@@ -13,14 +13,14 @@
   }
 
   // If already signed in, skip the form.
-  VMTL.api('/me').then((me) => { if (me && me.user) location.href = me.user.requester_only ? '/requests.html' : '/dashboard.html'; }).catch(() => {});
+  VMTL.api('/me').then((me) => { if (me && me.user) location.href = '/dashboard.html'; }).catch(() => {});
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     btn.disabled = true; btn.textContent = 'Signing in…';
     try {
       const res = await VMTL.api('/login', { method: 'POST', body: { email: document.getElementById('email').value.trim(), password: document.getElementById('password').value, device_name: deviceName() } });
-      location.href = res.user.requester_only ? '/requests.html' : '/dashboard.html';
+      location.href = '/dashboard.html';
     } catch (err) {
       VMTL.toast(err.message || 'Those credentials do not match our records.', 'err');
       btn.disabled = false; btn.textContent = 'Sign in';

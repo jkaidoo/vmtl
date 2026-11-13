@@ -34,8 +34,9 @@ function fetchTrusting(ca) {
   return (url, { headers = {}, signal } = {}) => new Promise((resolve, reject) => {
     const req = https.get(url, { headers, ca: ca ? [...tls.rootCertificates, ca] : undefined, signal }, (res) => {
       const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => { const body = Buffer.concat(chunks).toString('utf8'); resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, json: async () => JSON.parse(body) }); });
+      let size = 0;
+      res.on('data', (c) => { size += c.length; if (size > 4_000_000) { res.destroy(new Error('Unified API response exceeds size limit')); return; } chunks.push(c); });
+      res.on('end', () => { const body = Buffer.concat(chunks); resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, headers: { get: (name) => res.headers[name.toLowerCase()] }, json: async () => JSON.parse(body.toString('utf8')), arrayBuffer: async () => body }); });
       res.on('error', reject);
     });
     req.on('error', reject);
@@ -58,13 +59,13 @@ async function config() {
     rawEnabled = await settings.get('unified_api_enabled', '1');
   } catch (_) { /* settings table not ready */ }
   const switchedOn = !(rawEnabled === '0' || rawEnabled === false || rawEnabled === 0);
-  const ms = Number.parseInt(process.env.UNIFIED_API_TIMEOUT_MS, 10);
+  const ms = Number.parseInt(await settings.get('unified_api_timeout_ms', '') || process.env.UNIFIED_API_TIMEOUT_MS, 10);
   const timeoutMs = ms > 0 ? Math.min(ms, 60000) : 8000;
-  return { url, key, timeoutMs, switchedOn, enabled: Boolean(switchedOn && url && key) };
+  return { url, key, timeoutMs, switchedOn, enabled: Boolean(switchedOn && url && key), source: { url: await settings.get('unified_api_url', '') ? 'saved' : url ? 'env' : 'none', key: await settings.get('unified_api_key', '') ? 'saved' : key ? 'env' : 'none' } };
 }
 async function enabled() { return (await config()).enabled; }
 
-const FIELD_LABELS = { id_number: 'Staff ID', full_name: 'Full name', email: 'Email', username: 'Username', college: 'College', faculty: 'Faculty', department: 'Department', rank: 'Rank', designation: 'Designation', staff_type: 'Staff type', staff_category: 'Staff category', org_unit: 'Automatic organisational-unit updates' };
+const FIELD_LABELS = { id_number: 'Staff ID', full_name: 'Full name', email: 'Email', username: 'Username', photo_url: 'Profile picture', college: 'College', faculty: 'Faculty', department: 'Department', rank: 'Rank', designation: 'Designation', staff_type: 'Staff type', staff_category: 'Staff category', org_unit: 'Automatic organisational-unit updates' };
 async function fieldSettings() {
   let saved = await settings.get('unified_api_fields', '{}');
   if (typeof saved === 'string') { try { saved = JSON.parse(saved); } catch (_) { saved = {}; } }
@@ -89,7 +90,22 @@ async function manualSearch(q) {
 async function manualProfile(id) {
   const out = await staffProfile(id);
   if (out.status !== 'found') return out;
-  return { status: 'found', fields: await selectedFields({ ...out.fields, id_number: out.id_number, designation: out.fields.designation || out.fields.designation_group }) };
+  const photo = await staffPhoto(id);
+  return { status: 'found', fields: await selectedFields({ ...out.fields, photo_url: photo, id_number: out.id_number, designation: out.fields.designation || out.fields.designation_group }) };
+}
+
+async function staffPhoto(idNumber) {
+  try {
+    const cfg = await config();
+    if (!cfg.enabled || !(await fieldSettings()).find((f) => f.key === 'photo_url').enabled) return null;
+    const id = String(idNumber || '').trim();
+    if (!id) return null;
+    const res = await doFetch(`${cfg.url}/staff/${encodeURIComponent(id)}/photo`, { headers: headers(cfg), signal: AbortSignal.timeout(cfg.timeoutMs) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!body?.found) return null;
+    return await require('./staffPhoto').normalise(body.photo_url, { baseUrl: cfg.url, fetchImpl: doFetch, timeoutMs: cfg.timeoutMs });
+  } catch (_) { return null; }
 }
 
 // Admin view of the config; the API key is never returned.
@@ -98,8 +114,18 @@ async function publicConfig() {
   return { url: c.url, has_key: Boolean(c.key), enabled: c.enabled, switched_on: c.switchedOn, fields: await fieldSettings() };
 }
 async function saveConfig(body = {}) {
+  if (body.url) {
+    let url; try { url = new URL(String(body.url)); } catch (_) { throw Object.assign(new Error('Enter a valid API URL.'), { status: 400 }); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Object.assign(new Error('Use an HTTP or HTTPS API URL without credentials, query or fragment.'), { status: 400 });
+  }
+  if (body.timeout_ms !== undefined) {
+    const ms = Number(body.timeout_ms);
+    if (!Number.isInteger(ms) || ms < 1000 || ms > 60000) throw Object.assign(new Error('Timeout must be between 1000 and 60000 ms.'), { status: 400 });
+    await settings.set('unified_api_timeout_ms', String(ms));
+  }
   if (body.url !== undefined) await settings.set('unified_api_url', String(body.url || '').trim().replace(/\/+$/, ''));
   if (body.key) await settings.set('unified_api_key', String(body.key));
+  if (body.clear_key) await settings.set('unified_api_key', '');
   if (body.enabled !== undefined) await settings.set('unified_api_enabled', body.enabled ? '1' : '0');
   return publicConfig();
 }
@@ -150,4 +176,4 @@ async function status(sample) {
   return report;
 }
 
-module.exports = { config, enabled, publicConfig, saveConfig, searchStaff, staffProfile, status, fieldSettings, saveFields, manualSearch, manualProfile };
+module.exports = { config, enabled, publicConfig, saveConfig, searchStaff, staffProfile, status, fieldSettings, saveFields, manualSearch, manualProfile, staffPhoto, doFetch };

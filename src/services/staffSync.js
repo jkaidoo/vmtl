@@ -122,6 +122,10 @@ async function syncUser(userId, identity, { force = false } = {}) {
     };
     const sourceFields = { staff_id: 'id_number', staff_rank: 'rank', designation: 'designation', staff_category: 'staff_category', staff_type: 'staff_type', college_name: 'college', department_name: 'department' };
     for (const [column, source] of Object.entries(sourceFields)) if (!allowed[source]) delete fields[column];
+    if (allowed.photo_url) {
+      const photo = await unifiedApi.staffPhoto(prof.id_number);
+      if (photo) fields.avatar = photo;
+    }
 
     const graceMs = (await graceDays()) * DAY_MS;
     let setOrg = null;

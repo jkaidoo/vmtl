@@ -23,7 +23,7 @@ function isRequesterOnly(caps) {
 
 // Landing page for a given capability set.
 function homePage(caps) {
-  if (isRequesterOnly(caps)) return '/requests.html';
+  if (isRequesterOnly(caps)) return '/dashboard.html';
   return '/dashboard.html';
 }
 

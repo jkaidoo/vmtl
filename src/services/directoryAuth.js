@@ -535,11 +535,11 @@ async function activeDirectorySessions(idSet, byId) {
 
 const ACTIVITY_KIND = { 'directory.login_success': 'success', 'directory.login_failure': 'failure', 'directory.error': 'error' };
 
-async function activity(daysInput) {
+async function activity(daysInput, query = {}) {
   const days = Math.min(Math.max(Number(daysInput) || 7, 1), 90);
   const since = new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 19).replace('T', ' ');
   const raw = await db.all(
-    `SELECT actor_name, action, description, created_at FROM audit_logs WHERE action LIKE 'directory.%' AND created_at >= ? ORDER BY created_at DESC, id DESC LIMIT 2000`, [since]);
+    `SELECT actor_name, action, description, created_at FROM audit_logs WHERE action LIKE 'directory.%' AND created_at >= ? ORDER BY created_at DESC, id DESC`, [since]);
   const events = raw.map((e) => {
     const m = /^\[([^\]]+)\] /.exec(e.description || '');
     return { event_type: e.action, actor_name: e.actor_name, created_at: String(e.created_at).replace(' ', 'T'), directory: m ? m[1] : null, detail: m ? e.description.slice(m[0].length) : (e.description || '') };
@@ -566,6 +566,11 @@ async function activity(daysInput) {
   const idSet = new Set(accounts.map((u) => u.id));
   const sessions = await activeDirectorySessions(idSet, byId);
   const lastTest = events.find((e) => e.event_type === 'directory.test') || null;
+  const search = String(query.search || '').trim().toLowerCase();
+  const filtered = events.filter(e => !search || [e.actor_name, e.directory, e.detail, e.event_type].some(v => String(v || '').toLowerCase().includes(search)));
+  const perPage = Math.min(100, Math.max(1, Math.floor(Number(query.per_page) || 10)));
+  const lastPage = Math.max(1, Math.ceil(filtered.length / perPage));
+  const page = Math.min(lastPage, Math.max(1, Math.floor(Number(query.page) || 1)));
   return {
     days,
     totals: { ...totals, attempts: totals.success + totals.failure + totals.error, avg_ms: average(times) },
@@ -574,7 +579,8 @@ async function activity(daysInput) {
     sessions,
     accounts: { total: accounts.length, awaiting: accounts.filter((u) => u.active && !u.role_id).map((u) => ({ id: u.id, name: u.name, email: u.email, created_at: u.created_at })) },
     last_test: lastTest,
-    recent: events.slice(0, 50),
+    recent: filtered.slice((page - 1) * perPage, page * perPage),
+    meta: { current_page: page, per_page: perPage, total: filtered.length, last_page: lastPage },
   };
 }
 
