@@ -13,7 +13,28 @@
 const db = require('./db_ref');
 const unifiedApi = require('./unifiedApi');
 const orgUnits = require('./orgUnits');
+const settings = require('./settings');
+const notifications = require('./notifications');
 const log = require('../util/log');
+
+const DAY_MS = 86_400_000;
+
+// Days a person's organisational unit may differ from the source before it is
+// applied automatically (0 = apply at once). Admins are notified either way.
+async function graceDays() {
+  const raw = await settings.get('ou_change_grace_days', '7');
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 7;
+}
+function tsMs(s) { return s ? Date.parse(String(s).replace(' ', 'T') + (/[zZ+]/.test(String(s)) ? '' : 'Z')) : 0; }
+function olderThan(since, ms) { const t = tsMs(since); return t > 0 && Date.now() - t > ms; }
+async function orgName(id) { if (!id) return 'Unassigned'; const r = await db.get('SELECT name FROM org_units WHERE id = ?', [id]); return r ? r.name : `unit ${id}`; }
+async function notifyPending(user, fromId, toId) {
+  try { await notifications.toRoles(['administrator'], 'ou_change_pending', { user_id: user.id, name: user.name, from: await orgName(fromId), to: await orgName(toId) }); } catch (_) { /* best-effort */ }
+}
+async function notifyAutoMoved(user, toId) {
+  try { await notifications.toRoles(['administrator'], 'ou_auto_moved', { user_id: user.id, name: user.name, to: await orgName(toId) }); } catch (_) { /* best-effort */ }
+}
 
 // A Unified API field value can be a string, a one-element list, or {value}.
 function textField(v) {
@@ -91,17 +112,23 @@ async function syncUser(userId, identity) {
       department_name: textField(f.department) || null,
     };
 
-    let changedOrg = false;
-    let pendingOrgUnitId = user.pending_org_unit_id || null;
+    const graceMs = (await graceDays()) * DAY_MS;
     let setOrg = null;
+    let pendingOrgUnitId = user.pending_org_unit_id || null;
+    let newlyPending = false;
+    let autoMoved = false;
     if (resolvedOrg) {
       if (!user.org_unit_id) {
-        setOrg = resolvedOrg;                       // first assignment — apply directly
-      } else if (Number(resolvedOrg) !== Number(user.org_unit_id)) {
-        changedOrg = true;                          // source OU moved — record as pending
-        pendingOrgUnitId = resolvedOrg;
+        setOrg = resolvedOrg; pendingOrgUnitId = null;                 // first assignment — apply directly
+      } else if (Number(resolvedOrg) === Number(user.org_unit_id)) {
+        pendingOrgUnitId = null;                                       // back in sync — clear any pending
       } else {
-        pendingOrgUnitId = null;                    // back in sync — clear any pending
+        const samePending = user.pending_org_unit_id && Number(user.pending_org_unit_id) === Number(resolvedOrg);
+        if (samePending && olderThan(user.pending_org_since, graceMs)) {
+          setOrg = resolvedOrg; pendingOrgUnitId = null; autoMoved = true;   // grace elapsed — apply
+        } else {
+          pendingOrgUnitId = resolvedOrg; newlyPending = !samePending;       // record / keep pending
+        }
       }
     }
 
@@ -110,16 +137,37 @@ async function syncUser(userId, identity) {
     sets.push(`unified_synced_at = ${db.now()}`);
     if (setOrg) { sets.push('org_unit_id = ?'); params.push(setOrg); }
     sets.push('pending_org_unit_id = ?'); params.push(pendingOrgUnitId);
-    if (changedOrg && !user.pending_org_since) sets.push(`pending_org_since = ${db.now()}`);
-    if (!pendingOrgUnitId) sets.push('pending_org_since = NULL');
+    if (pendingOrgUnitId && newlyPending) sets.push(`pending_org_since = ${db.now()}`);
+    else if (!pendingOrgUnitId) sets.push('pending_org_since = NULL');
     params.push(userId);
     await db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params);
 
-    return { synced: true, staffId: prof.id_number, orgUnitId: setOrg || user.org_unit_id, pendingOrgUnitId, changedOrg };
+    if (newlyPending) await notifyPending(user, user.org_unit_id, resolvedOrg);
+    if (autoMoved) await notifyAutoMoved(user, resolvedOrg);
+
+    return { synced: true, staffId: prof.id_number, orgUnitId: setOrg || user.org_unit_id, pendingOrgUnitId, changedOrg: newlyPending, autoMoved };
   } catch (err) {
     log.warn('staff_sync_error', { userId, message: err.message });
     return { synced: false, reason: err.message };
   }
 }
 
-module.exports = { syncUser, orgUnitForProfile, ensureUnit, textField };
+// Apply any pending OU change whose grace period has elapsed, for people who have
+// not signed in. Safe to run periodically. Returns how many were moved.
+async function sweepAgedPendingMoves() {
+  try {
+    const graceMs = (await graceDays()) * DAY_MS;
+    const rows = await db.all('SELECT id, name, pending_org_unit_id, pending_org_since FROM users WHERE pending_org_unit_id IS NOT NULL AND deleted_at IS NULL');
+    let moved = 0;
+    for (const u of rows) {
+      if (!olderThan(u.pending_org_since, graceMs)) continue;
+      await db.run(`UPDATE users SET org_unit_id = ?, pending_org_unit_id = NULL, pending_org_since = NULL, updated_at = ${db.now()} WHERE id = ?`, [u.pending_org_unit_id, u.id]);
+      await notifyAutoMoved(u, u.pending_org_unit_id);
+      moved += 1;
+    }
+    if (moved) log.info('ou_auto_moved', { count: moved });
+    return moved;
+  } catch (err) { log.warn('ou_sweep_error', { message: err.message }); return 0; }
+}
+
+module.exports = { syncUser, orgUnitForProfile, ensureUnit, textField, sweepAgedPendingMoves, graceDays };

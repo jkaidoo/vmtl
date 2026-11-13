@@ -9,7 +9,8 @@ window.VMTL_PAGE = async function () {
   let clients = [];
 
   view.innerHTML = VMTL.pageHead('Clients', 'Staff who signed in through the directory and are waiting for a role. Their placement is pulled from the Unified API.') +
-    `<div class="card">
+    `<div id="cPending"></div>
+     <div class="card">
        <div class="card-head"><h3 class="accounts-title">Clients</h3><div class="row" style="gap:8px">
          <input id="cSearch" class="input" placeholder="Search name or email…" style="min-width:200px">
          <span class="pill" style="display:inline-flex;align-items:center;gap:4px;color:var(--info);background:var(--info-tint)"><span class="btn-ic">${VMTL.icon('contacts')}</span><span id="cCount">—</span></span>
@@ -73,7 +74,26 @@ window.VMTL_PAGE = async function () {
     };
   }
 
+  // Pending OU changes (clients and stakeholders) — the directory now reports a
+  // different unit; an admin applies or dismisses it (else it auto-applies).
+  async function loadPending() {
+    const host = view.querySelector('#cPending'); if (!host) return;
+    let rows = [];
+    try { rows = (await VMTL.api('/users/ou-changes')).data; } catch (_) { host.innerHTML = ''; return; }
+    if (!rows.length) { host.innerHTML = ''; return; }
+    host.innerHTML = `<div class="card pad mb" style="border-left:3px solid var(--warning)">
+      <h3 style="margin:0 0 8px">${VMTL.icon('bell')} Pending unit changes <span class="badge amber">${rows.length}</span></h3>
+      <div class="dim" style="font-size:12.5px;margin-bottom:10px">The Unified API now reports a different organisational unit for these people. Apply the move, or keep them where they are. Unactioned changes are applied automatically after the grace period.</div>
+      ${rows.map((r) => `<div class="between" style="gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border)">
+        <div><strong>${esc(r.name)}</strong> <span class="badge grey">${r.user_type}</span><div class="dim" style="font-size:12px">${esc(r.current_ou)} → <strong style="color:var(--text)">${esc(r.pending_ou || '—')}</strong></div></div>
+        <div class="row gap-sm"><button class="btn btn-sm btn-primary" data-apply="${r.id}">Apply move</button><button class="btn btn-sm" data-dismiss="${r.id}">Keep current</button></div>
+      </div>`).join('')}</div>`;
+    host.querySelectorAll('[data-apply]').forEach((b) => b.onclick = async () => { try { await VMTL.api(`/users/${b.dataset.apply}/apply-ou-change`, { method: 'POST' }); VMTL.toast('Moved to the new unit.', 'success'); load(); } catch (e) { VMTL.showErrors(e); } });
+    host.querySelectorAll('[data-dismiss]').forEach((b) => b.onclick = async () => { try { await VMTL.api(`/users/${b.dataset.dismiss}/dismiss-ou-change`, { method: 'POST' }); VMTL.toast('Kept in the current unit.', 'success'); load(); } catch (e) { VMTL.showErrors(e); } });
+  }
+
   const load = async () => {
+    loadPending();
     const qs = new URLSearchParams(); const s = view.querySelector('#cSearch').value.trim(); if (s) qs.set('search', s); qs.set('per_page', '100'); qs.set('type', 'client');
     try { const r = await VMTL.api(`/users?${qs}`); clients = r.data; view.querySelector('#cCount').textContent = `${r.meta.total}`; render(); }
     catch (e) { view.querySelector('#cList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }

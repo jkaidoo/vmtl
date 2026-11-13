@@ -59,6 +59,20 @@ module.exports = function register(router) {
     res.json({ data: mapped.slice((page - 1) * perPage, page * perPage), meta: { current_page: page, per_page: perPage, total: mapped.length, last_page: Math.max(1, Math.ceil(mapped.length / perPage)) } });
   });
 
+  // People whose Unified API organisational unit now differs from their current
+  // one, awaiting an admin decision (or auto-move once the grace period passes).
+  router.get('/users/ou-changes', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    const scope = await orgScope.visibleOrgUnitIds(req.session.user);
+    const where = ['u.deleted_at IS NULL', 'u.pending_org_unit_id IS NOT NULL']; const params = [];
+    if (scope !== null) { where.push(`(u.org_unit_id IN (${scope.length ? scope.map(() => '?').join(',') : 'NULL'}) OR u.org_unit_id IS NULL)`); params.push(...scope); }
+    const rows = await db.all(`SELECT u.id, u.name, u.email, u.role_id, u.org_unit_id, u.pending_org_unit_id, u.pending_org_since,
+        cur.name AS current_ou, pend.name AS pending_ou
+      FROM users u LEFT JOIN org_units cur ON cur.id = u.org_unit_id LEFT JOIN org_units pend ON pend.id = u.pending_org_unit_id
+      WHERE ${where.join(' AND ')} ORDER BY u.pending_org_since`, params);
+    res.json({ data: rows.map((r) => ({ id: r.id, name: r.name, email: r.email, user_type: r.role_id ? 'stakeholder' : 'client', current_ou: r.current_ou || 'Unassigned', pending_ou: r.pending_ou || null, pending_since: r.pending_org_since })) });
+  });
+
   router.post('/users', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
     const data = validate(req.body, {
@@ -153,6 +167,28 @@ module.exports = function register(router) {
     if (!sets.length) return res.json({ data: await userDto(target.id) });
     await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
     await audit.from(req, { action: 'user.updated', description: `${target.name} was updated`, entityType: 'user', entityId: target.id });
+    res.json({ data: await userDto(target.id) });
+  });
+
+  // Apply a pending OU change now (admin acts before the grace period).
+  router.post('/users/:id/apply-ou-change', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    const target = await db.get('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL', [req.params.id]);
+    if (!target) throw notFound('User not found.');
+    if (!target.pending_org_unit_id) throw badRequest('There is no pending unit change for this person.');
+    if (!(await inUserScope(req.session.user, target.org_unit_id))) throw forbidden('That user is outside your scope.');
+    await db.run(`UPDATE users SET org_unit_id = ?, pending_org_unit_id = NULL, pending_org_since = NULL, updated_at = ${db.now()} WHERE id = ?`, [target.pending_org_unit_id, target.id]);
+    await audit.from(req, { action: 'user.ou_changed', description: `${req.session.user.name} moved ${target.name} to their new organisational unit`, entityType: 'user', entityId: target.id });
+    res.json({ data: await userDto(target.id) });
+  });
+  // Dismiss a pending OU change (keep the current unit, clear the pending one).
+  router.post('/users/:id/dismiss-ou-change', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    const target = await db.get('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL', [req.params.id]);
+    if (!target) throw notFound('User not found.');
+    if (!(await inUserScope(req.session.user, target.org_unit_id))) throw forbidden('That user is outside your scope.');
+    await db.run(`UPDATE users SET pending_org_unit_id = NULL, pending_org_since = NULL, updated_at = ${db.now()} WHERE id = ?`, [target.id]);
+    await audit.from(req, { action: 'user.ou_change_dismissed', description: `${req.session.user.name} kept ${target.name} in their current organisational unit`, entityType: 'user', entityId: target.id });
     res.json({ data: await userDto(target.id) });
   });
 

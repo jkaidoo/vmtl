@@ -40,6 +40,11 @@ boot().then(() => {
   server = app.listen(PORT, HOST, async () => {
     await checkDatabase();
     log.success('server_started', { message: `VMTL listening on http://${HOST}:${PORT}`, data_store: runtime.mode() });
+    // Apply any aged pending organisational-unit changes (people who have not
+    // signed in since the grace period passed), now and hourly.
+    const sweep = () => require('./src/services/staffSync').sweepAgedPendingMoves().catch(() => {});
+    sweep();
+    setInterval(sweep, 60 * 60 * 1000).unref();
   });
 }).catch(() => process.exit(1));
 

@@ -16,7 +16,9 @@ async function capsForUser(userId) {
   const user = await db.get('SELECT id, role_id, is_super_admin FROM users WHERE id = ?', [userId]);
   if (!user) return [];
   if (user.is_super_admin) return capabilities.all();
-  if (!user.role_id) return [];
+  // A role-less account is a "client" (general staff): a baseline that lets them
+  // request a vehicle. Org-unit scoping limits them to their own department.
+  if (!user.role_id) return [capabilities.CAP.REQUESTS_CREATE];
   const rows = await db.all('SELECT capability FROM role_capabilities WHERE role_id = ?', [user.role_id]);
   return rows.map((r) => r.capability);
 }

@@ -545,6 +545,8 @@
       trip_stop_accepted: `"${d.destination || ''}" accepted on ${d.trip_number || ''}`,
       trip_stop_declined: `"${d.destination || ''}" declined on ${d.trip_number || ''}`,
       trip_delay_warning: `Possible delay to trip ${d.trip_number || ''}`,
+      ou_change_pending: `${d.name || 'A staff member'}'s unit changed: ${d.from || '—'} → ${d.to || '—'} — review in Clients`,
+      ou_auto_moved: `${d.name || 'A staff member'} was automatically moved to ${d.to || 'a new unit'}`,
     };
     return map[n.type] || n.type;
   }
