@@ -26,6 +26,8 @@ const CAP = {
   DEPARTMENTS_MANAGE: 'departments.manage',
   ROLES_MANAGE: 'roles.manage',
   AUDIT_VIEW: 'audit.view',
+  // System tier — the System section (except Broadcasts, which stays App-Owner only).
+  SYSTEM_ADMIN: 'system.admin',
 };
 
 // key -> { label, group, description } (order defines RBAC-screen order).
@@ -48,21 +50,30 @@ const CATALOG = {
   [CAP.DEPARTMENTS_MANAGE]: { label: 'Manage departments', group: 'Administration', description: 'Maintain organisational units.' },
   [CAP.ROLES_MANAGE]: { label: 'Manage roles (RBAC)', group: 'Administration', description: 'Edit role capabilities.' },
   [CAP.AUDIT_VIEW]: { label: 'View audit logs', group: 'Administration', description: 'Read the audit trail.' },
+  [CAP.SYSTEM_ADMIN]: { label: 'System administration', group: 'System', description: 'Access the System section (App Health, RBAC, Directory Auth, Database, etc.) — everything except Broadcasts.' },
 };
 
 function all() { return Object.keys(CATALOG); }
 
 // Default capabilities granted to each role at seed time (mirrors defaultsByRole()).
 function defaultsByRole() {
-  const everything = all();
+  // A Transport / Admin Officer does everything operational, but nothing under
+  // the Administration or System sections.
+  const transport = [CAP.REQUESTS_CREATE, CAP.REQUESTS_VIEW_ALL, CAP.REQUESTS_ASSIGN, CAP.REQUESTS_CREATE_GOODWILL, CAP.REQUESTS_CREATE_EXTERNAL,
+    CAP.TRIPS_OPERATE, CAP.TRIPS_CORRECT, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.MAINTENANCE_MANAGE, CAP.FUEL_LOG, CAP.ANALYTICS_VIEW, CAP.REPORTS_EXPORT];
   return {
-    administrator: everything,
-    // Supervisor: everything EXCEPT the system tier (audit/departments/roles).
-    supervisor: everything.filter((c) => ![CAP.AUDIT_VIEW, CAP.DEPARTMENTS_MANAGE, CAP.ROLES_MANAGE].includes(c)),
-    approver: [CAP.REQUESTS_CREATE, CAP.REQUESTS_VIEW_ALL, CAP.REQUESTS_APPROVE, CAP.REQUESTS_CREATE_EXTERNAL, CAP.ANALYTICS_VIEW, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.FUEL_LOG],
-    transport_admin: [CAP.REQUESTS_CREATE, CAP.REQUESTS_VIEW_ALL, CAP.REQUESTS_ASSIGN, CAP.REQUESTS_CREATE_GOODWILL, CAP.REQUESTS_CREATE_EXTERNAL, CAP.TRIPS_OPERATE, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.MAINTENANCE_MANAGE, CAP.FUEL_LOG, CAP.ANALYTICS_VIEW, CAP.REPORTS_EXPORT],
+    // System Administrator — every capability (incl. the System tier). The App
+    // Owner (is_super_admin) additionally holds the App-Owner-only parts (Broadcasts).
+    administrator: all(),
+    // Supervisor — oversight of their org unit: view requests, analytics and the
+    // audit log, but no editing.
+    supervisor: [CAP.REQUESTS_VIEW_ALL, CAP.ANALYTICS_VIEW, CAP.AUDIT_VIEW],
+    // Approver — everything a Transport Officer can do, plus approving requests.
+    approver: [...transport, CAP.REQUESTS_APPROVE],
+    transport_admin: transport,
     staff: [CAP.REQUESTS_CREATE],
-    driver: [CAP.REQUESTS_CREATE_GOODWILL, CAP.FUEL_LOG],
+    // Driver — operate trips, raise goodwill requests, log fuel.
+    driver: [CAP.TRIPS_OPERATE, CAP.REQUESTS_CREATE_GOODWILL, CAP.FUEL_LOG],
   };
 }
 

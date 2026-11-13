@@ -38,11 +38,23 @@ function requireAnyCap(...caps) {
   };
 }
 
-// The break-glass tier: App Health, RBAC, System Controls, Directory Auth, etc.
+// App-Owner-only tier (is_super_admin): the break-glass account. Used for the
+// parts scoped to the App Owner, such as Broadcasts.
 function requireSuper(req, res, next) {
   if (!req.session || !req.session.user) return res.status(401).json({ error: 'Not authenticated' });
   if (req.session.user.is_super_admin) return next();
-  return res.status(403).json({ error: 'System Administrator access only.' });
+  return res.status(403).json({ error: 'App Owner access only.' });
 }
 
-module.exports = { capsOf, userHasCap, requireAuth, requireCap, requireAnyCap, requireSuper };
+// System tier: the App Owner, or a System Administrator (the system.admin
+// capability). Covers the whole System section except Broadcasts.
+function requireSystemAdmin(req, res, next) {
+  if (!req.session || !req.session.user) return res.status(401).json({ error: 'Not authenticated' });
+  if (req.session.user.is_super_admin) return next();
+  const { CAP } = require('../services/capabilities');
+  userHasCap(req.session.user, CAP.SYSTEM_ADMIN)
+    .then((ok) => (ok ? next() : res.status(403).json({ error: 'System Administrator access only.' })))
+    .catch(next);
+}
+
+module.exports = { capsOf, userHasCap, requireAuth, requireCap, requireAnyCap, requireSuper, requireSystemAdmin };

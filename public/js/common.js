@@ -346,20 +346,20 @@
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },
     { label: 'System', items: [
-      { key: 'app-health', to: '/app-health.html', label: 'App Health', icon: 'health', superOnly: true },
-      { key: 'rbac', to: '/rbac.html', label: 'RBAC', icon: 'shield', superOnly: true },
-      { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', superOnly: true },
-      { key: 'directory-auth', to: '/directory-auth.html', label: 'Directory authentication', icon: 'key', superOnly: true },
-      { key: 'maps-config', to: '/maps-config.html', label: 'Maps configuration', icon: 'map', superOnly: true },
-      { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', superOnly: true },
-      { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', superOnly: true },
+      { key: 'app-health', to: '/app-health.html', label: 'App Health', icon: 'health', systemAdmin: true },
+      { key: 'rbac', to: '/rbac.html', label: 'RBAC', icon: 'shield', systemAdmin: true },
+      { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', systemAdmin: true },
+      { key: 'directory-auth', to: '/directory-auth.html', label: 'Directory authentication', icon: 'key', systemAdmin: true },
+      { key: 'maps-config', to: '/maps-config.html', label: 'Maps configuration', icon: 'map', systemAdmin: true },
+      { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', systemAdmin: true },
+      { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', systemAdmin: true },
       { key: 'broadcasts', to: '/broadcasts.html', label: 'Broadcasts', icon: 'megaphone', superOnly: true },
-      { key: 'database', to: '/database-connections.html', label: 'Database connections', icon: 'database', superOnly: true },
-      { key: 'unified-api', to: '/unified-api.html', label: 'Unified API', icon: 'code', superOnly: true },
-      { key: 'report-config', to: '/report-configuration.html', label: 'Report configuration', icon: 'reports', superOnly: true },
-      { key: 'navigation', to: '/navigation-settings.html', label: 'Navigation menu', icon: 'layout', superOnly: true },
-      { key: 'documentation', to: '/documentation.html', label: 'Documentation', icon: 'book', superOnly: true },
-      { key: 'codebase-guide', to: '/codebase-guide.html', label: 'Codebase guide', icon: 'terminal', superOnly: true },
+      { key: 'database', to: '/database-connections.html', label: 'Database connections', icon: 'database', systemAdmin: true },
+      { key: 'unified-api', to: '/unified-api.html', label: 'Unified API', icon: 'code', systemAdmin: true },
+      { key: 'report-config', to: '/report-configuration.html', label: 'Report configuration', icon: 'reports', systemAdmin: true },
+      { key: 'navigation', to: '/navigation-settings.html', label: 'Navigation menu', icon: 'layout', systemAdmin: true },
+      { key: 'documentation', to: '/documentation.html', label: 'Documentation', icon: 'book', systemAdmin: true },
+      { key: 'codebase-guide', to: '/codebase-guide.html', label: 'Codebase guide', icon: 'terminal', systemAdmin: true },
     ] },
     { label: 'Help', items: [
       { key: 'how-it-works', to: '/how-it-works.html', label: 'How it works', icon: 'book' },
@@ -371,6 +371,7 @@
     if (VMTL.requesterOnly()) return item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';
     if (((VMTL.meta && VMTL.meta.nav_hidden) || []).includes(item.key) && item.key !== 'navigation') return false;
     if (item.superOnly) return VMTL.isSuper();
+    if (item.systemAdmin) return VMTL.isSuper() || VMTL.can('system.admin');
     if (item.cap) return VMTL.can(item.cap);
     if (item.roles) return VMTL.roleSlug() && item.roles.includes(VMTL.roleSlug());
     return true;
@@ -406,12 +407,12 @@
             </div>
             <div class="usermenu">
               <button class="usermenu-trigger" id="userMenuBtn" aria-haspopup="true" aria-expanded="false">
-                <div class="who"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : '')}</span></div>
+                <div class="who"><b>${esc(u.name)}</b><span>${esc(u.is_super_admin ? 'App Owner' : (u.role ? u.role.label : ''))}</span></div>
                 <div class="avatar">${esc((u.name || '?').charAt(0))}</div>
                 <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <div class="menu hidden" id="userMenu" role="menu">
-                <div class="menu-head"><b>${esc(u.name)}</b><span>${esc(u.role ? u.role.label : (u.is_super_admin ? 'System Administrator' : ''))}</span></div>
+                <div class="menu-head"><b>${esc(u.name)}</b><span>${esc(u.is_super_admin ? 'App Owner' : (u.role ? u.role.label : ''))}</span></div>
                 <a class="menu-item" href="/how-it-works.html" role="menuitem">${icon('book')}<span>How it works</span></a>
                 <a class="menu-item" href="/faqs.html" role="menuitem">${icon('help')}<span>Help &amp; FAQs</span></a>
                 <button class="menu-item" id="offlineBtn" role="menuitem" type="button">${icon('database')}<span>Offline &amp; sync</span><span class="pill hidden" id="syncCount" style="margin-left:auto;background:var(--warning-tint);color:var(--warning)"></span></button>

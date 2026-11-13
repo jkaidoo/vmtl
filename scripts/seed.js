@@ -52,13 +52,15 @@ async function seedRoles() {
   return ids;
 }
 
+// Reset each role to its canonical capability set so the spec'd role hierarchy
+// is authoritative (re-running the seed re-applies it exactly).
 async function seedCapabilities(roleIds) {
   for (const [slug, caps] of Object.entries(capabilities.defaultsByRole())) {
     const roleId = roleIds[slug];
     if (!roleId) continue;
+    await db.run('DELETE FROM role_capabilities WHERE role_id = ?', [roleId]);
     for (const cap of caps) {
-      const exists = await db.get('SELECT id FROM role_capabilities WHERE role_id = ? AND capability = ?', [roleId, cap]);
-      if (!exists) await db.run(`INSERT INTO role_capabilities (role_id, capability, created_at, updated_at) VALUES (?, ?, ${db.now()}, ${db.now()})`, [roleId, cap]);
+      await db.run(`INSERT INTO role_capabilities (role_id, capability, created_at, updated_at) VALUES (?, ?, ${db.now()}, ${db.now()})`, [roleId, cap]);
     }
   }
 }

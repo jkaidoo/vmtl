@@ -27,8 +27,10 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 // Pages a requester-only (Staff) user may open; everything else sends them home.
 const REQUESTER_ALLOWED = new Set(['/requests.html', '/request-create.html', '/request-detail.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html']);
-// Deep admin tier — the break-glass System Administrator only.
-const SUPER_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/broadcasts.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
+// App-Owner-only pages (is_super_admin): Broadcasts.
+const APP_OWNER_PAGES = new Set(['/broadcasts.html']);
+// System section pages — the App Owner or a System Administrator (system.admin).
+const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
 const PUBLIC_PAGES = new Set(['/login.html', '/404.html', '/500.html', '/offline.html']);
 
@@ -155,7 +157,11 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
     if (PUBLIC_PAGES.has(req.path)) return next();
     if (!req.session || !req.session.user) return res.redirect('/login.html');
     const user = req.session.user;
-    if (SUPER_PAGES.has(req.path) && !user.is_super_admin) return res.redirect(roles.homePage(await caps(req)));
+    if (APP_OWNER_PAGES.has(req.path) && !user.is_super_admin) return res.redirect(roles.homePage(await caps(req)));
+    if (SYSTEM_PAGES.has(req.path) && !user.is_super_admin) {
+      const held = await roleRepository.capsForUser(user.id);
+      if (!held.includes('system.admin')) return res.redirect(roles.homePage(held));
+    }
     if (!user.is_super_admin) {
       const held = await roleRepository.capsForUser(user.id);
       if (roles.isRequesterOnly(held) && !REQUESTER_ALLOWED.has(req.path)) return res.redirect(roles.homePage(held));

@@ -139,7 +139,7 @@ function user(u) {
     user_type: (u.role_slug || bool(u.is_super_admin)) ? 'stakeholder' : 'client',
     staff_id: u.staff_id || null, staff_type: u.staff_type || null, staff_rank: u.staff_rank || null,
     designation: u.designation || null, unified_synced_at: u.unified_synced_at || null,
-    pending_org_unit_id: u.pending_org_unit_id || null,
+    pending_org_unit_id: u.pending_org_unit_id || null, can_drive: bool(u.can_drive),
   };
 }
 

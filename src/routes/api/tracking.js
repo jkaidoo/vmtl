@@ -8,7 +8,7 @@
 const tracking = require('../../services/tracking');
 const settings = require('../../services/settings');
 const { CAP } = require('../../services/capabilities');
-const { requireAuth, requireAnyCap, requireSuper } = require('../../middleware/auth');
+const { requireAuth, requireAnyCap, requireSystemAdmin } = require('../../middleware/auth');
 
 const MAP_KEY = 'google_maps_api_key';
 const MAP_CENTER = 'map_default_center'; // "lat,lng" fallback when the viewer blocks geolocation
@@ -51,7 +51,7 @@ module.exports = function register(router) {
     });
   });
 
-  router.put('/tracking/config', requireAuth, requireSuper, async (req, res) => {
+  router.put('/tracking/config', requireAuth, requireSystemAdmin, async (req, res) => {
     if (typeof req.body.key === 'string') await settings.set(MAP_KEY, req.body.key.trim());
     if (typeof req.body.default_center === 'string') await settings.set(MAP_CENTER, req.body.default_center.trim());
     if (req.body.default_zoom !== undefined && req.body.default_zoom !== null && req.body.default_zoom !== '') {

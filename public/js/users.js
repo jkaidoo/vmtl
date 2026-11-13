@@ -140,9 +140,10 @@ function userModal(u, done) {
     <div class="field"><label>Department</label><select name="department_id"><option value="">—</option>${depts}</select></div>
     <div class="field"><label>Org unit</label><select name="org_unit_id"><option value="">—</option>${VMTL.orgUnitOptions(e.org_unit_id)}</select></div>
     <div class="field" style="display:flex;align-items:flex-end"><label class="checkbox"><input type="checkbox" name="active" ${e.active === false ? '' : 'checked'}> Active</label></div>
+    <div class="field" style="display:flex;align-items:flex-end"><label class="checkbox"><input type="checkbox" name="can_drive" ${e.can_drive ? 'checked' : ''}> Can also drive (add to the driver pool)</label></div>
   </div></form></div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="save">Save</button></div>`, { large: true });
   m.el.querySelector('#save').onclick = async () => {
-    const form = m.el.querySelector('#uf'); const body = { name: form.name.value, email: form.email.value, role_id: Number(form.role_id.value), active: form.active.checked };
+    const form = m.el.querySelector('#uf'); const body = { name: form.name.value, email: form.email.value, role_id: Number(form.role_id.value), active: form.active.checked, can_drive: form.can_drive.checked };
     if (form.password.value) body.password = form.password.value;
     if (form.phone.value) body.phone = form.phone.value;
     if (form.department_id.value) body.department_id = Number(form.department_id.value);

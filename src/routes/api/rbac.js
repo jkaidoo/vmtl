@@ -4,7 +4,7 @@ const db = require('../../db/runtime');
 const capabilities = require('../../services/capabilities');
 const roleRepository = require('../../services/roleRepository');
 const audit = require('../../services/audit');
-const { requireAuth, requireSuper } = require('../../middleware/auth');
+const { requireAuth, requireSystemAdmin } = require('../../middleware/auth');
 
 async function snapshot() {
   const roles = await db.all('SELECT id, slug, name, description FROM roles ORDER BY id');
@@ -23,9 +23,9 @@ async function snapshot() {
 }
 
 module.exports = function register(router) {
-  router.get('/rbac', requireAuth, requireSuper, async (req, res) => { res.json({ data: await snapshot() }); });
+  router.get('/rbac', requireAuth, requireSystemAdmin, async (req, res) => { res.json({ data: await snapshot() }); });
 
-  router.put('/rbac/roles/:roleId/capabilities', requireAuth, requireSuper, async (req, res) => {
+  router.put('/rbac/roles/:roleId/capabilities', requireAuth, requireSystemAdmin, async (req, res) => {
     const role = await db.get('SELECT * FROM roles WHERE id = ?', [req.params.roleId]);
     if (!role) return res.status(404).json({ error: 'Role not found.' });
     const current = await roleRepository.capsForRole(role.id);

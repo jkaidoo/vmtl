@@ -38,6 +38,21 @@ async function guardAssignment(req, data) {
   if (scope !== null && data.org_unit_id && !scope.includes(data.org_unit_id)) throw badRequest('The given data was invalid.', { org_unit_id: ['You can only assign units within your organisation.'] });
 }
 
+// Keep a linked driver record in step with a user's "can also drive" flag, so a
+// Transport Officer who drives appears in the driver pool. Retiring the flag
+// retires the auto-linked driver (history is kept).
+async function syncDriverLink(userId) {
+  const u = await db.get('SELECT id, name, phone, org_unit_id, can_drive, active FROM users WHERE id = ?', [userId]);
+  if (!u) return;
+  const existing = await db.get('SELECT id, deleted_at FROM drivers WHERE user_id = ?', [userId]);
+  if (u.can_drive && u.active) {
+    if (!existing) await db.run(`INSERT INTO drivers (user_id, name, phone, org_unit_id, status, active, created_at, updated_at) VALUES (?, ?, ?, ?, 'available', 1, ${db.now()}, ${db.now()})`, [userId, u.name, u.phone || null, u.org_unit_id || null]);
+    else if (existing.deleted_at) await db.run(`UPDATE drivers SET deleted_at = NULL, active = 1, status = 'available', name = ?, org_unit_id = ?, updated_at = ${db.now()} WHERE id = ?`, [u.name, u.org_unit_id || null, existing.id]);
+  } else if (existing && !existing.deleted_at) {
+    await db.run(`UPDATE drivers SET deleted_at = ${db.now()}, active = 0, status = 'inactive', updated_at = ${db.now()} WHERE id = ?`, [existing.id]);
+  }
+}
+
 module.exports = function register(router) {
   router.get('/users', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
@@ -79,13 +94,14 @@ module.exports = function register(router) {
       name: { required: true, type: 'string', maxLength: 255 }, email: { required: true, type: 'string', maxLength: 255 },
       password: { required: true, type: 'string' }, role_id: { required: true, type: 'integer' },
       department_id: { type: 'integer' }, org_unit_id: { type: 'integer' }, phone: { type: 'string', maxLength: 50 },
-      active: { type: 'boolean', default: true }, avatar: { type: 'string', maxLength: 700000 },
+      active: { type: 'boolean', default: true }, avatar: { type: 'string', maxLength: 700000 }, can_drive: { type: 'boolean' },
     });
     const email = data.email.trim().toLowerCase();
     if (await db.get('SELECT id FROM users WHERE lower(email) = ?', [email])) throw badRequest('The given data was invalid.', { email: ['That email is already in use.'] });
     await guardAssignment(req, data);
-    const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, phone, active, is_super_admin, avatar, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ${db.now()}, ${db.now()})`,
-      [data.name, email, hashPassword(data.password), data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null, data.active ? 1 : 0, data.avatar || null]);
+    const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, phone, active, is_super_admin, avatar, can_drive, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ${db.now()}, ${db.now()})`,
+      [data.name, email, hashPassword(data.password), data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null, data.active ? 1 : 0, data.avatar || null, data.can_drive ? 1 : 0]);
+    await syncDriverLink(r.lastInsertRowid);
     await audit.from(req, { action: 'user.created', description: `User ${data.name} (${email}) was created`, entityType: 'user', entityId: r.lastInsertRowid });
     res.status(201).json({ data: await userDto(r.lastInsertRowid) });
   });
@@ -135,7 +151,7 @@ module.exports = function register(router) {
       name: { required: true, type: 'string', maxLength: 255 }, email: { required: true, type: 'string', maxLength: 255 },
       password: { type: 'string' }, role_id: { required: true, type: 'integer' },
       department_id: { type: 'integer' }, org_unit_id: { type: 'integer' }, phone: { type: 'string', maxLength: 50 },
-      active: { type: 'boolean' }, avatar: { type: 'string', maxLength: 700000 },
+      active: { type: 'boolean' }, avatar: { type: 'string', maxLength: 700000 }, can_drive: { type: 'boolean' },
     });
     const email = data.email.trim().toLowerCase();
     if (await db.get('SELECT id FROM users WHERE lower(email) = ? AND id != ?', [email, target.id])) throw badRequest('The given data was invalid.', { email: ['That email is already in use.'] });
@@ -144,8 +160,10 @@ module.exports = function register(router) {
     const params = [data.name, email, data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null];
     if (req.body.active !== undefined) { sets.push('active = ?'); params.push(data.active ? 1 : 0); }
     if (req.body.avatar !== undefined) { sets.push('avatar = ?'); params.push(data.avatar || null); }
+    if (req.body.can_drive !== undefined) { sets.push('can_drive = ?'); params.push(data.can_drive ? 1 : 0); }
     if (data.password) { sets.push('password_hash = ?'); params.push(hashPassword(data.password)); }
     await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
+    await syncDriverLink(target.id);
     await audit.from(req, { action: 'user.updated', description: `User ${data.name} was updated`, entityType: 'user', entityId: target.id });
     res.json({ data: await userDto(target.id) });
   });

@@ -11,7 +11,7 @@ const notifications = require('../../services/notifications');
 const dbProfiles = require('../../services/dbProfiles');
 const audit = require('../../services/audit');
 const log = require('../../util/log');
-const { requireAuth, requireSuper } = require('../../middleware/auth');
+const { requireAuth, requireSuper, requireSystemAdmin } = require('../../middleware/auth');
 const { validate } = require('../../util/validate');
 const { notFound, badRequest } = require('../../middleware/errorHandler');
 
@@ -51,7 +51,7 @@ const CODEBASE_GUIDE = [
     { path: 'src/db/sqlite.js', desc: 'Optional SQLite engine for quick local dev.' },
   ] },
   { group: 'Security & middleware', blurb: 'Capability RBAC enforced server-side on every route; the UI is never the boundary.', items: [
-    { path: 'src/middleware/auth.js', desc: 'requireAuth, requireCap, requireAnyCap, requireSuper (break-glass System Administrator).' },
+    { path: 'src/middleware/auth.js', desc: 'requireAuth, requireCap, requireAnyCap, requireSystemAdmin (break-glass System Administrator).' },
     { path: 'src/middleware/idle.js', desc: 'Sliding idle logout — 30 min on web/desktop PWA, mobile PWA exempt.' },
     { path: 'src/middleware/rateLimit.js', desc: 'Per-user and per-IP request limits.' },
     { path: 'src/services/authz.js · orgScope.js', desc: 'Capability checks and organisational-unit subtree scoping.' },
@@ -133,11 +133,11 @@ module.exports = function register(router) {
   }
   const windowFrom = (q) => { const n = Number(q.window); return [7, 30, 90].includes(n) ? n : 30; };
 
-  router.get('/admin/app-health', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/app-health', requireAuth, requireSystemAdmin, async (req, res) => {
     res.json({ data: await healthData(windowFrom(req.query)) });
   });
 
-  router.get('/admin/app-health/export', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/app-health/export', requireAuth, requireSystemAdmin, async (req, res) => {
     const d = await healthData(windowFrom(req.query));
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -167,8 +167,8 @@ module.exports = function register(router) {
     const rows = await db.all(`SELECT key, value, type, "group" AS grp, label FROM system_settings WHERE "group" IN (${SC_GROUPS.map(() => '?').join(',')}) ORDER BY "group", key`, SC_GROUPS);
     return rows.map((s) => ({ key: s.key, label: s.label, group: s.grp, type: s.type, value: settings.cast(s.value, s.type) }));
   }
-  router.get('/admin/system-controls', requireAuth, requireSuper, async (req, res) => res.json({ data: await scList() }));
-  router.put('/admin/system-controls', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await scList() }));
+  router.put('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => {
     for (const item of (req.body.settings || [])) {
       if (!item || !item.key) continue;
       const existing = await db.get(`SELECT "group" AS grp FROM system_settings WHERE key = ?`, [item.key]);
@@ -180,31 +180,31 @@ module.exports = function register(router) {
 
   // ---- Directory Auth (a list of LDAP/AD directories, tried in order) -----
   const sendDirErr = (res, e) => res.status(e && e.status ? e.status : 500).json({ error: e && e.status ? e.message : 'The directory settings could not be saved.' });
-  router.get('/admin/directory-auth', requireAuth, requireSuper, async (req, res) => res.json({ data: {
+  router.get('/admin/directory-auth', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: {
     directories: await directoryAuth.list(), offline_days: await directoryAuth.offlineDays(), offline_days_max: directoryAuth.OFFLINE_DAYS_MAX,
   } }));
-  router.get('/admin/directory-auth/activity', requireAuth, requireSuper, async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days) }));
-  router.post('/admin/directory-auth', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/directory-auth/activity', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days) }));
+  router.post('/admin/directory-auth', requireAuth, requireSystemAdmin, async (req, res) => {
     try {
       const entry = await directoryAuth.create(req.body || {});
       await audit.from(req, { action: 'directory_auth.added', description: `${req.session.user.name} added directory "${entry.name}" (${entry.provider}, ${entry.url || 'no URL'})` });
       res.status(201).json({ data: { directory: entry } });
     } catch (e) { sendDirErr(res, e); }
   });
-  router.put('/admin/directory-auth/order', requireAuth, requireSuper, async (req, res) => {
+  router.put('/admin/directory-auth/order', requireAuth, requireSystemAdmin, async (req, res) => {
     const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.map(String) : [];
     const directories = await directoryAuth.reorder(ids);
     await audit.from(req, { action: 'directory_auth.reordered', description: `${req.session.user.name} reordered directory sign-in: ${directories.map((d) => d.name).join(', ')}` });
     res.json({ data: { directories } });
   });
-  router.put('/admin/directory-auth/offline', requireAuth, requireSuper, async (req, res) => {
+  router.put('/admin/directory-auth/offline', requireAuth, requireSystemAdmin, async (req, res) => {
     try {
       const days = await directoryAuth.setOfflineDays((req.body || {}).days);
       await audit.from(req, { action: 'directory_auth.updated', description: `${req.session.user.name} set directory saved sign-in to ${days ? `${days} day(s)` : 'off'}` });
       res.json({ data: { offline_days: days } });
     } catch (e) { sendDirErr(res, e); }
   });
-  router.patch('/admin/directory-auth/:id', requireAuth, requireSuper, async (req, res) => {
+  router.patch('/admin/directory-auth/:id', requireAuth, requireSystemAdmin, async (req, res) => {
     try {
       const entry = await directoryAuth.update(req.params.id, req.body || {});
       if (!entry) return res.status(404).json({ error: 'Directory not found.' });
@@ -212,13 +212,13 @@ module.exports = function register(router) {
       res.json({ data: { directory: entry } });
     } catch (e) { sendDirErr(res, e); }
   });
-  router.delete('/admin/directory-auth/:id', requireAuth, requireSuper, async (req, res) => {
+  router.delete('/admin/directory-auth/:id', requireAuth, requireSystemAdmin, async (req, res) => {
     const entry = await directoryAuth.remove(req.params.id);
     if (!entry) return res.status(404).json({ error: 'Directory not found.' });
     await audit.from(req, { action: 'directory_auth.removed', description: `${req.session.user.name} removed directory "${entry.name}". Reason: ${String((req.body || {}).deletion_reason || '').trim().slice(0, 500)}` });
     res.json({ data: { ok: true } });
   });
-  router.post('/admin/directory-auth/:id/test', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/directory-auth/:id/test', requireAuth, requireSystemAdmin, async (req, res) => {
     const { username, password } = req.body || {};
     const out = await directoryAuth.test(req.params.id, { username, password });
     if (!out) return res.status(404).json({ error: 'Directory not found.' });
@@ -238,8 +238,8 @@ module.exports = function register(router) {
       sms: { enabled: !!(await settings.get('sms_enabled', false)), provider: (await settings.get('sms_provider', 'hubtel')) || 'hubtel', sender_id: (await settings.get('sms_sender_id', 'UITS')) || 'UITS', providers },
     } };
   }
-  router.get('/admin/messaging', requireAuth, requireSuper, async (req, res) => res.json(await messagingPayload()));
-  router.put('/admin/messaging', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/messaging', requireAuth, requireSystemAdmin, async (req, res) => res.json(await messagingPayload()));
+  router.put('/admin/messaging', requireAuth, requireSystemAdmin, async (req, res) => {
     if (req.body.email) {
       const em = req.body.email;
       await settingSet('mail_enabled', em.enabled ? '1' : '0', 'boolean');
@@ -257,18 +257,18 @@ module.exports = function register(router) {
     await audit.from(req, { action: 'messaging.updated', description: `${req.session.user.name} updated messaging (email/SMS) settings` });
     res.json(await messagingPayload());
   });
-  router.post('/admin/messaging/test-email', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/messaging/test-email', requireAuth, requireSystemAdmin, async (req, res) => {
     const to = req.body.to || req.session.user.email;
     const result = await email.send(to, 'test email', 'This is a test email from the UITS Vehicle Management system. If you received this, email delivery is working.');
     res.json({ data: result });
   });
-  router.post('/admin/messaging/test-sms', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/messaging/test-sms', requireAuth, requireSystemAdmin, async (req, res) => {
     const { to } = validate(req.body, { to: { required: true, type: 'string', maxLength: 20 } });
     res.json({ data: await sms.send(to, 'UITS VMTL test message — your SMS integration is working.') });
   });
 
   // ---- Database connections ----------------------------------------------
-  router.get('/admin/database', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/database', requireAuth, requireSystemAdmin, async (req, res) => {
     const counts = [];
     for (const t of dbProfiles.TABLES) { try { counts.push({ table: t, rows: Number((await db.get(`SELECT COUNT(*) AS n FROM ${t}`)).n) }); } catch (_) { counts.push({ table: t, rows: null }); } }
     res.json({ data: {
@@ -279,29 +279,29 @@ module.exports = function register(router) {
       tables: counts,
     } });
   });
-  router.post('/admin/database/profiles', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/database/profiles', requireAuth, requireSystemAdmin, async (req, res) => {
     const data = validate(req.body, { name: { required: true, type: 'string', maxLength: 120 }, provider: { type: 'string' }, host: { type: 'string' }, port: { type: 'string' }, database: { type: 'string' }, username: { type: 'string' }, ssl_mode: { type: 'string' }, password: { type: 'string' }, connection: { type: 'string' } });
     const p = await dbProfiles.create(data);
     await audit.from(req, { action: 'database.profile_saved', description: `${req.session.user.name} saved database profile ${data.name}` });
     res.status(201).json({ data: p });
   });
-  router.put('/admin/database/profiles/:id', requireAuth, requireSuper, async (req, res) => {
+  router.put('/admin/database/profiles/:id', requireAuth, requireSystemAdmin, async (req, res) => {
     const p = await dbProfiles.update(req.params.id, req.body || {}); if (!p) throw notFound('Profile not found.');
     await audit.from(req, { action: 'database.profile_saved', description: `${req.session.user.name} updated database profile ${p.name}` });
     res.json({ data: p });
   });
-  router.delete('/admin/database/profiles/:id', requireAuth, requireSuper, async (req, res) => {
+  router.delete('/admin/database/profiles/:id', requireAuth, requireSystemAdmin, async (req, res) => {
     if (!(await dbProfiles.remove(req.params.id))) throw notFound('Profile not found.');
     await audit.from(req, { action: 'database.profile_removed', description: `${req.session.user.name} removed a database profile` });
     res.json({ ok: true });
   });
-  router.post('/admin/database/profiles/:id/test', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/database/profiles/:id/test', requireAuth, requireSystemAdmin, async (req, res) => {
     const result = await dbProfiles.test(req.params.id);
     await audit.from(req, { action: 'database.profile_tested', description: `${req.session.user.name} tested a database profile — ${result.ok ? 'connected' : 'failed'}` });
     res.json({ data: result });
   });
-  router.post('/admin/database/profiles/:id/select', requireAuth, requireSuper, async (req, res) => { await dbProfiles.select(req.params.id); res.json({ ok: true }); });
-  router.post('/admin/database/migrate', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/database/profiles/:id/select', requireAuth, requireSystemAdmin, async (req, res) => { await dbProfiles.select(req.params.id); res.json({ ok: true }); });
+  router.post('/admin/database/migrate', requireAuth, requireSystemAdmin, async (req, res) => {
     const id = req.body.profile_id; if (!id) throw badRequest('Select a migration target first.');
     if (String(req.body.confirmation || '').toUpperCase() !== 'MIGRATE') throw badRequest('Type MIGRATE to confirm.');
     const out = await dbProfiles.migrate(id);
@@ -310,10 +310,10 @@ module.exports = function register(router) {
   });
 
   // ---- Documentation -----------------------------------------------------
-  router.get('/admin/documentation', requireAuth, requireSuper, (req, res) => {
+  router.get('/admin/documentation', requireAuth, requireSystemAdmin, (req, res) => {
     res.json({ data: Object.entries(DOCS).map(([slug, m]) => ({ slug, title: m.title, summary: m.summary })) });
   });
-  router.get('/admin/documentation/:slug', requireAuth, requireSuper, (req, res) => {
+  router.get('/admin/documentation/:slug', requireAuth, requireSystemAdmin, (req, res) => {
     const meta = DOCS[req.params.slug];
     if (!meta) throw notFound('Document not found.');
     res.json({ data: { slug: req.params.slug, title: meta.title, content: docContent(req.params.slug) } });
@@ -342,10 +342,10 @@ module.exports = function register(router) {
   });
 
   // ---- Codebase guide ----------------------------------------------------
-  router.get('/admin/codebase-guide', requireAuth, requireSuper, (req, res) => res.json({ data: CODEBASE_GUIDE }));
+  router.get('/admin/codebase-guide', requireAuth, requireSystemAdmin, (req, res) => res.json({ data: CODEBASE_GUIDE }));
 
   // ---- Application logs (server runtime log — app owner only) -------------
-  router.get('/admin/application-logs', requireAuth, requireSuper, (req, res) => {
+  router.get('/admin/application-logs', requireAuth, requireSystemAdmin, (req, res) => {
     const level = String(req.query.level || 'all');
     let rows = log.recent(400);
     if (level !== 'all') rows = rows.filter((e) => e.level === level);
@@ -353,10 +353,10 @@ module.exports = function register(router) {
   });
 
   // ---- Navigation settings ----------------------------------------------
-  router.get('/admin/navigation', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/navigation', requireAuth, requireSystemAdmin, async (req, res) => {
     res.json({ data: { hidden: (await settings.get('nav_hidden', [])) || [] } });
   });
-  router.put('/admin/navigation', requireAuth, requireSuper, async (req, res) => {
+  router.put('/admin/navigation', requireAuth, requireSystemAdmin, async (req, res) => {
     const hidden = Array.isArray(req.body.hidden) ? req.body.hidden.map(String) : [];
     await settingSetJson('nav_hidden', hidden);
     await audit.from(req, { action: 'navigation.updated', description: `${req.session.user.name} updated navigation visibility (${hidden.length} hidden)` });
@@ -374,8 +374,8 @@ module.exports = function register(router) {
       paper: (await settings.get('report_paper', 'A4')) || 'A4',
     };
   }
-  router.get('/admin/report-config', requireAuth, requireSuper, async (req, res) => res.json({ data: await reportConfig() }));
-  router.put('/admin/report-config', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/report-config', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await reportConfig() }));
+  router.put('/admin/report-config', requireAuth, requireSystemAdmin, async (req, res) => {
     const b = req.body || {};
     await settings.set('report_org_name', String(b.org_name ?? ''));
     await settings.set('report_title_prefix', String(b.title_prefix ?? ''));
@@ -391,22 +391,22 @@ module.exports = function register(router) {
   const crypto = require('crypto');
   const API_SCOPES = ['vehicles.read', 'trips.read', 'requests.read', 'analytics.read'];
   async function apiTokens() { return (await settings.get('api_tokens', [])) || []; }
-  router.get('/admin/api-tokens', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/api-tokens', requireAuth, requireSystemAdmin, async (req, res) => {
     res.json({ data: { scopes: API_SCOPES, base_url: `${req.protocol}://${req.get('host')}/api/v1`, tokens: (await apiTokens()).map((t) => ({ id: t.id, label: t.label, prefix: t.prefix, scopes: t.scopes, created_at: t.created_at, last_used_at: t.last_used_at || null })) } });
   });
   // ---- Unified API (inbound): pull live staff data for OU enrichment -------
   const unifiedApi = require('../../services/unifiedApi');
-  router.get('/admin/unified-api-client', requireAuth, requireSuper, async (req, res) => res.json({ data: await unifiedApi.publicConfig() }));
-  router.put('/admin/unified-api-client', requireAuth, requireSuper, async (req, res) => {
+  router.get('/admin/unified-api-client', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await unifiedApi.publicConfig() }));
+  router.put('/admin/unified-api-client', requireAuth, requireSystemAdmin, async (req, res) => {
     const out = await unifiedApi.saveConfig({ url: req.body.url, key: req.body.key, enabled: req.body.enabled });
     await audit.from(req, { action: 'unified_api.configured', description: `${req.session.user.name} updated the Unified API staff connection` });
     res.json({ data: out });
   });
-  router.post('/admin/unified-api-client/test', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/unified-api-client/test', requireAuth, requireSystemAdmin, async (req, res) => {
     res.json({ data: await unifiedApi.status(req.body && req.body.sample) });
   });
 
-  router.post('/admin/api-tokens', requireAuth, requireSuper, async (req, res) => {
+  router.post('/admin/api-tokens', requireAuth, requireSystemAdmin, async (req, res) => {
     const data = validate(req.body, { label: { required: true, type: 'string', maxLength: 80 } });
     const scopes = Array.isArray(req.body.scopes) ? req.body.scopes.filter((s) => API_SCOPES.includes(s)) : API_SCOPES.slice();
     const secret = 'vmtl_' + crypto.randomBytes(24).toString('hex');
@@ -415,7 +415,7 @@ module.exports = function register(router) {
     await audit.from(req, { action: 'api_token.created', description: `${req.session.user.name} created API token ${data.label}` });
     res.status(201).json({ data: { id: token.id, label: token.label, token: secret, scopes } });
   });
-  router.delete('/admin/api-tokens/:id', requireAuth, requireSuper, async (req, res) => {
+  router.delete('/admin/api-tokens/:id', requireAuth, requireSystemAdmin, async (req, res) => {
     const tokens = await apiTokens(); const next = tokens.filter((t) => t.id !== req.params.id);
     if (next.length === tokens.length) throw notFound('Token not found.');
     await settingSetJson('api_tokens', next);
