@@ -135,6 +135,11 @@ function user(u) {
     directory_provider: u.directory_provider, last_login_at: u.last_login_at,
     department: u.department_name ? { id: u.department_id, name: u.department_name } : null, department_id: u.department_id,
     org_unit_id: u.org_unit_id, org_unit: orgUnitMini(u), created_at: u.created_at,
+    // Unified API staff enrichment (null for local accounts).
+    user_type: (u.role_slug || bool(u.is_super_admin)) ? 'stakeholder' : 'client',
+    staff_id: u.staff_id || null, staff_type: u.staff_type || null, staff_rank: u.staff_rank || null,
+    designation: u.designation || null, unified_synced_at: u.unified_synced_at || null,
+    pending_org_unit_id: u.pending_org_unit_id || null,
   };
 }
 

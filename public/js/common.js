@@ -341,6 +341,7 @@
     ] },
     { label: 'Administration', items: [
       { key: 'users', to: '/users.html', label: 'Users', icon: 'users', cap: 'users.manage' },
+      { key: 'clients', to: '/clients.html', label: 'Clients', icon: 'contacts', cap: 'users.manage' },
       { key: 'org-units', to: '/org-units.html', label: 'Organisation', icon: 'org', cap: 'departments.manage' },
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },

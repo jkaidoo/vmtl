@@ -47,6 +47,9 @@ module.exports = function register(router) {
     if (req.query.role_id) { where.push('u.role_id = ?'); params.push(Number(req.query.role_id)); }
     if (req.query.department_id) { where.push('u.department_id = ?'); params.push(Number(req.query.department_id)); }
     if (req.query.directory === 'true' || req.query.directory === '1') where.push('u.directory_provider IS NOT NULL');
+    // Stakeholders hold a role (or are the App Owner); clients are role-less staff awaiting one.
+    if (req.query.type === 'stakeholder') where.push('(u.role_id IS NOT NULL OR u.is_super_admin = 1)');
+    else if (req.query.type === 'client') where.push('(u.role_id IS NULL AND u.is_super_admin = 0)');
     if (req.query.search) { const s = `%${req.query.search}%`; where.push('(u.name LIKE ? OR u.email LIKE ?)'); params.push(s, s); }
     const order = (req.query.directory === 'true' || req.query.directory === '1') ? 'u.last_login_at DESC' : 'u.name';
     const rows = await db.all(`${USER_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${order}`, params);
@@ -130,6 +133,26 @@ module.exports = function register(router) {
     if (data.password) { sets.push('password_hash = ?'); params.push(hashPassword(data.password)); }
     await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
     await audit.from(req, { action: 'user.updated', description: `User ${data.name} was updated`, entityType: 'user', entityId: target.id });
+    res.json({ data: await userDto(target.id) });
+  });
+
+  // Partial update — used by the Clients page to assign a role (promote to
+  // stakeholder) and/or move a client's org unit, without a full edit.
+  router.patch('/users/:id', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    const target = await db.get('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL', [req.params.id]);
+    if (!target) throw notFound('User not found.');
+    if (target.is_super_admin && !req.session.user.is_super_admin) throw forbidden('You cannot edit the System Administrator.');
+    if (!(await inUserScope(req.session.user, target.org_unit_id))) throw forbidden('That user is outside your scope.');
+    const data = validate(req.body, { role_id: { type: 'integer' }, org_unit_id: { type: 'integer' }, active: { type: 'boolean' } });
+    await guardAssignment(req, data);
+    const sets = []; const params = [];
+    if ('role_id' in req.body) { sets.push('role_id = ?'); params.push(data.role_id || null); }
+    if ('org_unit_id' in req.body) { sets.push('org_unit_id = ?'); params.push(data.org_unit_id || null); if (!data.org_unit_id || Number(data.org_unit_id) === Number(target.pending_org_unit_id)) { sets.push('pending_org_unit_id = NULL', 'pending_org_since = NULL'); } }
+    if (req.body.active !== undefined) { sets.push('active = ?'); params.push(data.active ? 1 : 0); }
+    if (!sets.length) return res.json({ data: await userDto(target.id) });
+    await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
+    await audit.from(req, { action: 'user.updated', description: `${target.name} was updated`, entityType: 'user', entityId: target.id });
     res.json({ data: await userDto(target.id) });
   });
 
