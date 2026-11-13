@@ -17,37 +17,6 @@ const { notFound, badRequest } = require('../../middleware/errorHandler');
 
 const SC_GROUPS = ['features', 'notifications', 'retention', 'maintenance'];
 
-// Directory-auth field catalog (key → {label,type,options,group}).
-const DIR_FIELDS = {
-  general: [
-    ['directory_enabled', 'Enable directory authentication', 'boolean'],
-    ['directory_provider', 'Active provider', 'select', { ldap: 'LDAP', active_directory: 'Active Directory' }],
-  ],
-  ldap: [
-    ['ldap_host', 'Host / Server URL', 'string'], ['ldap_port', 'Port', 'string'],
-    ['ldap_encryption', 'Encryption', 'select', { none: 'None', starttls: 'StartTLS', ssl: 'LDAPS (SSL)' }],
-    ['ldap_base_dn', 'Base DN', 'string'], ['ldap_bind_dn', 'Bind DN (service account)', 'string'],
-    ['ldap_user_filter', 'User search filter', 'string'], ['ldap_attr_username', 'Username attribute', 'string'],
-    ['ldap_attr_email', 'Email attribute', 'string'], ['ldap_attr_name', 'Display-name attribute', 'string'],
-    ['ldap_group_base_dn', 'Group base DN', 'string'], ['ldap_required_group_dn', 'Required group DN (membership gate)', 'string'],
-  ],
-  ad: [
-    ['ad_domain', 'Domain (FQDN)', 'string'], ['ad_host', 'Domain controller host(s)', 'string'], ['ad_port', 'Port', 'string'],
-    ['ad_use_ssl', 'Use SSL / LDAPS', 'boolean'], ['ad_base_dn', 'Base DN', 'string'], ['ad_bind_account', 'Bind account (user@domain)', 'string'],
-    ['ad_user_filter', 'User search filter', 'string'], ['ad_attr_username', 'Username attribute (sAMAccountName)', 'string'],
-    ['ad_attr_upn', 'UPN attribute (userPrincipalName)', 'string'], ['ad_attr_email', 'Email attribute (mail)', 'string'],
-    ['ad_attr_name', 'Display-name attribute (displayName)', 'string'], ['ad_required_group_dn', 'Required group DN (membership gate)', 'string'],
-  ],
-};
-async function dirFields(group) {
-  const out = [];
-  for (const [key, label, type, options] of DIR_FIELDS[group]) {
-    const raw = await settings.get(key, '');
-    out.push({ key, label, type, options: options || null, value: type === 'boolean' ? !!raw : (raw || '') });
-  }
-  return out;
-}
-
 const SMS_PROVIDERS = {
   hubtel: { label: 'Hubtel', fields: [['hubtel_client_id', 'Client ID', false], ['hubtel_client_secret', 'Client Secret', true]] },
   mnotify: { label: 'mNotify', fields: [['mnotify_api_key', 'API Key', true]] },
@@ -209,42 +178,52 @@ module.exports = function register(router) {
     res.json({ data: await scList() });
   });
 
-  // ---- Directory Auth ----------------------------------------------------
-  async function dirPayload() {
-    return { data: {
-      general: { fields: await dirFields('general') },
-      ldap: { fields: await dirFields('ldap'), has_bind_password: !!(await settings.get('ldap_bind_password', '')) },
-      ad: { fields: await dirFields('ad'), has_bind_password: !!(await settings.get('ad_bind_password', '')) },
-      mapping: { default_role: (await settings.get('directory_default_role', 'staff')) || 'staff', default_org_unit: (await settings.get('directory_default_org_unit', '')) ? Number(await settings.get('directory_default_org_unit', '')) : null, rules: (await settings.get('directory_role_map', [])) || [] },
-    } };
-  }
-  router.get('/admin/directory-auth', requireAuth, requireSuper, async (req, res) => res.json(await dirPayload()));
-  router.put('/admin/directory-auth', requireAuth, requireSuper, async (req, res) => {
-    const catalog = {};
-    for (const [group, fields] of Object.entries(DIR_FIELDS)) for (const [key, , type] of fields) catalog[key] = type;
-    for (const field of (req.body.fields || [])) {
-      const type = catalog[field.key]; if (!type) continue;
-      const value = type === 'boolean' ? (field.value ? '1' : '0') : String(field.value ?? '');
-      await settingSet(field.key, value, type === 'boolean' ? 'boolean' : 'string');
-    }
-    for (const [provider, key] of [['ldap', 'ldap_bind_password'], ['ad', 'ad_bind_password']]) {
-      const input = req.body[`${provider}_bind_password`];
-      if (input) await settingSet(key, input, 'string');
-    }
-    if ('default_role' in req.body) await settingSet('directory_default_role', req.body.default_role || 'staff', 'string');
-    if ('default_org_unit' in req.body) await settingSet('directory_default_org_unit', req.body.default_org_unit || '', 'string');
-    if ('role_map' in req.body) {
-      const rules = (req.body.role_map || []).filter((r) => r && r.group && r.role).map((r) => ({ group: String(r.group).trim(), role: String(r.role), org_unit_id: r.org_unit_id ? Number(r.org_unit_id) : null }));
-      await settingSetJson('directory_role_map', rules);
-    }
-    await audit.from(req, { action: 'directory_auth.updated', description: `${req.session.user.name} updated directory authentication settings` });
-    res.json(await dirPayload());
+  // ---- Directory Auth (a list of LDAP/AD directories, tried in order) -----
+  const sendDirErr = (res, e) => res.status(e && e.status ? e.status : 500).json({ error: e && e.status ? e.message : 'The directory settings could not be saved.' });
+  router.get('/admin/directory-auth', requireAuth, requireSuper, async (req, res) => res.json({ data: {
+    directories: await directoryAuth.list(), offline_days: await directoryAuth.offlineDays(), offline_days_max: directoryAuth.OFFLINE_DAYS_MAX,
+  } }));
+  router.get('/admin/directory-auth/activity', requireAuth, requireSuper, async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days) }));
+  router.post('/admin/directory-auth', requireAuth, requireSuper, async (req, res) => {
+    try {
+      const entry = await directoryAuth.create(req.body || {});
+      await audit.from(req, { action: 'directory_auth.added', description: `${req.session.user.name} added directory "${entry.name}" (${entry.provider}, ${entry.url || 'no URL'})` });
+      res.status(201).json({ data: { directory: entry } });
+    } catch (e) { sendDirErr(res, e); }
   });
-  router.post('/admin/directory-auth/test', requireAuth, requireSuper, async (req, res) => {
-    const { provider } = validate(req.body, { provider: { required: true, type: 'string', in: ['ldap', 'ad'] } });
-    const result = await directoryAuth.testConnection(provider);
-    await audit.from(req, { action: 'directory_auth.tested', description: `${req.session.user.name} tested the ${provider} directory connection — ${result.ok ? 'success' : 'failed'}` });
-    res.json({ data: result });
+  router.put('/admin/directory-auth/order', requireAuth, requireSuper, async (req, res) => {
+    const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.map(String) : [];
+    const directories = await directoryAuth.reorder(ids);
+    await audit.from(req, { action: 'directory_auth.reordered', description: `${req.session.user.name} reordered directory sign-in: ${directories.map((d) => d.name).join(', ')}` });
+    res.json({ data: { directories } });
+  });
+  router.put('/admin/directory-auth/offline', requireAuth, requireSuper, async (req, res) => {
+    try {
+      const days = await directoryAuth.setOfflineDays((req.body || {}).days);
+      await audit.from(req, { action: 'directory_auth.updated', description: `${req.session.user.name} set directory saved sign-in to ${days ? `${days} day(s)` : 'off'}` });
+      res.json({ data: { offline_days: days } });
+    } catch (e) { sendDirErr(res, e); }
+  });
+  router.patch('/admin/directory-auth/:id', requireAuth, requireSuper, async (req, res) => {
+    try {
+      const entry = await directoryAuth.update(req.params.id, req.body || {});
+      if (!entry) return res.status(404).json({ error: 'Directory not found.' });
+      await audit.from(req, { action: 'directory_auth.updated', description: `${req.session.user.name} updated directory "${entry.name}" (${entry.enabled ? 'enabled' : 'disabled'})` });
+      res.json({ data: { directory: entry } });
+    } catch (e) { sendDirErr(res, e); }
+  });
+  router.delete('/admin/directory-auth/:id', requireAuth, requireSuper, async (req, res) => {
+    const entry = await directoryAuth.remove(req.params.id);
+    if (!entry) return res.status(404).json({ error: 'Directory not found.' });
+    await audit.from(req, { action: 'directory_auth.removed', description: `${req.session.user.name} removed directory "${entry.name}". Reason: ${String((req.body || {}).deletion_reason || '').trim().slice(0, 500)}` });
+    res.json({ data: { ok: true } });
+  });
+  router.post('/admin/directory-auth/:id/test', requireAuth, requireSuper, async (req, res) => {
+    const { username, password } = req.body || {};
+    const out = await directoryAuth.test(req.params.id, { username, password });
+    if (!out) return res.status(404).json({ error: 'Directory not found.' });
+    await audit.from(req, { action: 'directory_auth.tested', description: `${req.session.user.name} tested a directory connection — ${out.ok ? 'passed' : 'failed'}` });
+    res.json({ data: out });
   });
 
   // ---- Messaging (email / SMS) ------------------------------------------

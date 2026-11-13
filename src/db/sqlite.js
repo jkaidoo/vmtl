@@ -381,5 +381,10 @@ function ensureColumn(table, column, definition) {
 // (room for future upgrades, e.g.)
 // ensureColumn('vehicles', 'new_column', 'TEXT');
 
+// Directory (LDAP/AD) saved sign-in cache (see 005_directory_auth.sql).
+ensureColumn('users', 'directory_cache_hash', 'TEXT');
+ensureColumn('users', 'directory_cache_at', 'INTEGER');     // epoch milliseconds
+ensureColumn('users', 'directory_cache_source', 'TEXT');    // directory id that accepted the password
+
 module.exports = db;
 module.exports.ensureColumn = ensureColumn;
