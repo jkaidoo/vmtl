@@ -3,10 +3,25 @@
 const db = require('../../db/runtime');
 const { CAP } = require('../../services/capabilities');
 const { has } = require('../../services/authz');
+const orgScope = require('../../services/orgScope');
+const roleRepository = require('../../services/roleRepository');
 const { requireAuth } = require('../../middleware/auth');
 const { forbidden } = require('../../middleware/errorHandler');
 
 const BASE = 'FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id';
+
+// The App Owner and System Administrators see the whole ledger; a Supervisor (or
+// any OU-scoped viewer) sees only entries whose actor is within their org unit.
+async function auditScope(req) {
+  const user = req.session.user;
+  if (user.is_super_admin) return { clause: '', params: [] };
+  const caps = await roleRepository.capsForUser(user.id);
+  if (caps.includes(CAP.SYSTEM_ADMIN)) return { clause: '', params: [] };
+  const scope = await orgScope.visibleOrgUnitIds(user);
+  if (scope === null) return { clause: '', params: [] };
+  if (!scope.length) return { clause: ' AND 1 = 0', params: [] };
+  return { clause: ` AND u.org_unit_id IN (${scope.map(() => '?').join(',')})`, params: scope };
+}
 
 function buildWhere(q) {
   const where = ['1=1']; const params = [];
@@ -31,7 +46,8 @@ function csvCell(v) { const s = v == null ? '' : String(v); return /[",\n]/.test
 module.exports = function register(router) {
   router.get('/audit-logs', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.AUDIT_VIEW))) throw forbidden('You may not view the audit log.');
-    const { whereSql, params } = buildWhere(req.query);
+    const base = buildWhere(req.query); const sc = await auditScope(req);
+    const whereSql = base.whereSql + sc.clause; const params = [...base.params, ...sc.params];
     const sort = String(req.query.sort || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 25));
     const page = Math.max(1, Number(req.query.page) || 1);
@@ -42,7 +58,8 @@ module.exports = function register(router) {
 
   router.get('/audit-logs/export', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.AUDIT_VIEW))) throw forbidden('You may not view the audit log.');
-    const { whereSql, params } = buildWhere(req.query);
+    const base = buildWhere(req.query); const sc = await auditScope(req);
+    const whereSql = base.whereSql + sc.clause; const params = [...base.params, ...sc.params];
     const rows = await db.all(`SELECT a.*, u.name AS user_name ${BASE} WHERE ${whereSql} ORDER BY a.created_at DESC, a.id DESC LIMIT 10000`, params);
     const header = ['When', 'Action', 'By', 'Record type', 'Record id', 'Detail', 'IP'];
     const lines = [header.join(',')];

@@ -188,6 +188,15 @@ module.exports = function register(router) {
     res.json({ data: await userDto(target.id) });
   });
 
+  // Re-sync a person from the Unified API now (ignores the throttle).
+  router.post('/users/:id/resync', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
+    const target = await db.get('SELECT id, email FROM users WHERE id = ? AND deleted_at IS NULL', [req.params.id]);
+    if (!target) throw notFound('User not found.');
+    const out = await require('../../services/staffSync').syncUser(target.id, target.email, { force: true });
+    res.json({ data: { ...out, user: await userDto(target.id) } });
+  });
+
   // Apply a pending OU change now (admin acts before the grace period).
   router.post('/users/:id/apply-ou-change', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');

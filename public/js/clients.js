@@ -38,11 +38,17 @@ window.VMTL_PAGE = async function () {
       <td data-label=""><div class="btn-row">
         <button class="btn btn-sm btn-primary" data-assign="${c.id}"><span class="btn-ic">${VMTL.icon('user-plus')}</span> Assign role</button>
         <button class="btn btn-sm" data-ou="${c.id}"><span class="btn-ic" style="color:var(--info)">${VMTL.icon('org')}</span> Unit</button>
+        <button class="btn btn-sm" data-resync="${c.id}" title="Re-sync from the Unified API"><span class="btn-ic">${VMTL.icon('database')}</span></button>
         <button class="btn btn-sm btn-ghost" data-del="${c.id}" style="color:var(--danger)"><span class="btn-ic">${VMTL.icon('trash')}</span></button>
       </div></td></tr>`).join('');
     list.innerHTML = `<table class="data accounts"><thead><tr><th>STAFF NAME</th><th>STAFF TYPE</th><th>DESIGNATION</th><th>PLACEMENT</th><th>LAST SIGN-IN</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
     list.querySelectorAll('[data-assign]').forEach((b) => b.onclick = () => assignRole(byId(b.dataset.assign)));
     list.querySelectorAll('[data-ou]').forEach((b) => b.onclick = () => moveUnit(byId(b.dataset.ou)));
+    list.querySelectorAll('[data-resync]').forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      try { const r = (await VMTL.api(`/users/${b.dataset.resync}/resync`, { method: 'POST' })).data; VMTL.toast(r.synced ? 'Re-synced from the Unified API.' : `Not synced: ${r.reason || 'unavailable'}.`, r.synced ? 'success' : 'err'); load(); }
+      catch (e) { VMTL.showErrors(e); b.disabled = false; }
+    });
     list.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { if (await VMTL.confirm('Remove this client account? They can sign in again through the directory.', { danger: true, confirmLabel: 'Remove' })) { try { await VMTL.api(`/users/${b.dataset.del}`, { method: 'DELETE' }); VMTL.toast('Removed.', 'success'); load(); } catch (e) { VMTL.showErrors(e); } } });
   }
   const byId = (id) => clients.find((c) => String(c.id) === String(id));

@@ -23,6 +23,15 @@ module.exports = function register(router) {
     const password = String(req.body.password || '');
     if (!email || !password) throw badRequest('Email and password are required.', { email: !email ? ['Required'] : undefined, password: !password ? ['Required'] : undefined });
 
+    // Brute-force guard: too many recent failures for this identity → make them wait.
+    const LOCK_THRESHOLD = Number(process.env.LOGIN_LOCK_THRESHOLD || 8);
+    const LOCK_WINDOW_MIN = Number(process.env.LOGIN_LOCK_WINDOW_MIN || 15);
+    const windowStart = new Date(Date.now() - LOCK_WINDOW_MIN * 60000).toISOString().slice(0, 19).replace('T', ' ');
+    const recentFails = (await db.get("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'auth.login_failed' AND lower(actor_name) = ? AND created_at >= ?", [email, windowStart])).n;
+    if (recentFails >= LOCK_THRESHOLD) {
+      return res.status(429).json({ error: `Too many failed sign-in attempts. Please wait ${LOCK_WINDOW_MIN} minutes and try again.` });
+    }
+
     // Local-first: match a local account by email (or bare username via email local-part).
     let user = await db.get('SELECT * FROM users WHERE lower(email) = ? AND deleted_at IS NULL', [email]);
     let ok = user && user.active && verifyPassword(password, user.password_hash);

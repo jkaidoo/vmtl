@@ -63,10 +63,12 @@ async function rootInstitutionId() {
 // Resolve (creating as needed) the org unit for a staff profile's college/department.
 async function orgUnitForProfile(fields) {
   const college = textField(fields.college);
+  const faculty = textField(fields.faculty);                    // present on some records
   const department = textField(fields.department);
-  if (!college && !department) return null;
+  if (!college && !faculty && !department) return null;
   let parent = await rootInstitutionId();
   if (college) parent = await ensureUnit(college, 'college', parent);
+  if (faculty) parent = await ensureUnit(faculty, 'faculty', parent);
   if (department) return ensureUnit(department, 'department', parent);
   return parent;
 }
@@ -84,11 +86,17 @@ function bestMatch(results, identity) {
 // Resolve + sync one user from the Unified API. `identity` is the email/username
 // they signed in with. Best-effort: any failure leaves the account unchanged.
 // Returns { synced, staffId, orgUnitId, pendingOrgUnitId, changedOrg }.
-async function syncUser(userId, identity) {
+async function syncUser(userId, identity, { force = false } = {}) {
   try {
     if (!(await unifiedApi.enabled())) return { synced: false, reason: 'disabled' };
     const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user || user.is_super_admin) return { synced: false, reason: 'skipped' };
+    // Throttle: skip a recent sync (unless forced, or an OU change is pending), so
+    // sign-in does not wait on the Unified API on every login.
+    if (!force && user.unified_synced_at && !user.pending_org_unit_id) {
+      const throttleH = Number(await settings.get('unified_sync_throttle_hours', '6')) || 6;
+      if (Date.now() - tsMs(user.unified_synced_at) < throttleH * 3_600_000) return { synced: false, reason: 'fresh' };
+    }
     const q = String(identity || user.email || '').trim();
     if (!q) return { synced: false, reason: 'no_identity' };
 
