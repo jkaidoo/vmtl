@@ -64,10 +64,38 @@ async function config() {
 }
 async function enabled() { return (await config()).enabled; }
 
+const FIELD_LABELS = { id_number: 'Staff ID', full_name: 'Full name', email: 'Email', username: 'Username', college: 'College', faculty: 'Faculty', department: 'Department', rank: 'Rank', designation: 'Designation', staff_type: 'Staff type', staff_category: 'Staff category', org_unit: 'Automatic organisational-unit updates' };
+async function fieldSettings() {
+  let saved = await settings.get('unified_api_fields', '{}');
+  if (typeof saved === 'string') { try { saved = JSON.parse(saved); } catch (_) { saved = {}; } }
+  return Object.entries(FIELD_LABELS).map(([key, label]) => ({ key, label, enabled: saved?.[key] !== false }));
+}
+async function saveFields(fields) {
+  const current = await fieldSettings();
+  const next = Object.fromEntries(current.map((f) => [f.key, typeof fields?.[f.key] === 'boolean' ? fields[f.key] : f.enabled]));
+  await settings.set('unified_api_fields', JSON.stringify(next));
+  return fieldSettings();
+}
+async function selectedFields(fields) {
+  const allowed = await fieldSettings();
+  return Object.fromEntries(allowed.filter((f) => f.enabled && f.key !== 'org_unit' && fields[f.key] !== undefined).map((f) => [f.key, fields[f.key]]));
+}
+async function manualSearch(q) {
+  const out = await searchStaff(q);
+  if (out.status !== 'ok') return out;
+  const results = await Promise.all(out.results.slice(0, 20).filter((r) => r && r.id_number).map(async (r) => ({ id_number: String(r.id_number), fields: await selectedFields({ ...r, email: r.email || r.school_email, designation: r.designation || r.designation_group }) })));
+  return { status: 'ok', results };
+}
+async function manualProfile(id) {
+  const out = await staffProfile(id);
+  if (out.status !== 'found') return out;
+  return { status: 'found', fields: await selectedFields({ ...out.fields, id_number: out.id_number, designation: out.fields.designation || out.fields.designation_group }) };
+}
+
 // Admin view of the config; the API key is never returned.
 async function publicConfig() {
   const c = await config();
-  return { url: c.url, has_key: Boolean(c.key), enabled: c.enabled, switched_on: c.switchedOn };
+  return { url: c.url, has_key: Boolean(c.key), enabled: c.enabled, switched_on: c.switchedOn, fields: await fieldSettings() };
 }
 async function saveConfig(body = {}) {
   if (body.url !== undefined) await settings.set('unified_api_url', String(body.url || '').trim().replace(/\/+$/, ''));
@@ -84,7 +112,7 @@ async function searchStaff(q) {
   const cfg = await config();
   if (!cfg.enabled) return { status: 'unavailable', results: [], reason: 'disabled' };
   const query = String(q || '').trim();
-  if (query.length < 2) return { status: 'invalid', results: [] };
+  if (query.length < 2) return { status: 'invalid', results: [], reason: 'Enter at least two characters to search staff.' };
   try {
     const res = await doFetch(`${cfg.url}/staff/search?q=${encodeURIComponent(query)}`, { headers: headers(cfg), signal: AbortSignal.timeout(cfg.timeoutMs) });
     const body = await res.json().catch(() => ({}));
@@ -117,9 +145,9 @@ async function status(sample) {
   const report = { configured: Boolean(cfg.url), key_configured: Boolean(cfg.key), switched_on: cfg.switchedOn, enabled: cfg.enabled, url: cfg.url, checks: [] };
   if (!cfg.enabled) { report.checks.push({ code: cfg.switchedOn ? 'NOT_CONFIGURED' : 'SWITCHED_OFF', ok: false }); return report; }
   const q = String(sample || '').trim();
-  const out = await searchStaff(q || 'a');
+  const out = await searchStaff(q || 'ad');
   report.checks.push({ code: 'STAFF_SEARCH', ok: out.status === 'ok', detail: out.status === 'ok' ? `${out.results.length} result(s)` : out.reason });
   return report;
 }
 
-module.exports = { config, enabled, publicConfig, saveConfig, searchStaff, staffProfile, status };
+module.exports = { config, enabled, publicConfig, saveConfig, searchStaff, staffProfile, status, fieldSettings, saveFields, manualSearch, manualProfile };

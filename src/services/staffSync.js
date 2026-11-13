@@ -109,7 +109,8 @@ async function syncUser(userId, identity, { force = false } = {}) {
     if (prof.status !== 'found') return { synced: false, reason: prof.reason || prof.status };
     const f = prof.fields;
 
-    const resolvedOrg = await orgUnitForProfile(f);
+    const allowed = Object.fromEntries((await unifiedApi.fieldSettings()).map((field) => [field.key, field.enabled]));
+    const resolvedOrg = allowed.org_unit ? await orgUnitForProfile(Object.fromEntries(['college', 'faculty', 'department'].filter((key) => allowed[key]).map((key) => [key, f[key]]))) : null;
     const fields = {
       staff_id: prof.id_number,
       staff_rank: textField(f.rank) || null,
@@ -119,6 +120,8 @@ async function syncUser(userId, identity, { force = false } = {}) {
       college_name: textField(f.college) || null,
       department_name: textField(f.department) || null,
     };
+    const sourceFields = { staff_id: 'id_number', staff_rank: 'rank', designation: 'designation', staff_category: 'staff_category', staff_type: 'staff_type', college_name: 'college', department_name: 'department' };
+    for (const [column, source] of Object.entries(sourceFields)) if (!allowed[source]) delete fields[column];
 
     const graceMs = (await graceDays()) * DAY_MS;
     let setOrg = null;
@@ -164,6 +167,7 @@ async function syncUser(userId, identity, { force = false } = {}) {
 // not signed in. Safe to run periodically. Returns how many were moved.
 async function sweepAgedPendingMoves() {
   try {
+    if (!(await unifiedApi.enabled()) || !(await unifiedApi.fieldSettings()).find((f) => f.key === 'org_unit').enabled) return 0;
     const graceMs = (await graceDays()) * DAY_MS;
     const rows = await db.all('SELECT id, name, pending_org_unit_id, pending_org_since FROM users WHERE pending_org_unit_id IS NOT NULL AND deleted_at IS NULL');
     let moved = 0;

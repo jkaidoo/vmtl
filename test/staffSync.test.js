@@ -36,3 +36,32 @@ test('orgUnitForProfile auto-creates college -> faculty -> department, idempoten
 test('orgUnitForProfile returns null when no OU fields are present', async () => {
   assert.strictEqual(await staffSync.orgUnitForProfile({}), null);
 });
+
+test('disabled import fields preserve stored values and pause pending organisational moves', async () => {
+  const fs = require('node:fs');
+  const vm = require('node:vm');
+  let update;
+  const api = {
+    enabled: async () => true,
+    fieldSettings: async () => ['id_number', 'rank', 'designation', 'staff_category', 'staff_type', 'college', 'faculty', 'department', 'org_unit'].map((key) => ({ key, enabled: key === 'designation' })),
+    searchStaff: async () => ({ status: 'ok', results: [{ id_number: '42', email: 'person@test' }] }),
+    staffProfile: async () => ({ status: 'found', id_number: '42', fields: { rank: 'New rank', designation: 'Officer', department: 'New department' } }),
+  };
+  const mocks = {
+    './db_ref': {
+      get: async () => ({ id: 1, email: 'person@test', org_unit_id: 2, pending_org_unit_id: 3 }),
+      run: async (sql, params) => { update = { sql, params }; }, now: () => 'CURRENT_TIMESTAMP',
+      all: async () => assert.fail('Pending moves must not be queried when organisational updates are off'),
+    },
+    './unifiedApi': api, './orgUnits': { create: async () => assert.fail('Must not create organisational units') },
+    './settings': { get: async (key, fallback) => fallback }, './notifications': {}, '../util/log': { warn: () => {} },
+  };
+  const context = { module: { exports: {} }, require: (name) => mocks[name] };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/staffSync'), 'utf8'), context);
+  const result = await context.module.exports.syncUser(1, 'person@test', { force: true });
+  assert.strictEqual(result.synced, true);
+  assert.match(update.sql, /designation = \?/);
+  assert.doesNotMatch(update.sql, /staff_rank =|staff_id =|department_name =|college_name =|(?:^|, )org_unit_id =/);
+  assert.strictEqual(result.pendingOrgUnitId, 3);
+  assert.strictEqual(await context.module.exports.sweepAgedPendingMoves(), 0);
+});

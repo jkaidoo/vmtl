@@ -396,6 +396,19 @@ module.exports = function register(router) {
   });
   // ---- Unified API (inbound): pull live staff data for OU enrichment -------
   const unifiedApi = require('../../services/unifiedApi');
+  router.put('/admin/unified-api-client/fields', requireAuth, requireSystemAdmin, async (req, res) => {
+    const fields = await unifiedApi.saveFields(req.body.fields);
+    await audit.from(req, { action: 'unified_api.fields_configured', description: `${req.session.user.name} updated Unified API staff data fields` });
+    res.json({ data: { fields } });
+  });
+  router.get('/admin/unified-api-client/search', requireAuth, requireSystemAdmin, async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2 || q.length > 100) return res.status(400).json({ error: 'Enter a name, staff ID or email between 2 and 100 characters.' });
+    res.json({ data: await unifiedApi.manualSearch(q) });
+  });
+  router.get('/admin/unified-api-client/profile/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.json({ data: await unifiedApi.manualProfile(req.params.id) });
+  });
   router.get('/admin/unified-api-client', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await unifiedApi.publicConfig() }));
   router.put('/admin/unified-api-client', requireAuth, requireSystemAdmin, async (req, res) => {
     const out = await unifiedApi.saveConfig({ url: req.body.url, key: req.body.key, enabled: req.body.enabled });

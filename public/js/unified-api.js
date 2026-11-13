@@ -38,14 +38,72 @@ window.VMTL_PAGE = async function () {
     host.innerHTML = `
       <div class="card pad mb" style="border-left:3px solid var(--info)">
         <div class="between" style="flex-wrap:wrap;gap:8px"><div><h3 style="margin:0">Staff data source (inbound)</h3><div class="dim" style="font-size:12.5px;margin-top:2px">Pull each signed-in staff member's department, college, rank and designation from the KNUST Unified API. Used only to set their organisational unit — never vehicle data.</div></div>
-          <span class="chip" style="color:${c.enabled ? 'var(--success)' : 'var(--text-2)'}">${c.enabled ? 'Connected' : (c.switched_on ? 'Not configured' : 'Off')}</span></div>
+          <span class="chip" style="color:${c.enabled ? 'var(--success)' : 'var(--text-2)'}">${c.enabled ? 'Configured' : (c.switched_on ? 'Not configured' : 'Off')}</span></div>
         <div class="form-grid" style="margin-top:12px">
           <div class="field col-2"><label>Unified API base URL</label><input id="uUrl" value="${esc(c.url || '')}" placeholder="https://unified-api.cloud.knust.edu.gh"></div>
           <div class="field col-2"><label>API key ${c.has_key ? '(set — blank keeps it)' : ''}</label><input id="uKey" type="password" autocomplete="new-password" placeholder="X-Api-Key"></div>
           <div class="field"><label>Enabled</label><button type="button" class="switch" role="switch" id="uOn" aria-checked="${c.switched_on ? 'true' : 'false'}"><span class="switch-knob"></span></button></div>
         </div>
         <div class="row gap-sm" style="margin-top:12px;flex-wrap:wrap"><button class="btn btn-primary" id="uSave">Save connection</button><button class="btn" id="uTest">Test</button><span id="uResult" class="dim" style="font-size:12.5px"></span></div>
+      </div>
+      <div class="card pad mb">
+        <h3>Staff data fields</h3>
+        <p class="dim">Choose fields shown in manual searches and imported during staff sync. Turning a field off preserves existing stored values. Name, email and username are for preview only; account identity comes from directory sign-in. Organisational-unit updates use the enabled college, faculty and department fields.</p>
+        <div class="form-grid">${(c.fields || []).map((f) => `<div class="field"><label for="uf-${esc(f.key)}">${esc(f.label)}</label><button type="button" id="uf-${esc(f.key)}" class="switch" role="switch" aria-label="${esc(f.label)}" data-staff-field="${esc(f.key)}" aria-checked="${f.enabled ? 'true' : 'false'}"><span class="switch-knob"></span></button></div>`).join('')}</div>
+        <div class="row gap-sm" style="margin-top:12px"><button class="btn btn-primary" id="uFieldsSave">Save data fields</button><span id="uFieldsStatus" role="status"></span></div>
+      </div>
+      <div class="card pad mb">
+        <h3>Manual staff search</h3>
+        <p class="dim">Search by name, staff ID or official email. Open a result to view its profile. Searching does not create or update an account. Save connection and field changes before searching.</p>
+        <form id="uSearchForm" class="row gap-sm"><div class="field" style="flex:1"><label for="uQuery">Name, staff ID or email</label><input id="uQuery" minlength="2" maxlength="100" required autocomplete="off" placeholder="Enter at least two characters"></div><button class="btn" type="submit">Search</button></form>
+        <div id="uSearchStatus" role="status" style="margin-top:12px"></div><div id="uSearchResults"></div>
       </div>`;
+    host.querySelectorAll('[data-staff-field]').forEach((b) => b.onclick = () => b.setAttribute('aria-checked', String(b.getAttribute('aria-checked') !== 'true')));
+    let searchSequence = 0;
+    host.querySelector('#uFieldsSave').onclick = async () => {
+      const button = host.querySelector('#uFieldsSave'); button.disabled = true;
+      try {
+        const fields = Object.fromEntries([...host.querySelectorAll('[data-staff-field]')].map((b) => [b.dataset.staffField, b.getAttribute('aria-checked') === 'true']));
+        const r = (await VMTL.api('/admin/unified-api-client/fields', { method: 'PUT', body: { fields } })).data;
+        c.fields = r.fields; ++searchSequence;
+        host.querySelector('#uSearchResults').innerHTML = ''; host.querySelector('#uSearchStatus').textContent = '';
+        host.querySelector('#uFieldsStatus').textContent = 'Data fields saved.';
+      } catch (e) { host.querySelector('#uFieldsStatus').textContent = e.message; }
+      finally { button.disabled = false; }
+    };
+    const displayValue = (v) => {
+      if (v == null) return '—';
+      if (Array.isArray(v)) return v.map(displayValue).join(', ');
+      if (typeof v === 'object') return displayValue(v.value ?? v.text ?? v.name ?? JSON.stringify(v));
+      return String(v);
+    };
+    const showFields = (fields) => Object.entries(fields || {}).map(([key, value]) => `<div style="padding:4px 0"><strong>${esc((c.fields || []).find((f) => f.key === key)?.label || key)}:</strong> ${esc(displayValue(value))}</div>`).join('') || '<p class="dim">All preview fields are switched off.</p>';
+    host.querySelector('#uSearchForm').onsubmit = async (event) => {
+      event.preventDefault();
+      const q = host.querySelector('#uQuery').value.trim(); const mine = ++searchSequence;
+      const status = host.querySelector('#uSearchStatus'); const results = host.querySelector('#uSearchResults');
+      results.innerHTML = '';
+      if (q.length < 2) { status.textContent = 'Enter at least two characters.'; return; }
+      status.textContent = 'Searching…';
+      try {
+        const r = (await VMTL.api(`/admin/unified-api-client/search?q=${encodeURIComponent(q)}`)).data;
+        if (mine !== searchSequence) return;
+        if (r.status !== 'ok') { status.textContent = r.reason || 'Staff search is unavailable.'; return; }
+        status.textContent = r.results.length ? `${r.results.length} match(es)${r.results.length === 20 ? ' — refine your search for more precise results' : ''}.` : 'No staff found.';
+        results.innerHTML = r.results.map((person, i) => `<article class="card pad" style="margin-top:12px">${showFields(person.fields)}<button type="button" class="btn btn-sm" data-profile="${i}">View profile</button><div data-profile-details="${i}"></div></article>`).join('');
+        results.querySelectorAll('[data-profile]').forEach((button) => button.onclick = async () => {
+          const person = r.results[Number(button.dataset.profile)];
+          const details = results.querySelector(`[data-profile-details="${button.dataset.profile}"]`);
+          button.disabled = true; details.textContent = 'Loading profile…';
+          try {
+            const profile = (await VMTL.api(`/admin/unified-api-client/profile/${encodeURIComponent(person.id_number)}`)).data;
+            if (mine !== searchSequence) return;
+            details.innerHTML = profile.status === 'found' ? showFields(profile.fields) : esc(profile.reason || 'Staff profile not found.');
+          } catch (e) { details.textContent = e.message; }
+          finally { button.disabled = false; }
+        });
+      } catch (e) { if (mine === searchSequence) status.textContent = e.message; }
+    };
     host.querySelector('#uOn').onclick = (e) => { const b = e.currentTarget; b.setAttribute('aria-checked', b.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); };
     host.querySelector('#uSave').onclick = async () => {
       const body = { url: host.querySelector('#uUrl').value.trim(), enabled: host.querySelector('#uOn').getAttribute('aria-checked') === 'true' };
@@ -54,7 +112,7 @@ window.VMTL_PAGE = async function () {
     };
     host.querySelector('#uTest').onclick = async () => {
       const out = host.querySelector('#uResult'); out.textContent = 'Testing…';
-      try { const r = (await VMTL.api('/admin/unified-api-client/test', { method: 'POST', body: { sample: 'a' } })).data; const chk = (r.checks || [])[0] || {}; out.innerHTML = r.enabled && chk.ok ? `<span style="color:var(--success)">✓ Reached the Unified API (${esc(chk.detail || '')})</span>` : `<span style="color:var(--danger)">✕ ${esc(chk.detail || chk.code || 'Not configured')}</span>`; }
+      try { const r = (await VMTL.api('/admin/unified-api-client/test', { method: 'POST', body: {} })).data; const chk = (r.checks || [])[0] || {}; out.innerHTML = r.enabled && chk.ok ? `<span style="color:var(--success)">✓ Reached the Unified API (${esc(chk.detail || '')})</span>` : `<span style="color:var(--danger)">✕ ${esc(chk.detail || chk.code || 'Not configured')}</span>`; }
       catch (e) { out.innerHTML = `<span style="color:var(--danger)">✕ ${esc(e.message)}</span>`; }
     };
   }
