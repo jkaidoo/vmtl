@@ -362,8 +362,17 @@ module.exports = function register(router) {
   });
 
   // ---- Navigation settings ----------------------------------------------
+  const navigation = require('../../services/navigation');
   router.get('/admin/navigation', requireAuth, requireSystemAdmin, async (req, res) => {
-    res.json({ data: { hidden: (await settings.get('nav_hidden', [])) || [] } });
+    res.json({ data: { hidden: (await settings.get('nav_hidden', [])) || [], roles: await navigation.contexts(), pages: navigation.pages.map(({ key, label, section }) => ({ key, label, section })) } });
+  });
+  router.get('/admin/navigation/:role', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store'); res.json({ data: await navigation.editor(req.params.role) });
+  });
+  router.put('/admin/navigation/:role', requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await navigation.save(req.params.role, req.body);
+    await audit.from(req, { action: 'navigation.updated', description: `${req.session.user.name} updated navigation layout for ${req.params.role}` });
+    res.json({ data });
   });
   router.put('/admin/navigation', requireAuth, requireSystemAdmin, async (req, res) => {
     const hidden = Array.isArray(req.body.hidden) ? req.body.hidden.map(String) : [];

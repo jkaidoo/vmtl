@@ -430,7 +430,7 @@
 
   function visible(item) {
     if (VMTL.requesterOnly()) return item.key === 'dashboard' || item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';
-    if (((VMTL.meta && VMTL.meta.nav_hidden) || []).includes(item.key) && item.key !== 'navigation') return false;
+    if (!VMTL.meta?.nav_layout && ((VMTL.meta?.nav_hidden) || []).includes(item.key) && item.key !== 'navigation') return false;
     if (item.superOnly) return VMTL.isSuper();
     if (item.systemAdmin) return VMTL.isSuper() || VMTL.can('system.admin');
     if (item.cap) return VMTL.can(item.cap);
@@ -439,10 +439,46 @@
   }
 
   // ---- shell ------------------------------------------------------------
+  function configuredNavigation() {
+    const layout = VMTL.meta?.nav_layout;
+    if (!layout?.sections) return NAV;
+    const known = new Map(NAV.flatMap(s => s.items).map(item => [item.key, item]));
+    const seen = new Set();
+    const sections = layout.sections.map(section => ({ label: section.title, items: (section.items || []).flatMap(item => {
+      const page = known.get(item.key);
+      if (!page || seen.has(item.key)) return [];
+      seen.add(item.key);
+      return item.visible === false && item.key !== 'navigation' ? [] : [{ ...page, label: item.label || page.label }];
+    }) }));
+    // New pages stay available when an old layout does not know about them yet.
+    for (const section of NAV) {
+      const missing = section.items.filter(item => !seen.has(item.key));
+      if (!missing.length) continue;
+      let target = sections.find(s => s.label === section.label);
+      if (!target) { target = { label: section.label, items: [] }; sections.push(target); }
+      target.items.push(...missing);
+    }
+    return sections;
+  }
+  const menuSections = () => configuredNavigation().map(s => ({ ...s, items: s.items.filter(visible) })).filter(s => s.items.length);
+  const renderNav = (sections, activeKey) => sections.map(s => `<div class="nav-section"><p>${esc(s.label)}</p>${s.items.map(it => `<a class="nav-link ${it.key === activeKey ? 'active' : ''}" href="${it.to}">${icon(it.icon)}<span>${esc(it.label)}</span></a>`).join('')}</div>`).join('');
+  VMTL.refreshNavigation = async () => {
+    VMTL.meta = await api('/meta');
+    const activeKey = NAV.flatMap(s => s.items).find(item => item.to === location.pathname)?.key;
+    const sections = menuSections();
+    const nav = document.querySelector('#sidebar .nav');
+    if (nav) nav.innerHTML = renderNav(sections, activeKey);
+    const bottom = document.querySelector('.bottom-nav');
+    if (bottom) {
+      bottom.querySelectorAll('a').forEach(a => a.remove());
+      bottom.insertAdjacentHTML('afterbegin', sections.flatMap(s => s.items).filter(it => it.mobile).slice(0, 4).map(it => `<a class="${it.key === activeKey ? 'active' : ''}" href="${it.to}">${icon(it.icon)}<span>${esc(it.label)}</span></a>`).join(''));
+    }
+    setTitle(activeKey, document.title);
+  };
   function buildShell(activeKey) {
-    const sections = NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length);
+    const sections = menuSections();
     const allItems = sections.flatMap((s) => s.items);
-    const navHtml = sections.map((s) => `<div class="nav-section"><p>${esc(s.label)}</p>${s.items.map((it) => `<a class="nav-link ${it.key === activeKey ? 'active' : ''}" href="${it.to}">${icon(it.icon)}<span>${esc(it.label)}</span></a>`).join('')}</div>`).join('');
+    const navHtml = renderNav(sections, activeKey);
     const home = '/dashboard.html';
     const brand = `<a class="brand" href="${home}"><img src="/knust-logo.png" alt="KNUST"><div><div class="t1">UITS VMTL</div><div class="t2">Vehicle Management</div></div></a>`;
     const current = allItems.find((it) => it.key === activeKey);
@@ -724,7 +760,7 @@
   window.__vmtlLeave = window.__vmtlLeave || [];
   VMTL.onLeave = (fn) => { if (typeof fn === 'function') window.__vmtlLeave.push(fn); };
   const runLeave = () => { window.WalkinUI?.cleanup(); window.__vmtlLeave.splice(0).forEach((fn) => { try { fn(); } catch (_) { /* ignore */ } }); };
-  const flatNav = () => NAV.reduce((acc, s) => acc.concat(s.items), []);
+  const flatNav = () => configuredNavigation().flatMap(s => s.items);
 
   function spaEligible(a) {
     if (!a || !a.getAttribute('href')) return false;
