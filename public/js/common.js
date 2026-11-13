@@ -309,6 +309,10 @@
     terminal: 'M4 17l6-6-6-6 M12 19h8',
     layout: 'M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z M3 9h18 M9 20V9',
     map: 'M12 21s-7-5.5-7-11a7 7 0 1114 0c0 5.5-7 11-7 11z M12 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+    edit: 'M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
+    trash: 'M3 6h18 M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2 M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6 M10 11v6 M14 11v6',
+    'user-plus': 'M15 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M8.5 11a4 4 0 100-8 4 4 0 000 8z M19 8v6 M22 11h-6',
+    contacts: 'M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1z M8 11a2 2 0 100-4 2 2 0 000 4z M5.5 16a2.5 2.5 0 015 0 M14 9h4 M14 13h3',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(I[name] || 'M12 12h.01').split('M').filter(Boolean).map((p) => `<path d="M${p}"/>`).join('')}</svg>`;
   VMTL.icon = icon;
@@ -338,7 +342,6 @@
     { label: 'Administration', items: [
       { key: 'users', to: '/users.html', label: 'Users', icon: 'users', cap: 'users.manage' },
       { key: 'org-units', to: '/org-units.html', label: 'Organisation', icon: 'org', cap: 'departments.manage' },
-      { key: 'settings', to: '/settings.html', label: 'Settings', icon: 'settings', cap: 'settings.manage' },
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },
     { label: 'System', items: [

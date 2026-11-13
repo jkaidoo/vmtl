@@ -26,14 +26,14 @@ window.VMTL_PAGE = async function () {
     { key: 'status', label: 'Status', get: (u) => (u.active ? 1 : 0) },
     { key: 'last', label: 'Last sign-in', get: (u) => u.last_login_at || '' },
   ];
-  const addBtn = `<button class="btn btn-primary" id="add">${VMTL.icon('plus')} New staff account</button>`;
+  const addBtn = `<button class="btn btn-primary" id="add">${VMTL.icon('user-plus')} New staff account</button>`;
   // Both ways to add a staff account are always offered: import from the
   // directory (LDAP/AD) or create a local account.
-  const dirBtnHtml = `<button class="btn" id="dir">${VMTL.icon('key')} Add from directory</button>`;
+  const dirBtnHtml = `<button class="btn" id="dir"><span class="btn-ic" style="color:var(--info)">${VMTL.icon('contacts')}</span> Add from directory</button>`;
 
   view.innerHTML = VMTL.pageHead('Users', 'Staff accounts within your organisation scope.') +
     `<div class="card">
-       <div class="card-head"><h3 class="accounts-title">Accounts</h3><div class="row" style="gap:8px">${dirBtnHtml}${addBtn}<span class="pill" id="count">—</span></div></div>
+       <div class="card-head"><h3 class="accounts-title">Accounts</h3><div class="row" style="gap:8px">${dirBtnHtml}${addBtn}<span class="pill" style="display:inline-flex;align-items:center;gap:4px;color:var(--info);background:var(--info-tint)"><span class="btn-ic">${VMTL.icon('users')}</span><span id="count">—</span></span></div></div>
        <div class="card-body" style="padding-top:12px">
          <input id="fSearch" placeholder="Search name or email…" style="max-width:280px;margin-bottom:12px">
          <div id="list"><div class="loading"><span class="spinner"></span></div></div>
@@ -57,7 +57,7 @@ window.VMTL_PAGE = async function () {
       <td data-label="Placement">${u.org_unit ? esc(u.org_unit.name) : '—'}</td>
       <td data-label="Status">${u.active ? VMTL.badge('Active', 'green') : VMTL.badge('Inactive', 'grey')}</td>
       <td data-label="Last sign-in"><span class="dim">${esc(relTime(u.last_login_at))}</span></td>
-      <td data-label=""><div class="btn-row"><button class="btn btn-sm" data-edit='${encodeURIComponent(JSON.stringify(u))}'>Edit</button><button class="btn btn-sm" data-del="${u.id}">Remove</button></div></td></tr>`).join('');
+      <td data-label=""><div class="btn-row"><button class="btn btn-sm" data-edit='${encodeURIComponent(JSON.stringify(u))}'><span class="btn-ic" style="color:var(--info)">${VMTL.icon('edit')}</span> Edit</button><button class="btn btn-sm" data-del="${u.id}"><span class="btn-ic" style="color:var(--danger)">${VMTL.icon('trash')}</span> Remove</button></div></td></tr>`).join('');
     list.innerHTML = `<table class="data accounts"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     list.querySelectorAll('th[data-k]').forEach((th) => th.onclick = () => {
       const k = th.dataset.k;

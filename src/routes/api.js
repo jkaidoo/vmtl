@@ -22,7 +22,6 @@ require('./api/org-units')(router);
 require('./api/users')(router);
 require('./api/departments')(router);
 require('./api/analytics')(router); // analytics + reports
-require('./api/settings')(router);
 require('./api/rbac')(router);
 require('./api/audit')(router);
 require('./api/admin')(router); // super-admin tier: app-health, system-controls, directory-auth, messaging, database, docs

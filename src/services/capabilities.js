@@ -25,7 +25,6 @@ const CAP = {
   USERS_MANAGE: 'users.manage',
   DEPARTMENTS_MANAGE: 'departments.manage',
   ROLES_MANAGE: 'roles.manage',
-  SETTINGS_MANAGE: 'settings.manage',
   AUDIT_VIEW: 'audit.view',
 };
 
@@ -48,7 +47,6 @@ const CATALOG = {
   [CAP.USERS_MANAGE]: { label: 'Manage users', group: 'Administration', description: 'Create and manage accounts.' },
   [CAP.DEPARTMENTS_MANAGE]: { label: 'Manage departments', group: 'Administration', description: 'Maintain organisational units.' },
   [CAP.ROLES_MANAGE]: { label: 'Manage roles (RBAC)', group: 'Administration', description: 'Edit role capabilities.' },
-  [CAP.SETTINGS_MANAGE]: { label: 'Manage settings', group: 'Administration', description: 'Change system settings.' },
   [CAP.AUDIT_VIEW]: { label: 'View audit logs', group: 'Administration', description: 'Read the audit trail.' },
 };
 
@@ -59,8 +57,8 @@ function defaultsByRole() {
   const everything = all();
   return {
     administrator: everything,
-    // Supervisor: everything EXCEPT the system tier (audit/settings/departments/roles).
-    supervisor: everything.filter((c) => ![CAP.AUDIT_VIEW, CAP.SETTINGS_MANAGE, CAP.DEPARTMENTS_MANAGE, CAP.ROLES_MANAGE].includes(c)),
+    // Supervisor: everything EXCEPT the system tier (audit/departments/roles).
+    supervisor: everything.filter((c) => ![CAP.AUDIT_VIEW, CAP.DEPARTMENTS_MANAGE, CAP.ROLES_MANAGE].includes(c)),
     approver: [CAP.REQUESTS_CREATE, CAP.REQUESTS_VIEW_ALL, CAP.REQUESTS_APPROVE, CAP.REQUESTS_CREATE_EXTERNAL, CAP.ANALYTICS_VIEW, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.FUEL_LOG],
     transport_admin: [CAP.REQUESTS_CREATE, CAP.REQUESTS_VIEW_ALL, CAP.REQUESTS_ASSIGN, CAP.REQUESTS_CREATE_GOODWILL, CAP.REQUESTS_CREATE_EXTERNAL, CAP.TRIPS_OPERATE, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.MAINTENANCE_MANAGE, CAP.FUEL_LOG, CAP.ANALYTICS_VIEW, CAP.REPORTS_EXPORT],
     staff: [CAP.REQUESTS_CREATE],

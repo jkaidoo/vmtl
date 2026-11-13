@@ -272,6 +272,8 @@ table.data.accounts td .rec-id { margin-top: 2px; }
 .btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn svg { width: 16px; height: 16px; }
+.btn-ic { display: inline-flex; align-items: center; }
+.btn-ic svg { width: 15px; height: 15px; }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); }
 .btn-primary:hover { background: var(--primary-600); border-color: var(--primary-600); }
 .btn-ghost { border-color: transparent; background: transparent; color: var(--text-2); }

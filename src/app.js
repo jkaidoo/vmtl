@@ -26,7 +26,7 @@ const log = require('./util/log');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 // Pages a requester-only (Staff) user may open; everything else sends them home.
-const REQUESTER_ALLOWED = new Set(['/requests.html', '/request-create.html', '/request-detail.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html', '/settings.html']);
+const REQUESTER_ALLOWED = new Set(['/requests.html', '/request-create.html', '/request-detail.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html']);
 // Deep admin tier — the break-glass System Administrator only.
 const SUPER_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/broadcasts.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
