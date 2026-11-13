@@ -10,7 +10,7 @@ const { conflict } = require('../middleware/errorHandler');
 const nowIso = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const minutesBetween = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 60000));
 
-async function start(tripId, actor, startingOdometer = null, notes = null) {
+async function start(tripId, actor, startingOdometer = null, notes = null, checklist = null) {
   const result = await db.transaction(async (tx) => {
     const trip = await tx.get('SELECT * FROM trips WHERE id = ?', [tripId]);
     if (!trip) throw conflict('Trip not found.');
@@ -20,7 +20,8 @@ async function start(tripId, actor, startingOdometer = null, notes = null) {
     const starting = startingOdometer != null ? Number(startingOdometer) : vehicle.current_odometer;
     if (starting < vehicle.current_odometer) throw conflict(`Starting odometer (${starting}) cannot be lower than the vehicle's current reading (${vehicle.current_odometer}).`);
     const at = nowIso();
-    await tx.run(`UPDATE trips SET status = 'in_progress', actual_start = ?, starting_odometer = ?, start_notes = ?, started_by = ?, updated_at = ${db.now()} WHERE id = ?`, [at, starting, notes, actor.id, trip.id]);
+    const checklistJson = Array.isArray(checklist) && checklist.length ? JSON.stringify(checklist.slice(0, 20).map((c) => ({ key: String(c.key || '').slice(0, 40), label: String(c.label || '').slice(0, 80), ok: !!c.ok }))) : null;
+    await tx.run(`UPDATE trips SET status = 'in_progress', actual_start = ?, starting_odometer = ?, start_notes = ?, start_checklist = ?, started_by = ?, updated_at = ${db.now()} WHERE id = ?`, [at, starting, notes, checklistJson, actor.id, trip.id]);
     await tx.run(`UPDATE vehicle_requests SET status = 'in_progress', updated_at = ${db.now()} WHERE id = ?`, [trip.vehicle_request_id]);
     await tx.run(`UPDATE vehicles SET status = 'on_trip', current_odometer = ?, updated_at = ${db.now()} WHERE id = ?`, [starting, vehicle.id]);
     await tx.run(`UPDATE drivers SET status = 'on_trip', updated_at = ${db.now()} WHERE id = ?`, [trip.driver_id]);

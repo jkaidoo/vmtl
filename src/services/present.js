@@ -93,6 +93,7 @@ function trip(t, { vehicle: v, driver: d, request: req, stops } = {}) {
     distance: t.distance, duration_minutes: t.duration_minutes,
     status: t.status, status_label: label(enums.tripStatus.labels, t.status), status_color: enums.tripStatus.colors[t.status] || 'grey',
     start_notes: t.start_notes, end_notes: t.end_notes, admin_remarks: t.admin_remarks,
+    start_checklist: t.start_checklist ? (() => { try { return JSON.parse(t.start_checklist); } catch (_) { return null; } })() : null,
     started_by: t.started_by_name ? { id: t.started_by, name: t.started_by_name } : undefined,
     ended_by: t.ended_by_name ? { id: t.ended_by, name: t.ended_by_name } : undefined,
     stops: stops || undefined,

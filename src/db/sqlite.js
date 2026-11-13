@@ -399,5 +399,8 @@ ensureColumn('users', 'pending_org_unit_id', 'INTEGER');    // OU the source now
 ensureColumn('users', 'pending_org_since', 'TEXT');
 ensureColumn('users', 'can_drive', 'INTEGER NOT NULL DEFAULT 0'); // a Transport Officer who also drives
 
+// Driver pre-trip inspection checklist, captured at trip start (JSON).
+ensureColumn('trips', 'start_checklist', 'TEXT');
+
 module.exports = db;
 module.exports.ensureColumn = ensureColumn;

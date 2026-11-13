@@ -48,7 +48,7 @@ async function renderDetail(id) {
         ${info('End odo', t.ending_odometer != null ? VMTL.fmtNumber(t.ending_odometer) : '—')}
         ${info('Distance', t.distance != null ? VMTL.fmtKm(t.distance) : '—')}
         ${info('Duration', VMTL.fmtDuration(t.duration_minutes))}
-      </div></div>
+      </div>${t.start_checklist && t.start_checklist.length ? `<div style="margin-top:10px"><div class="dim" style="font-size:12px;margin-bottom:5px">Pre-trip inspection</div><div class="row wrap" style="gap:6px">${t.start_checklist.map((c) => `<span class="badge ${c.ok ? 'green' : 'red'}" style="font-size:10px">${c.ok ? '✓' : '✕'} ${VMTL.esc(c.label)}</span>`).join('')}</div></div>` : ''}</div>
       <div class="stack"><div id="tp"></div>
         <div class="card pad"><div class="between"><h3>Added destinations</h3></div><div id="stops" class="stack" style="margin-top:8px">${stops.length ? stops.map(stopRow).join('') : '<div class="dim">None.</div>'}</div></div>
       </div>
@@ -67,7 +67,7 @@ function canOperate(t) { const u = VMTL.user; return VMTL.isSuper() || VMTL.can(
 function renderActions(host, t, reload) {
   const btns = [];
   if (canOperate(t) && t.status === 'scheduled') {
-    btns.push(['Start trip', 'btn-primary', () => odoModal('Start trip', 'Starting odometer (optional)', async (odo, notes) => act(`/trips/${t.id}/start`, { starting_odometer: odo, notes }, reload))]);
+    btns.push(['Start trip', 'btn-primary', () => startTripModal(t, reload)]);
     btns.push(['No-show', 'btn', async () => { const r = await textModal('Mark no-show', 'Reason (optional)'); if (r === null) return; act(`/trips/${t.id}/no-show`, { reason: r }, reload); }]);
   }
   if (canOperate(t) && t.status === 'in_progress') {
@@ -80,6 +80,22 @@ function renderActions(host, t, reload) {
   btns.forEach(([l, c, fn]) => { const b = VMTL.el(`<button class="btn ${c}">${VMTL.esc(l)}</button>`); b.onclick = fn; host.appendChild(b); });
 }
 async function act(path, body, done) { try { await VMTL.api(path, { method: 'POST', body }); VMTL.toast('Done.', 'success'); done(); } catch (e) { VMTL.showErrors(e); } }
+// Start a trip with a quick pre-trip inspection checklist (offline-safe payload).
+function startTripModal(t, done) {
+  const CHECK = [['fuel', 'Adequate fuel'], ['tyres', 'Tyres & spare OK'], ['lights', 'Lights & indicators'], ['brakes', 'Brakes responsive'], ['fluids', 'Oil & coolant levels'], ['documents', 'Documents in vehicle'], ['bodywork', 'No new damage'], ['cleanliness', 'Clean & roadworthy']];
+  const m = VMTL.openModal(`<div class="modal-head"><h3>Start trip</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body">
+    <div class="field"><label>Starting odometer (optional)</label><input id="odo" type="number" min="0" inputmode="numeric"></div>
+    <div class="field"><label>Pre-trip inspection</label><div class="row wrap" style="gap:10px 16px;padding-top:4px">${CHECK.map(([k, l]) => `<label class="checkbox"><input type="checkbox" class="chk" data-k="${k}" data-l="${VMTL.esc(l)}" checked> ${VMTL.esc(l)}</label>`).join('')}</div></div>
+    <div class="field"><label>Notes (optional)</label><textarea id="notes" placeholder="Anything to flag before setting off…"></textarea></div>
+  </div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="ok">Start trip</button></div>`, { large: true });
+  m.el.querySelector('#ok').onclick = () => {
+    const odo = m.el.querySelector('#odo').value;
+    const checklist = [...m.el.querySelectorAll('.chk')].map((c) => ({ key: c.dataset.k, label: c.dataset.l, ok: c.checked }));
+    const notes = m.el.querySelector('#notes').value.trim();
+    m.close();
+    act(`/trips/${t.id}/start`, { starting_odometer: odo === '' ? null : Number(odo), notes, checklist }, done);
+  };
+}
 function odoModal(title, label, onOk, required) {
   const m = VMTL.openModal(`<div class="modal-head"><h3>${VMTL.esc(title)}</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><div class="field"><label>${VMTL.esc(label)}</label><input id="odo" type="number" min="0"></div><div class="field"><label>Notes (optional)</label><textarea id="notes"></textarea></div></div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="ok">${VMTL.esc(title)}</button></div>`);
   m.el.querySelector('#ok').onclick = () => { const v = m.el.querySelector('#odo').value; m.close(); onOk(v === '' ? null : Number(v), m.el.querySelector('#notes').value.trim()); };

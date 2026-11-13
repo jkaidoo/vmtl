@@ -60,6 +60,28 @@ module.exports = function register(router) {
     res.json({ data, meta: { current_page: page, per_page: perPage, total, last_page: Math.max(1, Math.ceil(total / perPage)) } });
   });
 
+  // Scheduling calendar: vehicles (OU-scoped) with their trips overlapping a
+  // date window, for a week/gantt view that makes booking conflicts visible.
+  router.get('/schedule', requireAuth, async (req, res) => {
+    const orgScope = require('../../services/orgScope');
+    const scope = await orgScope.visibleOrgUnitIds(req.session.user);
+    const from = (String(req.query.from || '').slice(0, 10)) || new Date().toISOString().slice(0, 10);
+    const to = (String(req.query.to || '').slice(0, 10)) || from;
+    const vWhere = ['v.deleted_at IS NULL', 'v.active = 1']; const vParams = [];
+    if (scope !== null) {
+      if (!scope.length) return res.json({ data: { from, to, vehicles: [] } });
+      vWhere.push(`v.org_unit_id IN (${scope.map(() => '?').join(',')})`); vParams.push(...scope);
+    }
+    const vehicles = await db.all(`SELECT v.id, v.vehicle_number, v.make, v.model, v.status FROM vehicles v WHERE ${vWhere.join(' AND ')} ORDER BY v.vehicle_number`, vParams);
+    const trips = await db.all(`SELECT t.id, t.trip_number, t.vehicle_id, t.status, t.scheduled_start, t.scheduled_end, r.destination, dr.name AS driver_name
+        FROM trips t LEFT JOIN vehicle_requests r ON r.id = t.vehicle_request_id LEFT JOIN drivers dr ON dr.id = t.driver_id
+        WHERE t.deleted_at IS NULL AND substr(t.scheduled_start,1,10) <= substr(?,1,10) AND substr(t.scheduled_end,1,10) >= substr(?,1,10)
+        ORDER BY t.scheduled_start`, [to, from]);
+    const byV = new Map(vehicles.map((v) => [v.id, { ...v, trips: [] }]));
+    for (const t of trips) { const g = byV.get(t.vehicle_id); if (g) g.trips.push(t); }
+    res.json({ data: { from, to, vehicles: [...byV.values()] } });
+  });
+
   // Live in-progress feed for the animated strip — every authenticated user.
   router.get('/trips/in-progress', requireAuth, async (req, res) => {
     const rows = await db.all(
@@ -84,7 +106,8 @@ module.exports = function register(router) {
     const trip = await findTrip(req.params.id);
     if (!(await canOperate(req, trip))) throw forbidden('You may not operate this trip.');
     const data = validate(req.body, { starting_odometer: { type: 'integer', min: 0 }, notes: { type: 'string', maxLength: 500 } });
-    await tripService.start(trip.id, req.session.user, data.starting_odometer != null ? data.starting_odometer : null, data.notes || null);
+    const checklist = Array.isArray(req.body.checklist) ? req.body.checklist : null;
+    await tripService.start(trip.id, req.session.user, data.starting_odometer != null ? data.starting_odometer : null, data.notes || null, checklist);
     res.json({ data: await loaders.loadTrip(trip.id, { withRequest: true }) });
   });
 

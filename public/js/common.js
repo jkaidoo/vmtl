@@ -313,6 +313,7 @@
     trash: 'M3 6h18 M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2 M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6 M10 11v6 M14 11v6',
     'user-plus': 'M15 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M8.5 11a4 4 0 100-8 4 4 0 000 8z M19 8v6 M22 11h-6',
     contacts: 'M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1z M8 11a2 2 0 100-4 2 2 0 000 4z M5.5 16a2.5 2.5 0 015 0 M14 9h4 M14 13h3',
+    calendar: 'M4 5h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z M3 10h18 M8 3v4 M16 3v4',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(I[name] || 'M12 12h.01').split('M').filter(Boolean).map((p) => `<path d="M${p}"/>`).join('')}</svg>`;
   VMTL.icon = icon;
@@ -331,6 +332,7 @@
     { label: 'Fleet', items: [
       { key: 'vehicles', to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
       { key: 'tracking', to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
+      { key: 'schedule', to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
       { key: 'drivers', to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
       { key: 'maintenance', to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
