@@ -72,7 +72,7 @@ test('notification fanout uses saved templates and actual recipient data', async
   assert.match(sent[0].text, /Actual Staff/);
   assert.doesNotMatch(sent[0].text, /Ama Mensah/);
   assert.match(sent[0].options.html, /Actual Staff/);
-  assert.equal(sent[1].text, 'Ready: REQ-ACTUAL');
+  assert.equal(sent[1].text, 'UITS: Ready: REQ-ACTUAL');
 });
 
 test('SMTP receives the designed HTML, plain text alternative and embedded crest', async () => {

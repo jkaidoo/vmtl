@@ -1,0 +1,35 @@
+/* Toggle switches (System Controls) — styled checkboxes */
+.system-controls-page .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.system-controls-page .toggle-row:first-of-type { border-top: 0; }
+.system-controls-page .toggle-text { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.system-controls-page .toggle-text b { font-weight: var(--fw-semibold); font-size: var(--fs-base); }
+.system-controls-page .toggle-text small { color: var(--text-3); font-size: var(--fs-sm); }
+.system-controls-page input.toggle { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 40px; height: 23px; margin: 0; border-radius: 999px; background: var(--border); border: 1px solid var(--border); cursor: pointer; transition: background .15s, border-color .15s; }
+.system-controls-page input.toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.system-controls-page input.toggle:checked { background: var(--primary); border-color: var(--primary); }
+.system-controls-page input.toggle:checked::after { transform: translateX(17px); }
+.system-controls-page input.toggle:focus-visible { outline: none; box-shadow: var(--ring); }
+.system-controls-page input.toggle:disabled { opacity: .5; cursor: not-allowed; }
+.system-controls-page .flag-group { border: 1px solid var(--border); border-radius: var(--r); padding: 6px 14px 8px; margin: 12px 0; }
+.system-controls-page .flag-group h3 { font-size: var(--fs-md); text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin: 8px 0 2px; }
+.system-controls-page .flag-group > .hint { margin: 2px 0 4px; }
+.system-controls-page .flag-sub { margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--border); }
+.system-controls-page .flag-sub.off { opacity: .5; }
+
+
+.system-controls-page { --fw-semibold:600; --fs-sm:12px; --fs-md:13px; --fs-base:14px; --r:10px; }
+.main:has(.system-controls-page) { min-width:0; }
+.system-controls-page .card-pad { padding:20px; }
+.system-controls-page h2 { margin:0 0 8px;font-size:20px; }
+.system-controls-page .hint { font-size:12px;color:var(--text-3);line-height:1.6;margin:6px 0 14px; }
+.system-controls-page .field { display:flex;flex-direction:column;gap:5px;margin-bottom:16px; }
+.system-controls-page .field > span { font-size:12px;color:var(--text-2); }
+.system-controls-page .grid-3 { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px; }
+.system-controls-page .grid-span-all { grid-column:1/-1; }
+.system-controls-page .flex { display:flex;align-items:center;gap:10px; }
+.system-controls-page .result, .system-controls-page .banner { padding:12px 14px;background:var(--surface-2);border-radius:7px;font-size:13px; }
+.system-controls-page .result.ok { color:var(--success); }
+.system-controls-page .result.err { color:var(--danger); }
+.system-controls-page .template-links { margin:14px 0;display:flex;gap:14px;flex-wrap:wrap; }
+.system-controls-page input.toggle { min-width:40px;max-width:40px;min-height:23px;padding:0; }
+@media(max-width:600px) { .system-controls-page .grid-3 { grid-template-columns:minmax(0,1fr); } .system-controls-page .controls-tabs { max-width:100%; } }

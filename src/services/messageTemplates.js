@@ -79,8 +79,12 @@ async function render(channel, key, values = {}, draft = {}, { preview = false }
   if (Object.keys(draft).some(field => !allowed.has(field))) throw bad('Draft fields must belong to the selected template.');
   const templates = { ...out.templates, ...draft };
   const data = Object.fromEntries(Object.keys(SAMPLE).map(key => [key, values[key] ?? '']));
-  const text = fill(templates[meta.body], data).trim();
-  if (channel === 'sms') return { text, ...smsCount(text) };
+  let text = fill(templates[meta.body], data).trim();
+  if (channel === 'sms') {
+    const prefix = String(await settings.get('notif_sms_sender_prefix', 'UITS')).trim();
+    if (prefix) text = `${prefix}: ${text}`;
+    return { text, ...smsCount(text) };
+  }
   const subject = fill(templates[meta.subject], data).replace(/[\r\n]+/g, ' ');
   const prefix = await settings.get('notif_email_subject_prefix', '[UITS VMTL] ');
   const details = templates[meta.table].trim() === '-' ? [] : templates[meta.table].split(/\r?\n/).flatMap(line => {

@@ -15,7 +15,6 @@ const { requireAuth, requireSuper, requireSystemAdmin } = require('../../middlew
 const { validate } = require('../../util/validate');
 const { notFound, badRequest } = require('../../middleware/errorHandler');
 
-const SC_GROUPS = ['features', 'notifications', 'retention', 'maintenance'];
 
 const SMS_PROVIDERS = {
   hubtel: { label: 'Hubtel', fields: [['hubtel_client_id', 'Client ID', false], ['hubtel_client_secret', 'Client Secret', true]] },
@@ -163,19 +162,20 @@ module.exports = function register(router) {
   });
 
   // ---- System Controls ---------------------------------------------------
-  async function scList() {
-    const rows = await db.all(`SELECT key, value, type, "group" AS grp, label FROM system_settings WHERE "group" IN (${SC_GROUPS.map(() => '?').join(',')}) ORDER BY "group", key`, SC_GROUPS);
-    return rows.map((s) => ({ key: s.key, label: s.label, group: s.grp, type: s.type, value: settings.cast(s.value, s.type) }));
-  }
-  router.get('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await scList() }));
+  const systemControls = require('../../services/systemControls');
+  router.get('/admin/system-controls/config', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store'); res.json({ data: await systemControls.config() });
+  });
+  router.put('/admin/system-controls/:section', requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await systemControls.save(req.params.section, req.body);
+    await audit.from(req, { action: 'system_controls.updated', description: `${req.session.user.name} updated ${req.params.section} controls` });
+    res.json({ data });
+  });
+  router.get('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await systemControls.list() }));
   router.put('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => {
-    for (const item of (req.body.settings || [])) {
-      if (!item || !item.key) continue;
-      const existing = await db.get(`SELECT "group" AS grp FROM system_settings WHERE key = ?`, [item.key]);
-      if (existing && SC_GROUPS.includes(existing.grp)) await settings.set(item.key, item.value);
-    }
+    const data = await systemControls.saveLegacy(req.body.settings);
     await audit.from(req, { action: 'system_controls.updated', description: `${req.session.user.name} updated system controls` });
-    res.json({ data: await scList() });
+    res.json({ data });
   });
 
   // ---- Directory Auth (a list of LDAP/AD directories, tried in order) -----

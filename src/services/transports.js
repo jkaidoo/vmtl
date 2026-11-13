@@ -34,7 +34,7 @@ async function fanout(userId, type, data) {
     try { await webPush.sendToUser(userId, { title, body, data }); } catch (err) { log.warn('push_fanout_failed', { message: err.message }); }
   }
   // Email (only when a recipient address is known and email is enabled)
-  if (await settings.get('feature_email_notifications', true) && await settings.get('mail_enabled', false)) {
+  if (await settings.get('feature_email_notifications', true) && await settings.get('notif_allow_email', true) && await settings.get('mail_enabled', false)) {
     try {
       const user = await db.get('SELECT name, email FROM users WHERE id = ?', [userId]);
       const templates = require('./messageTemplates');
@@ -43,7 +43,7 @@ async function fanout(userId, type, data) {
     } catch (err) { log.warn('email_fanout_failed', { message: err.message }); }
   }
   // SMS (opt-in; phone required)
-  if (await settings.get('feature_sms_notifications', false) && await settings.get('sms_enabled', false)) {
+  if (await settings.get('feature_sms_notifications', false) && await settings.get('notif_allow_sms', false) && await settings.get('sms_enabled', false)) {
     try {
       const user = await db.get('SELECT name, phone FROM users WHERE id = ?', [userId]);
       if (user?.phone) {
