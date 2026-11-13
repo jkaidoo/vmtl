@@ -40,14 +40,14 @@ test('mirrored console learns fields, saves labels/order, shows staff photos and
     result = await consoleApi.testLookup('42', { source: 'STAFF' });
     assert.equal(result.photo_url, null);
     assert.equal(result.fields.find(f => f.key === 'rank').visible, false);
-    assert.equal((await consoleApi.testLookup('42', { source: 'STUDENT' })).type, 'STUDENT');
-    assert.equal((await consoleApi.testLookup('42', { source: 'PROSPECTIVE' })).type, 'PROSPECTIVE');
+    await assert.rejects(consoleApi.testLookup('42', { source: 'STUDENT' }), /Only staff/);
+    await assert.rejects(consoleApi.testLookup('42', { source: 'PROSPECTIVE' }), /Only staff/);
     const report = await consoleApi.testStaffSearch('Example');
     assert.equal(report.checks[0].code, 'HEALTH_OK');
     assert.equal(report.checks[1].code, 'MATCHES_FOUND');
     assert.ok(!JSON.stringify(report).includes('fixture-key'));
     await assert.rejects(consoleApi.saveSettings({ timeout_ms: 0 }), /Timeout/);
-    await assert.rejects(consoleApi.testLookup('42', { source: 'BAD' }), /Choose/);
+    await assert.rejects(consoleApi.testLookup('42', { source: 'BAD' }), /Only staff/);
     await store.set('unified_api_enabled', '0');
     assert.equal((await consoleApi.testLookup('42')).reason, 'switched_off');
   } finally { await new Promise(resolve => server.close(resolve)); }

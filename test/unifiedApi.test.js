@@ -88,3 +88,14 @@ test('photo failures are optional and do not fail staff profiles', async () => {
   assert.equal(out.fields.department, 'IT');
   assert.equal(out.fields.photo_url, null);
 });
+
+test('manual staff search forwards usernames and email addresses without changing them', async () => {
+  const queries = [];
+  const api = client(async (url) => {
+    queries.push(new URL(url).searchParams.get('q'));
+    return { ok: true, status: 200, json: async () => ({ results: [] }) };
+  });
+  await api.manualSearch('jdoe');
+  await api.manualSearch('jdoe@knust.edu.gh');
+  assert.deepEqual(queries, ['jdoe', 'jdoe@knust.edu.gh']);
+});

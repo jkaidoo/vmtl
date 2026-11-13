@@ -32,7 +32,7 @@
     .ua-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .ua-src-tag { font-size: var(--fs-xs); color: var(--text-3); margin-left: 6px; font-weight: var(--fw-medium); }
     .ua-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0; }
-    .ua-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .ua-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
     .ua-col h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; font-size: var(--fs-base); }
     .ua-col h3 .count { font-weight: var(--fw-medium); font-size: var(--fs-sm); color: var(--text-3); }
     .ua-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); }

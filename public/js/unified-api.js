@@ -16,14 +16,14 @@ window.VMTL_PAGE = async function () {
   };
   const listModal = (title, list) => VMTL.openModal(`<div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-close>×</button></div><div class="modal-body table-wrap"><table class="data"><thead><tr>${list.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${list.rows.map(row => `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`, { large: true });
   const copyTextModal = (title, text) => VMTL.openModal(`<div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-close>×</button></div><div class="modal-body"><textarea readonly style="width:100%;height:300px">${esc(text)}</textarea></div>`);
-  VMTL.view.innerHTML = "<div class=\"ua-console controls-page\">    <div class=\"page-heading\"><h1>Unified API</h1><p class=\"muted\">Live student, staff and admissions records from the university databases: connection, what appears on lookups, and a test lookup.</p></div>\n    <div class=\"ua-grid\">\n      <section class=\"card card-pad\" id=\"uaConnection\" aria-labelledby=\"uaConnTitle\"></section>\n      <section class=\"card card-pad\" id=\"uaSettings\" aria-labelledby=\"uaSetTitle\"></section>\n      <section class=\"card card-pad ua-wide\" id=\"uaFields\" aria-labelledby=\"uaFieldsTitle\"></section>\n      <section class=\"card card-pad ua-wide\" id=\"uaTest\" aria-labelledby=\"uaTestTitle\"></section>\n      <section class=\"card card-pad\" id=\"uaSearchDiagnostics\" aria-labelledby=\"uaSearchTitle\">\n        <div class=\"ua-head\"><div><h2 id=\"uaSearchTitle\">Test staff search</h2><p class=\"muted\">Tests from this app server using the saved settings. Save setting changes before running.</p></div></div>\n        <form class=\"ua-test-form\" id=\"uaSearchForm\"><input class=\"input\" name=\"q\" aria-label=\"Staff name or ID to test\" placeholder=\"Known staff surname or ID\" minlength=\"2\" maxlength=\"100\" required><button class=\"btn btn-primary\" type=\"submit\">Run diagnostics</button></form>\n        <div id=\"uaSearchResult\" role=\"status\" aria-live=\"polite\"></div>\n        <button class=\"btn btn-sm\" id=\"uaCopyDiagnostics\" type=\"button\" hidden>Copy troubleshooting report</button>\n        <pre id=\"uaDiagnosticReport\" hidden></pre>\n      </section>\n    </div>\n<details class=\"card pad\" style=\"margin-top:12px\"><summary>External integration access tokens</summary><div id=\"uaTokens\" style=\"margin-top:12px\"></div></details></div>";
+  VMTL.view.innerHTML = "<div class=\"ua-console controls-page\">    <div class=\"page-heading\"><h1>Unified API</h1><p class=\"muted\">Staff records from the university directory: search by username or email, view pictures and choose imported fields.</p></div>\n    <div class=\"ua-grid\">\n      <section class=\"card card-pad\" id=\"uaConnection\" aria-labelledby=\"uaConnTitle\"></section>\n      <section class=\"card card-pad\" id=\"uaSettings\" aria-labelledby=\"uaSetTitle\"></section>\n      <section class=\"card card-pad ua-wide\" id=\"uaFields\" aria-labelledby=\"uaFieldsTitle\"></section>\n      <section class=\"card card-pad ua-wide\" id=\"uaTest\" aria-labelledby=\"uaTestTitle\"></section>\n      <section class=\"card card-pad\" id=\"uaSearchDiagnostics\" aria-labelledby=\"uaSearchTitle\">\n        <div class=\"ua-head\"><div><h2 id=\"uaSearchTitle\">Search staff</h2><p class=\"muted\">Search by staff username or official email. Select a match to view their profile and picture.</p></div></div>\n        <form class=\"ua-test-form\" id=\"uaSearchForm\"><input class=\"input\" name=\"q\" aria-label=\"Staff username or email\" placeholder=\"Username or official email\" minlength=\"2\" maxlength=\"100\" required><button class=\"btn btn-primary\" type=\"submit\">Search staff</button></form>\n        <div id=\"uaSearchResult\" role=\"status\" aria-live=\"polite\"></div>\n      </section>\n    </div>\n<details class=\"card pad\" style=\"margin-top:12px\"><summary>External integration access tokens</summary><div id=\"uaTokens\" style=\"margin-top:12px\"></div></details></div>";
   const connEl = document.getElementById('uaConnection');
   const setEl = document.getElementById('uaSettings');
   const fieldsEl = document.getElementById('uaFields');
   const testEl = document.getElementById('uaTest');
-  const TYPE_NAMES = { STUDENT: 'Students', STAFF: 'Staff', PROSPECTIVE: 'Admissions' };
+  const TYPE_NAMES = { STAFF: 'Staff' };
   const sw = (on, label, attrs = '') => `<button class="switch" type="button" role="switch" aria-checked="${on}" aria-label="${esc(label)}" ${attrs}><span class="switch-knob"></span></button>`;
-  let settings = {}; let fields = { STUDENT: [], STAFF: [] }; let lastTest = null;
+  let settings = {}; let fields = { STAFF: [] }; let lastTest = null;
 
   async function load() {
     try {
@@ -54,8 +54,8 @@ window.VMTL_PAGE = async function () {
       connShell('bad', 'Not reachable', `${esc(s.host)} · ${esc(s.reason === 'timeout' ? 'timed out' : s.reason || 'no response')}. Existing staff data is preserved.`);
       return;
     }
-    const term = 'Academic year and semester: as set on the Unified API’s Settings page';
-    const sources = Object.entries(s.sources || {});
+    const term = 'Live staff directory and profile pictures';
+    const sources = Object.entries(s.sources || {}).filter(([name]) => name.toLowerCase() === 'staff');
     const healthy = String(s.status).toLowerCase() === 'ok';
     connShell(healthy ? 'ok' : 'bad', healthy ? 'Connected' : `Connected, API reports “${s.status}”`,
       `${esc(s.host)}${s.ms != null ? ` · ${s.ms} ms` : ''}<br>${term}`,
@@ -95,7 +95,7 @@ window.VMTL_PAGE = async function () {
   // ---- Lookup fields ------------------------------------------------------
   function renderFields() {
     fieldsEl.innerHTML = `<div class="ua-head"><div><h2 id="uaFieldsTitle">Fields shown on lookup</h2><p class="muted">Toggle fields to show on profiles. Drag or use arrows to reorder; click the pencil to rename. Switched-off fields move to the bottom. New API fields appear after lookup.</p></div></div>
-      <div class="ua-cols">${['STUDENT', 'STAFF', 'PROSPECTIVE'].map((type) => {
+      <div class="ua-cols">${['STAFF'].map((type) => {
         const list = fields[type] || []; const on = list.filter((f) => f.visible).length;
         return `<div class="ua-col"><h3>${TYPE_NAMES[type]} <span class="count">${on} of ${list.length} shown</span></h3>
           <div class="flex" style="gap:6px;margin:6px 0 8px"><button class="btn btn-ghost btn-sm" type="button" data-all="${type}" data-on="1">Show all</button><button class="btn btn-ghost btn-sm" type="button" data-all="${type}" data-on="0">Hide all</button></div>
@@ -277,10 +277,10 @@ window.VMTL_PAGE = async function () {
         </tbody></table></div>
         <p class="hint">Test lookups do not create or update accounts. Staff field switches control future staff imports; existing values are preserved.</p>`;
     }
-    testEl.innerHTML = `<div class="ua-head"><div><h2 id="uaTestTitle">Test lookup</h2><p class="muted">Look up a student, staff or admissions ID against the live API and preview the profile, picture and fields returned.</p></div></div>
-      <form class="ua-test-form" id="uaTestForm"><select class="input" name="source"><option value="">All records</option><option value="STUDENT">Students</option><option value="STAFF">Staff</option><option value="PROSPECTIVE">Admissions</option></select><input class="input mono" name="id" placeholder="Student or staff ID" autocomplete="off" required value="${esc(testEl.dataset.id || '')}"><button class="btn btn-primary" type="submit">Look up</button></form>
+    testEl.innerHTML = `<div class="ua-head"><div><h2 id="uaTestTitle">Staff profile</h2><p class="muted">Open a staff ID directly, or search below by username or email and select a person.</p></div></div>
+      <form class="ua-test-form" id="uaTestForm"><input type="hidden" name="source" value="STAFF"><input class="input mono" name="id" placeholder="Staff ID" aria-label="Staff ID" autocomplete="off" required value="${esc(testEl.dataset.id || '')}"><button class="btn btn-primary" type="submit">Look up</button></form>
       <div id="uaTestResult">${body}</div>`;
-    testEl.querySelector('form').elements.source.value = testEl.dataset.source || '';
+    testEl.querySelector('form').elements.source.value = 'STAFF';
     testEl.querySelector('form').onsubmit = runTest;
     testEl.querySelectorAll('[data-list-key]').forEach((b) => b.onclick = () => {
       const f = lastTest.fields.find((x) => x.key === b.dataset.listKey);
@@ -306,50 +306,36 @@ window.VMTL_PAGE = async function () {
     lastTest = null;
     const reasons = { not_configured: 'The API URL and key are not set.', switched_off: 'Live lookups are switched off in the settings.', timeout: 'The API did not answer in time.' };
     renderTest(r.status === 'not_found'
-      ? `<div class="banner" style="margin-top:14px"><b>No match</b><div>The API has no student, staff or admissions record for <span class="mono">${esc(id)}</span> (${r.ms} ms).</div></div>`
+      ? `<div class="banner" style="margin-top:14px"><b>No match</b><div>The API has no staff record for <span class="mono">${esc(id)}</span> (${r.ms} ms).</div></div>`
       : `<div class="banner" style="margin-top:14px"><b>API unavailable</b><div>${esc(reasons[r.reason] || r.reason || 'No response')}</div></div>`);
   }
 
   const searchForm = document.getElementById('uaSearchForm');
   const searchResult = document.getElementById('uaSearchResult');
-  const reportEl = document.getElementById('uaDiagnosticReport');
-  const copyReport = document.getElementById('uaCopyDiagnostics');
   searchForm.onsubmit = async (e) => {
     e.preventDefault();
+    const query = String(new FormData(searchForm).get('q') || '').trim();
     const btn = searchForm.querySelector('button');
-    btn.disabled = true; btn.textContent = 'Testing…';
-    searchResult.textContent = 'Checking health and staff search from the app server…';
-    reportEl.hidden = true; copyReport.hidden = true; document.getElementById('uaSearchMatches')?.replaceChildren();
+    btn.disabled = true; btn.textContent = 'Searching…';
+    searchResult.textContent = 'Searching staff…';
+    let matches = document.getElementById('uaSearchMatches');
+    if (!matches) { matches = document.createElement('div'); matches.id = 'uaSearchMatches'; searchResult.after(matches); }
+    matches.innerHTML = '';
     try {
-      const report = await api('/admin/unified-api-console/test-staff-search', { method: 'POST', timeoutMs: 70000, body: { q: new FormData(searchForm).get('q') } });
-      searchResult.innerHTML = report.checks.map(c => `<div class="ua-state" style="margin-top:10px"><span class="ua-dot ${c.ok ? 'ok' : 'bad'}"></span><div><b>${esc(c.endpoint || 'Configuration')}: ${esc(c.code)}</b><small>${c.http_status != null ? `HTTP ${esc(c.http_status)} · ` : ''}${c.ms != null ? `${esc(c.ms)} ms · ` : ''}${c.result_count != null ? `${esc(c.result_count)} matches · ` : ''}${esc(c.hint)}</small></div></div>`).join('');
-      let matches = document.getElementById('uaSearchMatches');
-      if (!matches) { matches = document.createElement('div'); matches.id = 'uaSearchMatches'; searchResult.after(matches); }
-      matches.innerHTML = '';
-      if (report.checks.find(c => c.endpoint === '/staff/search')?.ok) {
-        try {
-          const found = await api('/admin/unified-api-client/search?q=' + encodeURIComponent(new FormData(searchForm).get('q')));
-          if (found.status === 'ok') {
-            matches.innerHTML = found.results.map((person, index) => `<button type="button" class="ua-search-match" data-match="${index}"><img loading="lazy" src="/api/admin/unified-api-client/photo/${encodeURIComponent(person.id_number)}" alt="Staff picture"><span><b>${esc(person.fields.full_name || 'Staff match')}</b><small>${esc(person.fields.id_number || '')}</small><small>${esc(person.fields.email || person.fields.department || '')}</small><small>Open lookup →</small></span></button>`).join('');
-            matches.querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.remove()));
-            matches.querySelectorAll('[data-match]').forEach(button => button.onclick = () => {
-              const person = found.results[Number(button.dataset.match)];
-              const form = testEl.querySelector('form'); form.elements.id.value = person.id_number; form.elements.source.value = 'STAFF'; form.requestSubmit();
-              testEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
-          }
-        } catch (_) { /* diagnostics still show whether staff search worked */ }
-      }
-      reportEl.textContent = JSON.stringify(report, null, 2);
-      reportEl.hidden = false; copyReport.hidden = false;
-    } catch (err) { searchResult.textContent = `Diagnostics could not run: ${err.message}`; }
-    finally { btn.disabled = false; btn.textContent = 'Run diagnostics'; }
+      const found = await api('/admin/unified-api-client/search?q=' + encodeURIComponent(query));
+      if (found.status !== 'ok') throw new Error(found.reason || 'Staff search is unavailable.');
+      searchResult.textContent = found.results.length ? `${found.results.length} staff match(es). Select a person to open their profile.` : 'No staff found for that username or email.';
+      const showPhotos = fields.STAFF.find(f => f.key === 'photo_url')?.visible !== false;
+      matches.innerHTML = found.results.map((person, index) => `<button type="button" class="ua-search-match" data-match="${index}">${showPhotos ? `<img loading="lazy" src="/api/admin/unified-api-client/photo/${encodeURIComponent(person.id_number)}" alt="Staff picture">` : ''}<span><b>${esc(person.fields.full_name || 'Staff match')}</b><small>${esc(person.fields.username || person.fields.email || '')}</small><small>${esc(person.fields.id_number || '')}</small><small>View staff profile →</small></span></button>`).join('');
+      matches.querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.remove()));
+      matches.querySelectorAll('[data-match]').forEach(button => button.onclick = () => {
+        const person = found.results[Number(button.dataset.match)];
+        const form = testEl.querySelector('form'); form.elements.id.value = person.id_number; form.requestSubmit();
+        testEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } catch (err) { searchResult.textContent = err.message; }
+    finally { btn.disabled = false; btn.textContent = 'Search staff'; }
   };
-  copyReport.onclick = async () => {
-    try { await navigator.clipboard.writeText(reportEl.textContent); toast('Troubleshooting report copied', 'ok'); }
-    catch (_) { copyTextModal('Troubleshooting report', reportEl.textContent, { title: 'Copy report' }); }
-  };
-
   await load();
   await window.VMTL_UNIFIED_TOKENS(document.getElementById("uaTokens"));
 };

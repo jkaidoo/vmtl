@@ -9,15 +9,13 @@ const repository = {
 };
 const defaultFetch = base.doFetch;
 const failureReason = err => err.name === 'TimeoutError' ? 'timeout' : err.cause?.code || err.code || err.message;
-const TYPES = new Set(['STUDENT', 'STAFF', 'PROSPECTIVE']);
+const TYPES = new Set(['STAFF']);
 const KEYS = { url: 'unified_api_url', key: 'unified_api_key', timeout: 'unified_api_timeout_ms', enabled: 'unified_api_enabled', fields: 'unified_api_lookup_fields', seen: 'unified_api_seen_fields', order: 'unified_api_field_order', labels: 'unified_api_field_labels' };
 const FIELD_KEY = /^[a-z0-9_]{1,64}$/i;
 
 // Fields the walk-in profile can show, per type. Other fields the API returns
 // are learned from lookups (see rememberFields) so they can be toggled too.
 const BUILT_IN_FIELDS = {
-  STUDENT: { programme: 'Programme', college: 'College', graduate_type: 'Graduate type', programme_class: 'Classification', year_of_admission: 'Year of admission', current_year: 'Current year', course_registration_status: 'Course registration', biometric_registration_status: 'Biometric registration', in_current_semester: 'In current semester', graduated: 'Graduated', fees_status: 'Fees status', email: 'Email', school_email: 'School email', personal_email: 'Personal email', phone: 'Phone', telecel_number: 'Telecel number', photo_url: 'Profile picture', date_of_birth: 'Age' },
-  PROSPECTIVE: { application_type: 'Application type', admission_group: 'Admission group', admission_group_type: 'Admission group type', graduate_type: 'Graduate type', is_idl: 'Is IDL', country: 'Country', email: 'Email', phone: 'Phone', photo_url: 'Profile picture', programme_choices: 'Programmes Selected', admission_offers: 'Offers' },
   STAFF: { department: 'Department', designation: 'Designation', rank: 'Rank', email: 'Email', personal_email: 'Personal email', phone: 'Phone', photo_url: 'Profile picture', college: 'College', faculty: 'Faculty', staff_active: 'Employment status', staff_type: 'Staff type', staff_category: 'Staff category', id_number: 'Staff ID', full_name: 'Full name', username: 'Username', org_unit: 'Automatic organisational-unit updates' },
 };
 
@@ -64,7 +62,7 @@ async function fieldSettings() {
 // body: { type: 'STUDENT' | 'STAFF', keys: [field, ...] } — the full list in display order.
 async function saveFieldOrder(body = {}) {
   const type = String(body.type || '');
-  if (!TYPES.has(type)) throw badRequest('Type must be STUDENT or STAFF');
+  if (!TYPES.has(type)) throw badRequest('Type must be STAFF');
   if (!Array.isArray(body.keys) || body.keys.length > 500) throw badRequest('Send the fields in order');
   const keys = [...new Set(body.keys.map(String).filter((k) => FIELD_KEY.test(k)))];
   const order = await readJson(KEYS.order);
@@ -85,7 +83,7 @@ async function lookupDisplay(type) {
 // A blank label goes back to the default.
 async function saveFieldLabel(body = {}) {
   const type = String(body.type || ''); const key = String(body.key || '');
-  if (!TYPES.has(type)) throw badRequest('Type must be STUDENT or STAFF');
+  if (!TYPES.has(type)) throw badRequest('Type must be STAFF');
   if (!FIELD_KEY.test(key)) throw badRequest('Unknown field');
   const label = String(body.label ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
   const labels = await readJson(KEYS.labels);
@@ -284,17 +282,17 @@ async function status({ fetchImpl = defaultFetch } = {}) {
 async function testLookup(idNumber, { source, fetchImpl = defaultFetch } = {}) {
   const id = String(idNumber || '').trim();
   if (!id || id.length > 100) throw badRequest('Enter an ID between 1 and 100 characters.');
-  if (source && !TYPES.has(source)) throw badRequest('Choose students, staff, admissions or all records.');
+  if (source && !TYPES.has(source)) throw badRequest('Only staff lookups are supported.');
   const cfg = await settings(); const started = Date.now();
   if (!cfg.enabled) return { status: 'unavailable', reason: cfg.switchedOn ? 'not_configured' : 'switched_off', ms: 0 };
-  const endpoint = { STUDENT: 'students', STAFF: 'staff', PROSPECTIVE: 'admissions' }[source] || 'people';
+  const endpoint = 'staff';
   try {
     const res = await fetchImpl(`${cfg.url}/${endpoint}/${encodeURIComponent(id)}`, { headers: { 'x-api-key': cfg.key, accept: 'application/json' }, signal: AbortSignal.timeout(cfg.timeoutMs) });
     if (res.status === 404) return { status: 'not_found', ms: Date.now() - started };
     if (!res.ok) return { status: 'unavailable', reason: `HTTP ${res.status}`, ms: Date.now() - started };
     const body = await res.json();
     if (!body?.found) return { status: 'not_found', ms: Date.now() - started };
-    const type = body.type === 'APPLICANT' ? 'PROSPECTIVE' : body.type || source;
+    const type = body.type === 'APPLICANT' ? 'PROSPECTIVE' : body.type || 'STAFF';
     if (!TYPES.has(type) || !body.fields || typeof body.fields !== 'object') return { status: 'unavailable', reason: 'Unexpected API response', ms: Date.now() - started };
     const values = { ...body.fields };
     const extra = Object.keys(values).filter(key => FIELD_KEY.test(key)).map(key => ({ key, label: String(body.labels?.[key] || BUILT_IN_FIELDS[type][key] || key.replace(/_/g, ' ')).slice(0, 80) }));
