@@ -2,7 +2,7 @@
 // SMS provider configuration + test send. Secrets are write-only.
 window.VMTL_PAGE = async function () {
   const view = VMTL.view; const esc = VMTL.esc;
-  view.innerHTML = VMTL.pageHead('SMS', 'Text-message provider settings and a test send.') + '<div id="b"><div class="loading"><span class="spinner"></span></div></div>';
+  view.innerHTML = VMTL.pageHead('SMS', 'Text-message provider settings, editable templates and SMS previews.') + '<div id="b"><div class="loading"><span class="spinner"></span></div></div>';
   let d; try { d = (await VMTL.api('/admin/messaging')).data.sms; } catch (e) { view.querySelector('#b').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   const providerFields = (prov) => (d.providers[prov] ? d.providers[prov].fields : []);
   const fieldsHtml = (prov) => providerFields(prov).map((f) => `<div class="field"><label>${esc(f.label)} ${f.secret && f.has_value ? '<span class="dim">(set — blank keeps it)</span>' : ''}</label><input data-sms-field="${f.key}" type="${f.secret ? 'password' : 'text'}" value="${esc(f.value || '')}"></div>`).join('');
@@ -27,4 +27,11 @@ window.VMTL_PAGE = async function () {
     const sms = { enabled: view.querySelector('#sEnabled').checked, provider: view.querySelector('#sProvider').value, sender_id: view.querySelector('#sSender').value, fields };
     try { await VMTL.api('/admin/messaging', { method: 'PUT', body: { sms } }); VMTL.toast('SMS settings saved.', 'success'); } catch (e) { VMTL.showErrors(e); }
   };
+
+  const templatesHost = document.createElement('section'); view.appendChild(templatesHost);
+  if (!window.VMTL_MESSAGE_TEMPLATES) await new Promise((resolve, reject) => {
+    const script = document.createElement('script'); script.src = '/js/message-templates.js'; script.onload = resolve; script.onerror = reject; document.head.appendChild(script);
+  });
+  await window.VMTL_MESSAGE_TEMPLATES('sms', templatesHost);
+
 };

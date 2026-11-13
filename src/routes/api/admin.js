@@ -227,6 +227,19 @@ module.exports = function register(router) {
   });
 
   // ---- Messaging (email / SMS) ------------------------------------------
+  const messageTemplates = require('../../services/messageTemplates');
+  router.get('/admin/messaging/:channel/templates', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store'); res.json({ data: await messageTemplates.catalogue(req.params.channel) });
+  });
+  router.put('/admin/messaging/:channel/templates', requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await messageTemplates.save(req.params.channel, req.body.templates);
+    await audit.from(req, { action: 'messaging.templates_updated', description: `${req.session.user.name} updated ${req.params.channel} message templates` });
+    res.json({ data });
+  });
+  router.post('/admin/messaging/:channel/preview', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: await messageTemplates.render(req.params.channel, req.body.template, messageTemplates.SAMPLE, req.body.draft || {}, { preview: true }) });
+  });
   async function messagingPayload() {
     const providers = {};
     for (const [key, meta] of Object.entries(SMS_PROVIDERS)) {
@@ -259,12 +272,14 @@ module.exports = function register(router) {
   });
   router.post('/admin/messaging/test-email', requireAuth, requireSystemAdmin, async (req, res) => {
     const to = req.body.to || req.session.user.email;
-    const result = await email.send(to, 'test email', 'This is a test email from the UITS Vehicle Management system. If you received this, email delivery is working.');
+    const message = await messageTemplates.render('email', req.body.template || 'test', messageTemplates.SAMPLE, req.body.draft || {});
+    const result = await email.send(to, message.subject, message.text, { html: message.html });
     res.json({ data: result });
   });
   router.post('/admin/messaging/test-sms', requireAuth, requireSystemAdmin, async (req, res) => {
     const { to } = validate(req.body, { to: { required: true, type: 'string', maxLength: 20 } });
-    res.json({ data: await sms.send(to, 'UITS VMTL test message — your SMS integration is working.') });
+    const message = await messageTemplates.render('sms', req.body.template || 'test', messageTemplates.SAMPLE, req.body.draft || {});
+    res.json({ data: await sms.send(to, message.text) });
   });
 
   // ---- Database connections ----------------------------------------------
@@ -334,8 +349,8 @@ module.exports = function register(router) {
     let inApp = 0; let emailed = 0; let texted = 0;
     for (const u of recips) {
       if (ch.in_app !== false) { try { await notifications.toUser(u.id, 'broadcast', { title: data.title, message: data.message }); inApp++; } catch (_) { /* skip */ } }
-      if (ch.email && u.email) { try { const r = await email.send(u.email, data.title, data.message); if (r && r.ok) emailed++; } catch (_) { /* skip */ } }
-      if (ch.sms && u.phone) { try { const r = await sms.send(u.phone, `${data.title}: ${data.message}`); if (r && r.ok) texted++; } catch (_) { /* skip */ } }
+      if (ch.email && u.email) { try { const message = await messageTemplates.render('email', 'broadcast', { recipient_name: u.name, title: data.title, message: data.message }); const r = await email.send(u.email, message.subject, message.text, { html: message.html }); if (r && r.ok) emailed++; } catch (_) { /* skip */ } }
+      if (ch.sms && u.phone) { try { const message = await messageTemplates.render('sms', 'broadcast', { recipient_name: u.name, title: data.title, message: data.message }); const r = await sms.send(u.phone, message.text); if (r && r.ok) texted++; } catch (_) { /* skip */ } }
     }
     await audit.record({ userId: req.session.user.id, actorName: req.session.user.name, action: 'broadcast.sent', description: `${req.session.user.name} broadcast “${data.title}” to ${recips.length} ${audience === 'all' ? 'recipients' : audience}`, newValues: { title: data.title, audience, recipients: recips.length, in_app: inApp, emailed, texted }, ip: req.ip });
     res.json({ data: { recipients: recips.length, in_app: inApp, emailed, texted } });

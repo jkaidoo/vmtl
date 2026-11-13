@@ -2,7 +2,7 @@
 // Email (SMTP) configuration + test send. Password is write-only.
 window.VMTL_PAGE = async function () {
   const view = VMTL.view; const esc = VMTL.esc;
-  view.innerHTML = VMTL.pageHead('Email', 'Outgoing mail (SMTP) settings and a test send.') + '<div id="b"><div class="loading"><span class="spinner"></span></div></div>';
+  view.innerHTML = VMTL.pageHead('Email', 'Outgoing mail settings, editable message templates and designed email previews.') + '<div id="b"><div class="loading"><span class="spinner"></span></div></div>';
   let d; try { d = (await VMTL.api('/admin/messaging')).data.email; } catch (e) { view.querySelector('#b').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
 
   view.querySelector('#b').innerHTML = `
@@ -29,4 +29,11 @@ window.VMTL_PAGE = async function () {
     if (view.querySelector('#mPass').value) email.password = view.querySelector('#mPass').value;
     try { await VMTL.api('/admin/messaging', { method: 'PUT', body: { email } }); VMTL.toast('Email settings saved.', 'success'); } catch (e) { VMTL.showErrors(e); }
   };
+
+  const templatesHost = document.createElement('section'); view.appendChild(templatesHost);
+  if (!window.VMTL_MESSAGE_TEMPLATES) await new Promise((resolve, reject) => {
+    const script = document.createElement('script'); script.src = '/js/message-templates.js'; script.onload = resolve; script.onerror = reject; document.head.appendChild(script);
+  });
+  await window.VMTL_MESSAGE_TEMPLATES('email', templatesHost);
+
 };

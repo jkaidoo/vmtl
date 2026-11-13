@@ -18,7 +18,7 @@ async function transport() {
   });
 }
 
-async function send(to, subject, body) {
+async function send(to, subject, body, { html } = {}) {
   if (!to) return { ok: false, message: 'No recipient.' };
   const prefix = await settings.get('notif_email_subject_prefix', '[UITS VMTL] ');
   const fromAddress = await settings.get('mail_from_address', 'uits@knust.edu.gh');
@@ -26,7 +26,10 @@ async function send(to, subject, body) {
   const t = await transport();
   if (!t) { log.info('email_logged', { to, subject: `${prefix}${subject}` }); return { ok: true, message: `Logged (no SMTP transport): ${to}` }; }
   try {
-    await t.sendMail({ from: `"${fromName}" <${fromAddress}>`, to, subject: `${prefix}${subject}`, text: body });
+    const layout = require('./emailLayout');
+    const designed = (html || layout.render({ subject: `${prefix}${subject}`, title: subject, text: body, unit: 'Vehicle Management & Trip Logging', kicker: 'Vehicle Management & Trip Logging', appUrl: process.env.APP_URL }))
+      .replace(/src="[^"]*"(?= width="46" alt="KNUST")/, 'src="cid:knust-logo"');
+    await t.sendMail({ from: `"${fromName}" <${fromAddress}>`, to, subject: `${prefix}${subject}`, text: body, html: designed, attachments: [{ filename: 'knust-logo.png', path: require('path').join(__dirname, '../../public/knust-logo.png'), cid: 'knust-logo' }] });
     return { ok: true, message: `Sent to ${to}.` };
   } catch (err) { log.warn('email_failed', { message: err.message }); return { ok: false, message: `Failed: ${err.message}` }; }
 }

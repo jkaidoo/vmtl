@@ -23,10 +23,11 @@ function describe(type, data) {
     trip_stop_declined: ['Added destination declined', `"${data.destination || ''}" was declined on ${data.trip_number || ''}.`],
     trip_delay_warning: ['Possible delay', `Trip ${data.trip_number || ''} may be delayed.`],
   };
-  return map[type] || ['Notification', ''];
+  return map[type] || [data.title || 'Notification', data.message || data.summary || ''];
 }
 
 async function fanout(userId, type, data) {
+  data = data || {};
   const [title, body] = describe(type, data);
   // Web Push
   if (await settings.get('feature_push_notifications', true)) {
@@ -34,14 +35,24 @@ async function fanout(userId, type, data) {
   }
   // Email (only when a recipient address is known and email is enabled)
   if (await settings.get('feature_email_notifications', true) && await settings.get('mail_enabled', false)) {
-    try { await require('./email').send(await addressFor(userId), title, body); } catch (err) { log.warn('email_fanout_failed', { message: err.message }); }
+    try {
+      const user = await db.get('SELECT name, email FROM users WHERE id = ?', [userId]);
+      const templates = require('./messageTemplates');
+      const message = await templates.render('email', templates.has(type) ? type : 'notification', { ...data, recipient_name: user?.name || '', title, message: body });
+      await require('./email').send(user?.email, message.subject, message.text, { html: message.html });
+    } catch (err) { log.warn('email_fanout_failed', { message: err.message }); }
   }
   // SMS (opt-in; phone required)
   if (await settings.get('feature_sms_notifications', false) && await settings.get('sms_enabled', false)) {
-    try { const phone = (await db.get('SELECT phone FROM users WHERE id = ?', [userId]) || {}).phone; if (phone) await sms.send(phone, `${title}: ${body}`); } catch (err) { log.warn('sms_fanout_failed', { message: err.message }); }
+    try {
+      const user = await db.get('SELECT name, phone FROM users WHERE id = ?', [userId]);
+      if (user?.phone) {
+        const templates = require('./messageTemplates');
+        const message = await templates.render('sms', templates.has(type) ? type : 'notification', { ...data, recipient_name: user.name, title, message: body });
+        await sms.send(user.phone, message.text);
+      }
+    } catch (err) { log.warn('sms_fanout_failed', { message: err.message }); }
   }
 }
-
-async function addressFor(userId) { const u = await db.get('SELECT email FROM users WHERE id = ?', [userId]); return u ? u.email : null; }
 
 module.exports = { fanout, describe };

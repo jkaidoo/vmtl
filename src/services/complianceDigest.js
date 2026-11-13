@@ -48,7 +48,7 @@ async function sendDigest({ force = false } = {}) {
     if (!a.total) return { sent: false, reason: 'nothing_due' };
     const data = { insurance: a.insurance_expiring.length, roadworthy: a.roadworthy_expiring.length, licence: a.licence_expiring.length, service: a.service_due.length, total: a.total, summary: summaryLine(a) };
     await notifications.toRoles(['transport_admin', 'administrator'], 'compliance_digest', data);
-    try { const to = await recipientEmails(); if (to.length) await email.send(to.join(', '), `Fleet compliance: ${a.total} item(s) need attention`, emailBody(a)); } catch (_) { /* email optional */ }
+    try { const to = await recipientEmails(); if (to.length) { const message = await require('./messageTemplates').render('email', 'compliance_digest', { recipient_name: 'Colleague', summary: emailBody(a) }); await email.send(to.join(', '), message.subject, message.text, { html: message.html }); } } catch (_) { /* email optional */ }
     log.info('compliance_digest_sent', { total: a.total });
     return { sent: true, ...data };
   } catch (err) { log.warn('compliance_digest_error', { message: err.message }); return { sent: false, reason: err.message }; }
