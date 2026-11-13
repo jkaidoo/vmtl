@@ -1,8 +1,8 @@
 'use strict';
 /* Service worker: offline app-shell with a network-first strategy. The API is
  * never cached (always fresh, offline-detectable). Bump CACHE on each deploy. */
-const CACHE = 'vmtl-v2';
-const SHELL = ['/css/styles.css', '/js/common.js', '/knust-logo.png', '/offline.html'];
+const CACHE = 'vmtl-v3';
+const SHELL = ['/css/styles.css', '/js/common.js', '/js/ui-system.js', '/css/ui-system.css', '/js/vehicle-map.js', '/knust-logo.png', '/offline.html'];
 
 self.addEventListener('install', (e) => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {})); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

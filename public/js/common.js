@@ -104,7 +104,10 @@
     if (method === 'GET' && data !== null) OFFLINE.cachePut(path, data); // last-known-good read
     return data;
   }
-  VMTL.api = api;
+  VMTL.api = async (path, options = {}) => {
+    const finish = window.WalkinUI?.beginRequest(options);
+    try { return await api(path, options); } finally { finish?.(); }
+  };
 
   // ---- On-device push notifications (Web Push / VAPID) ------------------
   function urlB64ToUint8(base64) {
@@ -232,25 +235,81 @@
   }
   VMTL.toast = toast;
 
-  function openModal(innerHtml, { large = false } = {}) {
+  function openModal(innerHtml, { large = false, onClose } = {}) {
     const backdrop = el(`<div class="modal-backdrop"><div class="modal ${large ? 'lg' : ''}">${innerHtml}</div></div>`);
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop || e.target.closest('[data-close]')) close(); });
+    let closed = false;
+    function close() { if (closed) return; closed = true; document.removeEventListener('keydown', onKey); backdrop.remove(); onClose?.(); }
+    backdrop.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
+    function onKey(e) {
+      if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.wi-calendar') && backdrop === [...document.querySelectorAll('.modal-backdrop')].at(-1)) { e.preventDefault(); close(); }
+    }
     document.addEventListener('keydown', onKey);
-    function onKey(e) { if (e.key === 'Escape') close(); }
-    function close() { document.removeEventListener('keydown', onKey); backdrop.remove(); }
+    backdrop.querySelector('.modal').addEventListener('wi:dispose', close);
     document.body.appendChild(backdrop);
+    window.WalkinUI?.enhanceModal(backdrop.querySelector('.modal'));
     return { el: backdrop, modal: backdrop.querySelector('.modal'), close };
   }
   VMTL.openModal = openModal;
 
   function confirmModal(message, { danger = false, confirmLabel = 'Confirm' } = {}) {
     return new Promise((resolve) => {
-      const m = openModal(`<div class="modal-body"><p>${esc(message)}</p></div><div class="modal-foot"><button class="btn" data-no>Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-yes>${esc(confirmLabel)}</button></div>`);
-      m.el.querySelector('[data-no]').onclick = () => { m.close(); resolve(false); };
-      m.el.querySelector('[data-yes]').onclick = () => { m.close(); resolve(true); };
+      const m = openModal(`<h3>${danger ? 'Please confirm' : 'Confirm action'}</h3><div class="sub">${esc(message)}</div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-yes>${esc(confirmLabel)}</button></div>`, { onClose: () => resolve(false) });
+      m.modal.dataset.uiStatus = danger ? 'danger' : 'confirm';
+      window.WalkinUI?.enhanceModal(m.modal);
+      m.el.querySelector('[data-yes]').onclick = () => { resolve(true); m.close(); };
     });
   }
   VMTL.confirm = confirmModal;
+
+  // Shared server pagination. A filter change resets the page; page size starts at ten.
+  const pagedLists = new WeakMap();
+  VMTL.pagedApi = async (path, host, reload) => {
+    const url = new URL(path, location.origin); url.searchParams.delete('per_page'); url.searchParams.delete('page');
+    const key = url.pathname + url.search;
+    let state = pagedLists.get(host);
+    if (!state) { state = { key, page: 1, size: 10 }; pagedLists.set(host, state); }
+    if (key !== state.key) { state.key = key; state.page = 1; }
+    url.searchParams.set('page', state.page); url.searchParams.set('per_page', state.size);
+    let result = await api(url.pathname + url.search);
+    if (result.meta && state.page > result.meta.last_page) { state.page = Math.max(1, result.meta.last_page); return VMTL.pagedApi(path, host, reload); }
+    host.dataset.serverPaged = 'true';
+    let pager = host.nextElementSibling;
+    if (!pager?.classList.contains('table-pager')) { pager = el('<div class="table-pager"></div>'); host.after(pager); }
+    const meta = result.meta;
+    // Unpaginated collections use the same controls, sliced locally without losing records.
+    const total = meta ? Number(meta.total) : result.data.length;
+    const last = meta ? meta.last_page : Math.max(1, Math.ceil(total / state.size));
+    state.page = Math.min(state.page, last);
+    if (!meta) result = { ...result, data: result.data.slice((state.page - 1) * state.size, state.page * state.size) };
+    pager.innerHTML = `<span class="dim">${total ? (state.page - 1) * state.size + 1 : 0}–${Math.min(state.page * state.size, total)} of ${total} entries</span><label>Rows per page <select aria-label="Rows per page">${[10,25,50,100].map(n => `<option ${n === state.size ? 'selected' : ''}>${n}</option>`).join('')}</select></label><button class="btn btn-sm" data-prev ${state.page <= 1 ? 'disabled' : ''}>‹ Prev</button><span>Page ${state.page} of ${last}</span><button class="btn btn-sm" data-next ${state.page >= last ? 'disabled' : ''}>Next ›</button>`;
+    const change = async (delta) => { state.page += delta; const controls = [...pager.querySelectorAll('button,select')].map(control => [control, control.disabled]); controls.forEach(([control]) => control.disabled = true); try { await reload(); } finally { controls.forEach(([control, disabled]) => { if (control.isConnected) control.disabled = disabled; }); } };
+    pager.querySelector('[data-prev]').onclick = () => change(-1);
+    pager.querySelector('[data-next]').onclick = () => change(1);
+    pager.querySelector('select').onchange = e => { state.size = Number(e.target.value); state.page = 1; change(0); };
+    return result;
+  };
+
+  const localTables = new WeakSet();
+  function paginateTables() {
+    document.querySelectorAll('table.data').forEach(table => {
+      if (localTables.has(table) || table.closest('[data-server-paged], #rbac') || location.pathname === '/audit.html' && !table.closest('[data-app-logs]') || table.querySelector('input,select')) return;
+      localTables.add(table);
+      const rows = [...table.tBodies].flatMap(body => [...body.rows]);
+      if (rows.length <= 10) return;
+      let page = 1, size = 10;
+      const pager = el('<div class="table-pager"></div>'); table.after(pager);
+      function draw() {
+        const last = Math.max(1, Math.ceil(rows.length / size)); page = Math.min(page, last);
+        rows.forEach((row, index) => { row.hidden = index < (page - 1) * size || index >= page * size; });
+        pager.innerHTML = `<span class="dim">${(page - 1) * size + 1}–${Math.min(page * size, rows.length)} of ${rows.length} entries</span><label>Rows per page <select aria-label="Rows per page">${[10,25,50,100].map(n => `<option ${n === size ? 'selected' : ''}>${n}</option>`).join('')}</select></label><button class="btn btn-sm" data-prev ${page === 1 ? 'disabled' : ''}>‹ Prev</button><span>Page ${page} of ${last}</span><button class="btn btn-sm" data-next ${page === last ? 'disabled' : ''}>Next ›</button>`;
+        pager.querySelector('select').onchange = e => { size = Number(e.target.value); page = 1; draw(); };
+        pager.querySelector('[data-prev]').onclick = () => { page--; draw(); };
+        pager.querySelector('[data-next]').onclick = () => { page++; draw(); };
+      }
+      draw();
+    });
+  }
+  new MutationObserver(paginateTables).observe(document.documentElement, { childList: true, subtree: true });
 
   // Render a field-errors map (from a 422) as inline messages, or a toast.
   VMTL.showErrors = (err, form) => {
@@ -602,6 +661,8 @@
   function humanizeMinutes(total) { const m = Math.round(Math.abs(total)); if (m < 1) return '<1m'; const d = Math.floor(m / 1440); const h = Math.floor((m % 1440) / 60); const mm = m % 60; const p = []; if (d) p.push(`${d}d`); if (h) p.push(`${h}h`); if (mm && !d) p.push(`${mm}m`); return p.length ? p.join(' ') : `${m}m`; }
   function vehicleSvg(motif) {
     const paths = {
+      truck: '<path d="M3 7h32v18H3z M36 14h15l9 10v1H36z" fill="currentColor"/>',
+      motorcycle: '<path d="M15 25l12-15 12 15H15l12-15h11l5 15M37 7h9" fill="none" stroke="currentColor" stroke-width="4"/>',
       pickup: '<path d="M3 25 L3 20 L30 20 L30 8 L44 8 L50 17 L60 17 L60 25 Z" fill="currentColor"/>',
       suv: '<path d="M4 25 L4 18 Q4 10 14 10 L44 10 Q54 10 58 18 L60 18 L60 25 Z" fill="currentColor"/>',
       bus: '<path d="M3 25 L3 9 Q3 7 6 7 L56 7 Q60 7 60 11 L60 25 Z" fill="currentColor"/><rect x="8" y="11" width="46" height="7" rx="1" fill="rgba(255,255,255,.35)"/>',
@@ -662,7 +723,7 @@
   let spaBusy = false;
   window.__vmtlLeave = window.__vmtlLeave || [];
   VMTL.onLeave = (fn) => { if (typeof fn === 'function') window.__vmtlLeave.push(fn); };
-  const runLeave = () => { window.__vmtlLeave.splice(0).forEach((fn) => { try { fn(); } catch (_) { /* ignore */ } }); };
+  const runLeave = () => { window.WalkinUI?.cleanup(); window.__vmtlLeave.splice(0).forEach((fn) => { try { fn(); } catch (_) { /* ignore */ } }); };
   const flatNav = () => NAV.reduce((acc, s) => acc.concat(s.items), []);
 
   function spaEligible(a) {
@@ -707,8 +768,9 @@
       const path = new URL(href, location.href).pathname;
       const scriptSrc = [...doc.querySelectorAll('script[src]')]
         .map((s) => s.getAttribute('src'))
-        .find((src) => src && !/\/js\/common\.js(\?|$)/.test(src));
+        .find((src) => src && !/\/js\/(common|ui-system|vehicle-map)\.js(\?|$)/.test(src));
       runLeave();
+      window.WalkinUI?.startPage();
       if (push) history.pushState({ spa: true }, '', href);
       if (doc.title) document.title = doc.title;
       setActiveNav(key); setTitle(key, doc.title);

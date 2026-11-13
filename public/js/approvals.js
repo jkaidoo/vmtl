@@ -13,7 +13,7 @@ window.VMTL_PAGE = async function () {
   async function load(t) {
     const list = view.querySelector('#list');
     try {
-      const r = await VMTL.api(`/vehicle-requests?status=${statusFor(t)}&per_page=100`);
+      const r = await VMTL.pagedApi(`/vehicle-requests?status=${statusFor(t)}`, list, () => load(t));
       list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Number</th><th>Destination</th><th>Requester</th><th>Window</th><th>Status</th></tr></thead><tbody>${r.data.map((x) => `<tr class="click" data-id="${x.id}"><td data-label="Number">${VMTL.esc(x.request_number)}</td><td data-label="Destination">${VMTL.esc(x.destination)}</td><td data-label="Requester">${VMTL.esc(x.requester ? x.requester.name : '')}</td><td data-label="Window">${VMTL.fmtDateTime(x.requested_start_time)}</td><td data-label="Status">${VMTL.statusBadge(x)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nothing here.</div>';
       list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/requests.html?id=${tr.dataset.id}`);
     } catch (e) { list.innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; }

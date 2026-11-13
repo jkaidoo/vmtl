@@ -28,7 +28,7 @@ module.exports = function register(router) {
     if (req.query.maintenance_type) { where.push('m.maintenance_type = ?'); params.push(String(req.query.maintenance_type)); }
     const rows = await db.all(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY m.service_date DESC`, params);
     const mapped = rows.map(present.maintenance);
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     res.json({ data: mapped.slice((page - 1) * perPage, page * perPage), meta: { current_page: page, per_page: perPage, total: mapped.length, last_page: Math.max(1, Math.ceil(mapped.length / perPage)) } });
   });

@@ -14,11 +14,13 @@ async function renderList() {
   view.innerHTML = VMTL.pageHead('Vehicles', 'The fleet in your scope.', actions) +
     `<div class="card pad mb"><div class="row wrap gap-sm"><select id="fStatus" style="max-width:200px"><option value="">All statuses</option>${VMTL.enumOptions('vehicle_status')}</select><input id="fSearch" placeholder="Search number, reg, make…" style="max-width:260px"><button class="btn" id="fGo">Filter</button></div></div>
      <div class="card"><div id="list"><div class="loading"><span class="spinner"></span></div></div></div>`;
+  const initialFilters = new URLSearchParams(location.search);
+  view.querySelector('#fStatus').value = initialFilters.get('status') || '';
   const load = async () => {
     const list = view.querySelector('#list'); const qs = new URLSearchParams(); qs.set('all', '1');
     if (view.querySelector('#fStatus').value) qs.set('status', view.querySelector('#fStatus').value);
     if (view.querySelector('#fSearch').value) qs.set('search', view.querySelector('#fSearch').value);
-    try { const r = await VMTL.api(`/vehicles?${qs}`); list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Number</th><th>Reg</th><th>Type</th><th>Make/Model</th><th>Odometer</th><th>Status</th></tr></thead><tbody>${r.data.map((v) => `<tr class="click" data-id="${v.id}"><td data-label="Number">${VMTL.esc(v.vehicle_number)}</td><td data-label="Reg">${VMTL.esc(v.registration_number)}</td><td data-label="Type">${VMTL.esc(v.vehicle_type_label || '—')}</td><td data-label="Make/Model">${VMTL.esc([v.make, v.model].filter(Boolean).join(' '))}</td><td data-label="Odometer">${VMTL.fmtNumber(v.current_odometer)} km</td><td data-label="Status">${VMTL.statusBadge(v)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No vehicles.</div>'; list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/vehicles.html?id=${tr.dataset.id}`); }
+    try { const r = await VMTL.pagedApi(`/vehicles?${qs}`, list, load); list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Number</th><th>Reg</th><th>Type</th><th>Make/Model</th><th>Odometer</th><th>Status</th></tr></thead><tbody>${r.data.map((v) => `<tr class="click" data-id="${v.id}"><td data-label="Number">${VMTL.esc(v.vehicle_number)}</td><td data-label="Reg">${VMTL.esc(v.registration_number)}</td><td data-label="Type">${VMTL.esc(v.vehicle_type_label || '—')}</td><td data-label="Make/Model">${VMTL.esc([v.make, v.model].filter(Boolean).join(' '))}</td><td data-label="Odometer">${VMTL.fmtNumber(v.current_odometer)} km</td><td data-label="Status">${VMTL.statusBadge(v)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No vehicles.</div>'; list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/vehicles.html?id=${tr.dataset.id}`); }
     catch (e) { list.innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; }
   };
   view.querySelector('#fGo').onclick = load;
@@ -61,7 +63,9 @@ async function renderDetail(id) {
 
 function vehicleModal(v, done) {
   const e = v || {};
-  const typeOpts = (VMTL.meta.enums.vehicle_type || []).map((o) => `<option value="${o.value}" ${e.vehicle_type === o.value ? 'selected' : ''}>${VMTL.esc(o.label)}</option>`).join('');
+  const typeGroups = new Map();
+  for (const option of VMTL.meta.enums.vehicle_type || []) { if (!typeGroups.has(option.group)) typeGroups.set(option.group, []); typeGroups.get(option.group).push(option); }
+  const typeOpts = [...typeGroups].map(([group, options]) => `<optgroup label="${VMTL.esc(group)}">${options.map(o => `<option value="${o.value}" ${e.vehicle_type === o.value ? 'selected' : ''}>${VMTL.esc(o.label)}</option>`).join('')}</optgroup>`).join('');
   const m = VMTL.openModal(`<div class="modal-head"><h3>${v ? 'Edit vehicle' : 'Add vehicle'}</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><form id="vf"><div class="form-grid">
     <div class="field"><label>Vehicle number</label><input name="vehicle_number" value="${VMTL.esc(e.vehicle_number || '')}" required></div>
     <div class="field"><label>Registration</label><input name="registration_number" value="${VMTL.esc(e.registration_number || '')}" required></div>
@@ -70,7 +74,7 @@ function vehicleModal(v, done) {
     <div class="field"><label>Year</label><input name="year" type="number" value="${e.year || ''}"></div>
     <div class="field"><label>Type</label><select name="vehicle_type"><option value="">—</option>${typeOpts}</select></div>
     <div class="field"><label>Colour</label><input name="colour" value="${VMTL.esc(e.colour || '')}"></div>
-    <div class="field"><label>Capacity</label><input name="capacity" type="number" min="1" value="${e.capacity || 1}" required></div>
+    <div class="field"><label>Capacity</label><input name="capacity" type="number" min="0" value="${e.capacity ?? 1}" required></div>
     <div class="field"><label>Current odometer</label><input name="current_odometer" type="number" value="${e.current_odometer || 0}"></div>
     <div class="field"><label>Org unit</label><select name="org_unit_id"><option value="">— default —</option>${VMTL.orgUnitOptions(e.org_unit_id)}</select></div>
     <div class="field"><label>Insurance expiry</label><input name="insurance_expiry" type="date" value="${e.insurance_expiry || ''}"></div>
@@ -78,6 +82,7 @@ function vehicleModal(v, done) {
     <div class="field"><label>Service interval (km)</label><input name="service_interval_km" type="number" value="${e.service_interval_km || ''}"></div>
     <div class="field"><label>Last service date</label><input name="last_service_date" type="date" value="${e.last_service_date || ''}"></div>
   </div><div class="field"><label>Notes</label><textarea name="notes">${VMTL.esc(e.notes || '')}</textarea></div></form></div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="save">Save</button></div>`, { large: true });
+  m.el.querySelector('[name=vehicle_type]').onchange = event => { const type = VMTL.meta.enums.vehicle_type.find(option => option.value === event.target.value); if (type) m.el.querySelector('[name=capacity]').value = type.seats; };
   m.el.querySelector('#save').onclick = async () => {
     const form = m.el.querySelector('#vf'); const body = {};
     new FormData(form).forEach((val, k) => { if (val !== '') body[k] = val; });

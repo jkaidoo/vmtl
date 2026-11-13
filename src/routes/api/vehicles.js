@@ -19,7 +19,7 @@ const VEHICLE_RULES = {
   make: { type: 'string', maxLength: 100 }, model: { type: 'string', maxLength: 100 },
   year: { type: 'integer', min: 1950, max: new Date().getFullYear() + 1 },
   vehicle_type: { type: 'string', in: Object.keys(require('../../services/enums').vehicleType.options().reduce((a, o) => (a[o.value] = 1, a), {})) },
-  colour: { type: 'string', maxLength: 50 }, capacity: { required: true, type: 'integer', min: 1, max: 100 },
+  colour: { type: 'string', maxLength: 50 }, capacity: { required: true, type: 'integer', min: 0, max: 150 },
   current_odometer: { type: 'integer', min: 0 }, org_unit_id: { type: 'integer' },
   acquisition_date: { type: 'date' }, insurance_expiry: { type: 'date' }, roadworthy_expiry: { type: 'date' },
   service_interval_km: { type: 'integer', min: 0 }, last_service_date: { type: 'date' }, last_service_odometer: { type: 'integer', min: 0 },
@@ -45,7 +45,7 @@ module.exports = function register(router) {
     const rows = await db.all(`${loaders.VEHICLE_SELECT} WHERE ${whereSql} ORDER BY v.vehicle_number`, params);
     const mapped = rows.map(present.vehicle);
     if (req.query.all === 'true' || req.query.all === '1') return res.json({ data: mapped });
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     res.json({ data: mapped.slice((page - 1) * perPage, page * perPage), meta: { current_page: page, per_page: perPage, total: mapped.length, last_page: Math.max(1, Math.ceil(mapped.length / perPage)) } });
   });

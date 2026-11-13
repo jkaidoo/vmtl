@@ -55,7 +55,7 @@ module.exports = function register(router) {
     const rows = await db.all(`${loaders.DRIVER_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.name`, params);
     const mapped = rows.map(present.driver);
     if (req.query.all === 'true' || req.query.all === '1') return res.json({ data: mapped });
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     res.json({ data: mapped.slice((page - 1) * perPage, page * perPage), meta: { current_page: page, per_page: perPage, total: mapped.length, last_page: Math.max(1, Math.ceil(mapped.length / perPage)) } });
   });

@@ -49,7 +49,7 @@ module.exports = function register(router) {
     if (req.query.date_to) { where.push('substr(t.scheduled_start,1,10) <= substr(?,1,10)'); params.push(req.query.date_to); }
     if (req.query.search) { const s = `%${req.query.search}%`; where.push('(t.trip_number LIKE ? OR r.destination LIKE ?)'); params.push(s, s); }
 
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     const whereSql = where.join(' AND ');
     const base = `FROM trips t LEFT JOIN vehicle_requests r ON r.id = t.vehicle_request_id LEFT JOIN drivers dr ON dr.id = t.driver_id WHERE ${whereSql}`;
@@ -94,6 +94,21 @@ module.exports = function register(router) {
       scheduled_start: t.scheduled_start, scheduled_end: t.scheduled_end, actual_start: t.actual_start, actual_end: t.actual_end,
       vehicle_number: t.vehicle_number, motif: enums.vehicleType.motifFor(t.vehicle_type), destination: t.destination,
     })) });
+  });
+
+  router.get('/trips/:id/location', requireAuth, async (req, res) => {
+    const trip = await findTrip(req.params.id);
+    if (!(await canView(req, trip))) throw forbidden('You may not view this trip.');
+    const user = req.session.user;
+    const related = await db.get('SELECT requester_id FROM vehicle_requests WHERE id = ?', [trip.vehicle_request_id]);
+    const driver = await db.get('SELECT user_id FROM drivers WHERE id = ?', [trip.driver_id]);
+    const vehicle = await db.get('SELECT * FROM vehicles WHERE id = ? AND deleted_at IS NULL', [trip.vehicle_id]);
+    if (!user.is_super_admin && related?.requester_id !== user.id && driver?.user_id !== user.id && !(await require('../../services/authz').inScope(user, vehicle?.org_unit_id))) throw forbidden('This trip is outside your scope.');
+    const position = await db.get('SELECT * FROM vehicle_positions WHERE trip_id = ? AND vehicle_id = ?', [trip.id, trip.vehicle_id]);
+    const settings = require('../../services/settings');
+    const key = await settings.get('google_maps_api_key', '') || '';
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: position ? { ...position, vehicle_type: vehicle?.vehicle_type, vehicle_number: vehicle?.vehicle_number, on_trip: trip.status === 'in_progress', stale: Date.now() - Date.parse(String(position.recorded_at).replace(' ', 'T') + 'Z') > 150000 } : null, trip_status: trip.status, config: { key, has_key: !!key } });
   });
 
   router.get('/trips/:id', requireAuth, async (req, res) => {

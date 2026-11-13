@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/knust-logo.png"><title>Vehicle map marker preview · UITS VMTL</title>
+  <link rel="stylesheet" href="/css/styles.css"><link rel="stylesheet" href="/css/ui-system.css">
+  <link rel="stylesheet" href="/css/map-preview.css">
+</head>
+<body>
+  <main class="preview-shell">
+    <div class="between mb"><div><div class="preview-eyebrow">UITS / FLEET TRACKING</div><h1>Vehicles on the map</h1><p class="dim">Actual VMTL marker artwork · illustrative campus map · sample positions</p></div><span class="pill">Marker preview</span></div>
+    <div class="preview-layout card">
+      <div class="preview-map" id="previewMap">
+        <svg class="preview-basemap" viewBox="0 0 900 650" preserveAspectRatio="xMidYMid slice" aria-label="Illustrative campus map">
+          <rect width="900" height="650" fill="#edf1e8"/>
+          <g fill="#dbe8d3"><rect x="30" y="40" width="220" height="160" rx="32"/><rect x="610" y="280" width="270" height="320" rx="55"/><rect x="310" y="360" width="180" height="250" rx="36"/></g>
+          <g fill="#e0e2dc" stroke="#cdd1c9" stroke-width="2"><rect x="320" y="90" width="100" height="50" rx="6"/><rect x="465" y="80" width="110" height="70" rx="6"/><rect x="65" y="350" width="130" height="90" rx="6"/><rect x="580" y="430" width="80" height="70" rx="6"/><rect x="330" y="265" width="80" height="40" rx="6"/><rect x="660" y="100" width="140" height="80" rx="6"/></g>
+          <g fill="none" stroke="#d8dcd6" stroke-width="28"><path d="M-40 260L940 240M270 -20L290 680M520 -30Q480 220 570 350T550 700M-10 525L930 540"/></g>
+          <g fill="none" stroke="#fff" stroke-width="19"><path d="M-40 260L940 240M270 -20L290 680M520 -30Q480 220 570 350T550 700M-10 525L930 540"/></g>
+          <g font-family="Segoe UI,sans-serif" font-size="13" fill="#788276"><text x="80" y="120">Botanical gardens</text><text x="325" y="175">Academic area</text><text x="665" y="395">Sports grounds</text><text x="55" y="470">Administration</text><text x="632" y="220">Campus avenue</text></g>
+        </svg>
+        <div class="preview-map-heading"><strong>Campus fleet</strong><span>Vehicle direction follows GPS heading</span></div>
+        <div id="previewMarkers"></div>
+        <div class="preview-legend"><span><i class="green"></i>On trip</span><span><i class="blue"></i>Idle</span><span><i class="grey"></i>Last seen</span></div>
+      </div>
+      <aside class="preview-side"><h3>Vehicle markers</h3><p class="dim">Select a vehicle to inspect its marker.</p><div id="previewList"></div><div class="preview-note">The same SVG markers appear on the live fleet map and trip details. Live positions come from the assigned driver’s GPS.</div></aside>
+    </div>
+    <div class="preview-types" id="previewTypes"></div>
+  </main>
+  <script src="/js/ui-system.js"></script><script src="/js/common.js"></script><script src="/js/vehicle-map.js"></script><script src="/js/map-preview.js"></script>
+</body>
+</html>

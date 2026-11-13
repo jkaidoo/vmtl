@@ -23,6 +23,8 @@ window.VMTL_PAGE = async function () {
   const HOUR_H = 46; // px per hour (desktop grid)
   let weekStart = startOfWeek(new Date());
   let events = [];
+  let mode = 'month';
+  let focusMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const mq = window.matchMedia('(max-width: 820px)');
 
   view.innerHTML = VMTL.pageHead('Calendar', 'Vehicle bookings across the week.') +
@@ -31,18 +33,21 @@ window.VMTL_PAGE = async function () {
          <button class="icon-btn cal-nav" id="prev" aria-label="Previous week">‹</button>
          <button class="icon-btn cal-nav" id="next" aria-label="Next week">›</button>
          <button class="btn btn-sm" id="today">Today</button>
-         <strong id="range" style="font-size:16px;margin-left:4px"></strong>
+         <select id="calendarMode" aria-label="Calendar view"><option value="month">Month</option><option value="week">Week</option><option value="agenda">Agenda</option></select><input type="month" id="jumpMonth" aria-label="Jump to month"><strong id="range" style="font-size:16px;margin-left:4px"></strong>
        </div>
        <div class="cal-legend">${Object.keys(STATUS).map((k) => `<span><i style="background:${STATUS[k].c}"></i>${STATUS[k].label}</span>`).join('')}</div>
      </div>
      <div id="calBody"><div class="loading"><span class="spinner"></span></div></div>`;
 
   async function load() {
+    if (mode === 'month') weekStart = startOfWeek(focusMonth);
     const from = iso(weekStart);
-    const endD = new Date(weekStart); endD.setDate(endD.getDate() + 6);
+    const endD = new Date(weekStart); endD.setDate(endD.getDate() + (mode === 'month' ? 41 : 6));
+    view.querySelector('#jumpMonth').value = iso(focusMonth).slice(0,7);
     view.querySelector('#range').textContent = weekStart.getMonth() === endD.getMonth()
       ? `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()}–${endD.getDate()}, ${endD.getFullYear()}`
       : `${MONTHS[weekStart.getMonth()].slice(0, 3)} ${weekStart.getDate()} – ${MONTHS[endD.getMonth()].slice(0, 3)} ${endD.getDate()}, ${endD.getFullYear()}`;
+    if (mode === 'month') view.querySelector('#range').textContent = `${MONTHS[focusMonth.getMonth()]} ${focusMonth.getFullYear()}`;
     let d;
     try { d = (await VMTL.api(`/schedule?from=${from}&to=${iso(endD)}`)).data; }
     catch (e) { view.querySelector('#calBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
@@ -54,12 +59,27 @@ window.VMTL_PAGE = async function () {
     }
     draw();
   }
-  function draw() { mq.matches ? renderAgenda() : renderWeek(); }
+  function draw() { if (mode === 'month') renderMonth(); else if (mode === 'agenda' || mq.matches) renderAgenda(); else renderWeek(); }
+
+  function renderMonth() {
+    const days = Array.from({ length: 42 }, (_, i) => { const day = new Date(weekStart); day.setDate(day.getDate() + i); return day; });
+    const today = new Date();
+    view.querySelector('#calBody').innerHTML = `<div class="month-calendar">${DAY_FULL.map(day => `<div class="month-weekday">${day}</div>`).join('')}${days.map(day => {
+      const items = events.filter(event => iso(event.start) <= iso(day) && iso(event.end) >= iso(day));
+      return `<button class="month-day ${day.getMonth() !== focusMonth.getMonth() ? 'outside' : ''} ${sameDay(day,today) ? 'today' : ''}" data-day="${iso(day)}" aria-label="${esc(day.toDateString())}, ${items.length} trips"><span class="month-number">${day.getDate()}</span>${items.slice(0,3).map(event => `<span class="month-event" style="--event-color:${st(event.status).c}">${esc(event.vehicle_number)} · ${esc(event.destination || event.trip_number)}</span>`).join('')}${items.length > 3 ? `<span class="dim">+${items.length - 3} more</span>` : ''}</button>`;
+    }).join('')}</div>`;
+    view.querySelectorAll('[data-day]').forEach(button => button.onclick = () => {
+      const items = events.filter(event => iso(event.start) <= button.dataset.day && iso(event.end) >= button.dataset.day);
+      if (items.length === 1) { location.href = `/trips.html?id=${items[0].id}`; return; }
+      const modal = VMTL.openModal(`<h3>${esc(new Date(button.dataset.day + 'T00:00:00').toDateString())}</h3><p class="sub">${items.length} scheduled trips</p><div class="stack">${items.length ? items.map(event => `<a class="card pad fleet-link" href="/trips.html?id=${event.id}"><strong>${esc(event.trip_number)} · ${esc(event.vehicle_number)}</strong><div>${esc(event.destination || '')}</div><div class="dim">${VMTL.fmtDateTime(event.scheduled_start)} – ${VMTL.fmtDateTime(event.scheduled_end)}</div>${VMTL.badge(st(event.status).label, event.status === 'in_progress' ? 'green' : 'blue')}</a>`).join('') : '<p class="dim">No trips on this day.</p>'}</div><div class="modal-foot"><button class="btn" data-close>Close</button></div>`, { large: true });
+    });
+  }
 
   // ---- Desktop: week time-grid --------------------------------------------
   function dayEvents(dayDate) {
-    return events.filter((e) => sameDay(e.start, dayDate)).map((e) => {
-      const startMin = e.start.getHours() * 60 + e.start.getMinutes();
+    const end = new Date(dayDate); end.setDate(end.getDate() + 1);
+    return events.filter(e => e.start < end && e.end > dayDate).map((e) => {
+      const startMin = sameDay(e.start, dayDate) ? e.start.getHours() * 60 + e.start.getMinutes() : 0;
       let endMin = sameDay(e.end, dayDate) ? e.end.getHours() * 60 + e.end.getMinutes() : 24 * 60;
       if (endMin <= startMin) endMin = startMin + 45;
       return { ...e, startMin, endMin };
@@ -83,7 +103,7 @@ window.VMTL_PAGE = async function () {
     const all = days.flatMap((d) => dayEvents(d));
     let minH = 8; let maxH = 18;
     if (all.length) { minH = Math.min(minH, Math.floor(Math.min(...all.map((e) => e.startMin)) / 60)); maxH = Math.max(maxH, Math.ceil(Math.max(...all.map((e) => e.endMin)) / 60)); }
-    minH = Math.max(5, minH); maxH = Math.min(23, Math.max(maxH, minH + 6));
+    minH = Math.max(0, minH); maxH = Math.min(24, Math.max(maxH, minH + 6));
     const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
     const spanMin = (maxH - minH) * 60; const bodyH = (maxH - minH) * HOUR_H;
     const today = new Date();
@@ -95,8 +115,8 @@ window.VMTL_PAGE = async function () {
         const top = ((e.startMin - minH * 60) / spanMin) * bodyH;
         const h = Math.max(20, ((e.endMin - e.startMin) / spanMin) * bodyH - 2);
         const w = 100 / e.lanes; const left = e.lane * w; const s = st(e.status);
-        return `<div class="cal-ev" title="${esc(e.trip_number)} · ${esc(e.destination || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}" style="top:${top}px;height:${h}px;left:calc(${left}% + 2px);width:calc(${w}% - 4px);background:${s.t};border-left:3px solid ${s.c}">
-          <div class="cal-ev-t">${esc(e.destination || e.trip_number)}</div><div class="cal-ev-s">${VMTL.fmtTime(e.scheduled_start)} · ${esc(e.vehicle_number || '')}</div></div>`;
+        return `<a href="/trips.html?id=${e.id}" class="cal-ev" title="${esc(e.trip_number)} · ${esc(e.destination || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}" style="top:${top}px;height:${h}px;left:calc(${left}% + 2px);width:calc(${w}% - 4px);background:${s.t};border-left:3px solid ${s.c}">
+          <div class="cal-ev-t">${esc(e.destination || e.trip_number)}</div><div class="cal-ev-s">${VMTL.fmtTime(e.scheduled_start)} · ${esc(e.vehicle_number || '')}</div></a>`;
       }).join('');
       const isToday = sameDay(d, today);
       return `<div class="cal-col">
@@ -119,7 +139,7 @@ window.VMTL_PAGE = async function () {
       const isToday = sameDay(d, today);
       return `<div class="agd-day">
         <div class="agd-date${isToday ? ' is-today' : ''}"><span class="agd-num">${String(d.getDate()).padStart(2, '0')}</span><span class="agd-dow">${DAY_FULL[(d.getDay() + 6) % 7].toUpperCase()}</span></div>
-        <div class="agd-events">${evs.length ? evs.map((e) => { const s = st(e.status); return `<div class="agd-ev" style="background:${s.t};border-left:3px solid ${s.c}"><div class="agd-ev-main"><div class="agd-ev-t">${esc(e.destination || e.trip_number)}</div><div class="agd-ev-sub">${esc(e.vehicle_number || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}</div></div><div class="agd-ev-time">${VMTL.fmtTime(e.scheduled_start)}<br><span>${VMTL.fmtTime(e.scheduled_end)}</span></div></div>`; }).join('') : '<div class="agd-empty">No trips</div>'}</div>
+        <div class="agd-events">${evs.length ? evs.map((e) => { const s = st(e.status); return `<a href="/trips.html?id=${e.id}" class="agd-ev" style="background:${s.t};border-left:3px solid ${s.c}"><div class="agd-ev-main"><div class="agd-ev-t">${esc(e.destination || e.trip_number)}</div><div class="agd-ev-sub">${esc(e.vehicle_number || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}</div></div><div class="agd-ev-time">${VMTL.fmtTime(e.scheduled_start)}<br><span>${VMTL.fmtTime(e.scheduled_end)}</span></div></a>`; }).join('') : '<div class="agd-empty">No trips</div>'}</div>
       </div>`;
     }).join('');
     view.querySelector('#calBody').innerHTML = `<div class="agd">${rows}</div>`;
@@ -141,9 +161,11 @@ window.VMTL_PAGE = async function () {
   }
   function wireMini() { view.querySelectorAll('.mini-day').forEach((b) => b.onclick = () => { weekStart = startOfWeek(new Date(b.dataset.d + 'T00:00:00')); load(); }); }
 
-  view.querySelector('#prev').onclick = () => { weekStart.setDate(weekStart.getDate() - 7); weekStart = new Date(weekStart); load(); };
-  view.querySelector('#next').onclick = () => { weekStart.setDate(weekStart.getDate() + 7); weekStart = new Date(weekStart); load(); };
-  view.querySelector('#today').onclick = () => { weekStart = startOfWeek(new Date()); load(); };
+  view.querySelector('#prev').onclick = () => { if (mode === 'month') focusMonth = new Date(focusMonth.getFullYear(), focusMonth.getMonth() - 1, 1); else weekStart.setDate(weekStart.getDate() - 7); load(); };
+  view.querySelector('#next').onclick = () => { if (mode === 'month') focusMonth = new Date(focusMonth.getFullYear(), focusMonth.getMonth() + 1, 1); else weekStart.setDate(weekStart.getDate() + 7); load(); };
+  view.querySelector('#today').onclick = () => { focusMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); weekStart = startOfWeek(new Date()); load(); };
+  view.querySelector('#calendarMode').onchange = e => { mode = e.target.value; weekStart = startOfWeek(mode === 'month' ? focusMonth : new Date()); load(); };
+  view.querySelector('#jumpMonth').onchange = e => { if (!e.target.value) return; focusMonth = new Date(e.target.value + '-01T00:00:00'); weekStart = startOfWeek(focusMonth); load(); };
   const onMq = () => draw();
   mq.addEventListener('change', onMq); VMTL.onLeave(() => mq.removeEventListener('change', onMq));
   await load();

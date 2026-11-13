@@ -347,9 +347,18 @@ module.exports = function register(router) {
   // ---- Application logs (server runtime log — app owner only) -------------
   router.get('/admin/application-logs', requireAuth, requireSystemAdmin, (req, res) => {
     const level = String(req.query.level || 'all');
-    let rows = log.recent(400);
-    if (level !== 'all') rows = rows.filter((e) => e.level === level);
-    res.json({ data: rows.map((e) => ({ level: e.level, timestamp: e.at, event: e.event, message: e.message || e.event, data: e.data != null ? JSON.stringify(e.data) : null })) });
+    let rows = log.recent(500);
+    if (level !== 'all') rows = rows.filter(e => e.level === level);
+    if (req.query.search) { const term = String(req.query.search).toLowerCase(); rows = rows.filter(e => JSON.stringify(e).toLowerCase().includes(term)); }
+    if (req.query.date_from) rows = rows.filter(e => e.at.slice(0,10) >= String(req.query.date_from).slice(0,10));
+    if (req.query.date_to) rows = rows.filter(e => e.at.slice(0,10) <= String(req.query.date_to).slice(0,10));
+    const total = rows.length, size = Math.min(100, Math.max(1, parseInt(req.query.per_page,10) || 10));
+    const last = Math.max(1, Math.ceil(total / size)), page = Math.min(last, Math.max(1, parseInt(req.query.page,10) || 1));
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: rows.slice((page - 1) * size, page * size).map(e => {
+      const { level, at, event, message, ...context } = e;
+      return { level, timestamp: at, event, message: message || event, data: Object.keys(context).length ? JSON.stringify(context) : null };
+    }), meta: { current_page: page, per_page: size, total, last_page: last }, retention: 'Latest 500 events from the current server process' });
   });
 
   // ---- Navigation settings ----------------------------------------------

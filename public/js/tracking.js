@@ -101,12 +101,7 @@ window.VMTL_PAGE = async function () {
   }
 
   function markerIcon(v) {
-    const g = window.google;
-    return {
-      path: 'M12 2a7 7 0 00-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 00-7-7z',
-      fillColor: colorFor(v), fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2,
-      scale: 1.6, anchor: new g.maps.Point(12, 22), labelOrigin: new g.maps.Point(12, 9),
-    };
+    return VMTL.vehicleMapIcon(v);
   }
 
   // ---- map init ------------------------------------------------------------

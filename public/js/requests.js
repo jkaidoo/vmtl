@@ -18,6 +18,8 @@ async function renderList() {
        <input id="fSearch" placeholder="Search number, destination…" style="max-width:260px">
        <button class="btn" id="fGo">Filter</button></div></div>
      <div class="card"><div id="list"><div class="loading"><span class="spinner"></span></div></div></div>`;
+  const initialFilters = new URLSearchParams(location.search);
+  view.querySelector('#fStatus').value = initialFilters.get('status') || '';
   const load = async () => {
     const list = view.querySelector('#list');
     const qs = new URLSearchParams();
@@ -25,7 +27,7 @@ async function renderList() {
     if (view.querySelector('#fSearch').value) qs.set('search', view.querySelector('#fSearch').value);
     qs.set('per_page', '50');
     try {
-      const r = await VMTL.api(`/vehicle-requests?${qs}`);
+      const r = await VMTL.pagedApi(`/vehicle-requests?${qs}`, list, load);
       list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Number</th><th>Destination</th><th>Requester</th><th>Travel date</th><th>Dept</th><th>Status</th></tr></thead><tbody>${r.data.map(rowFor).join('')}</tbody></table>` : '<div class="empty">No requests found.</div>';
       list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/requests.html?id=${tr.dataset.id}`);
     } catch (e) { list.innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; }
@@ -68,7 +70,7 @@ async function renderDetail(id) {
       </div>
     </div>`;
 
-  if (trip) { const tp = VMTL.tripProgress(trip, trip.vehicle ? trip.vehicle.vehicle_type_motif : 'car'); const host = view.querySelector('#tripCard'); host.innerHTML = `<div class="card pad"><div class="between"><h3>Trip ${VMTL.esc(trip.trip_number)}</h3>${VMTL.statusBadge(trip)}</div><div class="dim" style="font-size:13px;margin-top:4px">${VMTL.esc(trip.vehicle ? trip.vehicle.vehicle_number : '')} · ${VMTL.esc(trip.driver ? trip.driver.name : '')}</div></div>`; if (tp) host.appendChild(tp); }
+  if (trip) { const tp = VMTL.tripProgress(trip, trip.vehicle ? trip.vehicle.vehicle_type_motif : 'car'); const host = view.querySelector('#tripCard'); host.innerHTML = `<div class="card pad"><div class="between"><h3><a href="/trips.html?id=${trip.id}">Trip ${VMTL.esc(trip.trip_number)} →</a></h3>${VMTL.statusBadge(trip)}</div><div class="dim" style="font-size:13px;margin-top:4px">${VMTL.esc(trip.vehicle ? trip.vehicle.vehicle_number : '')} · ${VMTL.esc(trip.driver ? trip.driver.name : '')}</div></div>`; if (tp) host.appendChild(tp); }
 
   renderActions(view.querySelector('#actions'), r);
 }

@@ -101,7 +101,7 @@ window.VMTL_PAGE = async function () {
   const load = async () => {
     loadPending();
     const qs = new URLSearchParams(); const s = view.querySelector('#cSearch').value.trim(); if (s) qs.set('search', s); qs.set('per_page', '100'); qs.set('type', 'client');
-    try { const r = await VMTL.api(`/users?${qs}`); clients = r.data; view.querySelector('#cCount').textContent = `${r.meta.total}`; render(); }
+    try { const r = await VMTL.pagedApi(`/users?${qs}`, view.querySelector('#cList'), load); clients = r.data; view.querySelector('#cCount').textContent = `${r.meta.total}`; render(); }
     catch (e) { view.querySelector('#cList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   };
   let t; view.querySelector('#cSearch').oninput = () => { clearTimeout(t); t = setTimeout(load, 300); };

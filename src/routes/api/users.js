@@ -69,7 +69,7 @@ module.exports = function register(router) {
     const order = (req.query.directory === 'true' || req.query.directory === '1') ? 'u.last_login_at DESC' : 'u.name';
     const rows = await db.all(`${USER_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${order}`, params);
     const mapped = rows.map(present.user);
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     res.json({ data: mapped.slice((page - 1) * perPage, page * perPage), meta: { current_page: page, per_page: perPage, total: mapped.length, last_page: Math.max(1, Math.ceil(mapped.length / perPage)) } });
   });

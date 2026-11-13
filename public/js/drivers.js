@@ -8,7 +8,7 @@ window.VMTL_PAGE = async function () {
   const load = async () => {
     const list = view.querySelector('#list');
     try {
-      const r = await VMTL.api('/drivers?all=1');
+      const r = await VMTL.pagedApi('/drivers?all=1', list, load);
       list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Name</th><th>Staff ID</th><th>Phone</th><th>Licence</th><th>Status</th><th>Account</th>${canManage ? '<th></th>' : ''}</tr></thead><tbody>${r.data.map((d) => `<tr><td data-label="Name">${VMTL.esc(d.name)}</td><td data-label="Staff ID">${VMTL.esc(d.employee_id || '—')}</td><td data-label="Phone">${VMTL.esc(d.phone || '—')}</td><td data-label="Licence">${VMTL.esc(d.licence_number || '—')}${d.licence_expiry ? ` <span class="dim">(${VMTL.fmtDate(d.licence_expiry)})</span>` : ''}</td><td data-label="Status">${VMTL.statusBadge(d)}</td><td data-label="Account">${d.has_account ? VMTL.esc(d.account_email || 'yes') : '—'}</td>${canManage ? `<td data-label=""><div class="btn-row"><button class="btn btn-sm" data-edit='${encodeURIComponent(JSON.stringify(d))}'>Edit</button><button class="btn btn-sm" data-active="${d.id}" data-to="${d.active ? 0 : 1}">${d.active ? 'Deactivate' : 'Reactivate'}</button></div></td>` : ''}</tr>`).join('')}</tbody></table>` : '<div class="empty">No drivers.</div>';
       list.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => driverModal(JSON.parse(decodeURIComponent(b.dataset.edit)), load));
       list.querySelectorAll('[data-active]').forEach((b) => b.onclick = async () => { try { await VMTL.api(`/drivers/${b.dataset.active}/active`, { method: 'POST', body: { active: b.dataset.to === '1' } }); VMTL.toast('Updated.', 'success'); load(); } catch (e) { VMTL.showErrors(e); } });

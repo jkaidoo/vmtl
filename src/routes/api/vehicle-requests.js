@@ -46,7 +46,7 @@ module.exports = function register(router) {
 
     const sortField = ['created_at', 'travel_date', 'status', 'request_number'].includes(String(req.query.sort)) ? req.query.sort : 'created_at';
     const dir = String(req.query.direction) === 'asc' ? 'ASC' : 'DESC';
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     const whereSql = where.join(' AND ');
 

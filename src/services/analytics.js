@@ -39,7 +39,7 @@ function groupSum(rows, keyFn, labelFn) {
   const map = new Map();
   for (const row of rows) {
     const key = keyFn(row);
-    if (!map.has(key)) map.set(key, { label: labelFn(row), trips: 0, distance: 0 });
+    if (!map.has(key)) map.set(key, { id: key, label: labelFn(row), trips: 0, distance: 0 });
     const g = map.get(key); g.trips += 1; g.distance += Number(row.distance || 0);
   }
   return [...map.values()];
@@ -127,11 +127,11 @@ async function fuel(filters) {
   const byVehMap = new Map();
   for (const r of rows) {
     const k = r.vehicle_id;
-    if (!byVehMap.has(k)) byVehMap.set(k, { label: r.vehicle_number || `#${k}`, litres: 0, cost: 0, distance: 0, measuredLitres: 0 });
+    if (!byVehMap.has(k)) byVehMap.set(k, { id: k, label: r.vehicle_number || `#${k}`, litres: 0, cost: 0, distance: 0, measuredLitres: 0 });
     const g = byVehMap.get(k); g.litres += Number(r.litres || 0); g.cost += Number(r.total_cost || 0);
     if (r.previous_odometer != null) { g.distance += (r.odometer - r.previous_odometer); g.measuredLitres += Number(r.litres || 0); }
   }
-  const byVehicle = [...byVehMap.values()].map((g) => ({ label: g.label, litres: r2(g.litres), cost: r2(g.cost), distance: g.distance, km_per_litre: g.measuredLitres > 0 ? r3(g.distance / g.measuredLitres) : null }));
+  const byVehicle = [...byVehMap.values()].map((g) => ({ id: g.id, label: g.label, litres: r2(g.litres), cost: r2(g.cost), distance: g.distance, km_per_litre: g.measuredLitres > 0 ? r3(g.distance / g.measuredLitres) : null }));
   const byMonthMap = new Map();
   for (const r of rows) { const p = period(r.purchase_date); if (!byMonthMap.has(p)) byMonthMap.set(p, { period: p, cost: 0, litres: 0 }); const g = byMonthMap.get(p); g.cost += Number(r.total_cost || 0); g.litres += Number(r.litres || 0); }
   const byMonth = [...byMonthMap.values()].map((g) => ({ period: g.period, cost: r2(g.cost), litres: r2(g.litres) })).sort((a, b) => a.period.localeCompare(b.period));
@@ -157,8 +157,8 @@ async function maintenanceCost(filters) {
   const rows = await db.all(`SELECT m.*, v.vehicle_number FROM maintenance_records m LEFT JOIN vehicles v ON v.id = m.vehicle_id WHERE ${sql}`, params);
   const totalCost = rows.reduce((a, r) => a + Number(r.cost || 0), 0);
   const byVehMap = new Map();
-  for (const r of rows) { const k = r.vehicle_id; if (!byVehMap.has(k)) byVehMap.set(k, { label: r.vehicle_number || `#${k}`, cost: 0, count: 0 }); const g = byVehMap.get(k); g.cost += Number(r.cost || 0); g.count += 1; }
-  const byVehicle = [...byVehMap.values()].map((g) => ({ label: g.label, cost: r2(g.cost), count: g.count })).sort((a, b) => b.cost - a.cost);
+  for (const r of rows) { const k = r.vehicle_id; if (!byVehMap.has(k)) byVehMap.set(k, { id: k, label: r.vehicle_number || `#${k}`, cost: 0, count: 0 }); const g = byVehMap.get(k); g.cost += Number(r.cost || 0); g.count += 1; }
+  const byVehicle = [...byVehMap.values()].map((g) => ({ id: g.id, label: g.label, cost: r2(g.cost), count: g.count })).sort((a, b) => b.cost - a.cost);
   const byMonthMap = new Map();
   for (const r of rows) { const p = period(r.service_date); if (!byMonthMap.has(p)) byMonthMap.set(p, { period: p, cost: 0, count: 0 }); const g = byMonthMap.get(p); g.cost += Number(r.cost || 0); g.count += 1; }
   const byMonth = [...byMonthMap.values()].map((g) => ({ period: g.period, cost: r2(g.cost), count: g.count })).sort((a, b) => a.period.localeCompare(b.period));

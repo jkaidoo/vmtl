@@ -70,7 +70,7 @@ window.VMTL_PAGE = async function () {
 
   const load = async () => {
     const qs = new URLSearchParams(); const s = view.querySelector('#fSearch').value.trim(); if (s) qs.set('search', s); qs.set('per_page', '100'); qs.set('type', 'stakeholder');
-    try { const r = await VMTL.api(`/users?${qs}`); users = r.data; view.querySelector('#count').textContent = `${r.meta.total} account${r.meta.total === 1 ? '' : 's'}`; renderTable(); }
+    try { const r = await VMTL.pagedApi(`/users?${qs}`, view.querySelector('#list'), load); users = r.data; view.querySelector('#count').textContent = `${r.meta.total} account${r.meta.total === 1 ? '' : 's'}`; renderTable(); }
     catch (e) { view.querySelector('#list').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   };
 

@@ -32,12 +32,12 @@ window.VMTL_PAGE = async function () {
       <path d="${area}" fill="var(--primary)" opacity=".12"/>
       <path d="${line}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
       ${ticks.map((i) => `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--text-3)">${dLabel(series[i].date)}</text>`).join('')}
-      ${dot ? pts.map((p, i) => `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="var(--primary)" data-i="${i}"><title>${dLabel(series[i].date)}: ${series[i].count}</title></circle>`).join('') : ''}`;
-    svg.querySelectorAll('.pt').forEach((c) => c.addEventListener('click', () => onPick(series[Number(c.dataset.i)].date)));
+      ${dot ? pts.map((p, i) => `<circle tabindex="0" role="button" aria-label="${esc(dLabel(series[i].date))}: ${series[i].count} events" class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="var(--primary)" data-i="${i}"><title>${dLabel(series[i].date)}: ${series[i].count}</title></circle>`).join('') : ''}`;
+    svg.querySelectorAll('.pt').forEach(c => { const pick = () => onPick(series[Number(c.dataset.i)].date); c.addEventListener('click', pick); c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }); });
     return svg;
   }
 
-  const kpi = (label, value, sub) => `<div class="kpi"><div class="label">${esc(label)}</div><div class="value metric pos">${esc(value)}</div><div class="sub">${esc(sub)}</div></div>`;
+  const kpi = (label, value, sub) => `<button type="button" class="kpi interactive-kpi" data-health-kpi="${esc(label)}"><div class="label">${esc(label)}</div><div class="value metric pos">${esc(value)}</div><div class="sub">${esc(sub)}</div></button>`;
 
   function renderOverview() {
     const host = view.querySelector('#tabbody');
@@ -69,6 +69,12 @@ window.VMTL_PAGE = async function () {
     host.querySelector('#c2').appendChild(chart(data.series.failed_signins, pick));
     host.querySelector('#c3').appendChild(chart(data.series.requests, pick));
     renderEvents();
+    host.querySelectorAll('[data-health-kpi]').forEach(button => button.onclick = () => {
+      const label = button.dataset.healthKpi;
+      if (label.includes('sign-ins')) { state.tab = 'logs'; view.querySelectorAll('#tabs button').forEach(tab => tab.classList.toggle('active', tab.dataset.t === 'logs')); renderLogs(); }
+      else if (label === 'Current uptime') { state.setupOpen = true; host.querySelector('#setup').classList.add('open'); host.querySelector('#setup').scrollIntoView({ behavior: 'smooth' }); }
+      else { state.dayFilter = null; renderEvents(); host.querySelector('#events').scrollIntoView({ behavior: 'smooth' }); }
+    });
 
     host.querySelector('#setup .setup-head').onclick = () => { state.setupOpen = !state.setupOpen; host.querySelector('#setup').classList.toggle('open', state.setupOpen); };
     host.querySelectorAll('#range button').forEach((b) => b.onclick = () => { state.window = Number(b.dataset.d); state.dayFilter = null; load(); });

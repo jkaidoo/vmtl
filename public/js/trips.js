@@ -13,13 +13,15 @@ async function renderList() {
   view.innerHTML = VMTL.pageHead('Trips', 'Scheduled, in-progress and completed trips.') +
     `<div class="card pad mb"><div class="row wrap gap-sm"><select id="fStatus" style="max-width:200px"><option value="">All statuses</option>${VMTL.enumOptions('trip_status')}</select><input id="fSearch" placeholder="Search trip #, destination…" style="max-width:260px"><button class="btn" id="fGo">Filter</button></div></div>
      <div class="card"><div id="list"><div class="loading"><span class="spinner"></span></div></div></div>`;
+  const initialFilters = new URLSearchParams(location.search);
+  view.querySelector('#fStatus').value = initialFilters.get('status') || '';
   const load = async () => {
     const list = view.querySelector('#list'); const qs = new URLSearchParams();
     if (view.querySelector('#fStatus').value) qs.set('status', view.querySelector('#fStatus').value);
     if (view.querySelector('#fSearch').value) qs.set('search', view.querySelector('#fSearch').value);
-    qs.set('per_page', '50');
+    for (const key of ['date_from','date_to','vehicle_id','driver_id']) if (initialFilters.has(key)) qs.set(key, initialFilters.get(key));
     try {
-      const r = await VMTL.api(`/trips?${qs}`);
+      const r = await VMTL.pagedApi(`/trips?${qs}`, list, load);
       list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Trip</th><th>Vehicle</th><th>Driver</th><th>Destination</th><th>When</th><th>Distance</th><th>Status</th></tr></thead><tbody>${r.data.map((t) => `<tr class="click" data-id="${t.id}"><td data-label="Trip">${VMTL.esc(t.trip_number)}</td><td data-label="Vehicle">${VMTL.esc(t.vehicle ? t.vehicle.vehicle_number : '')}</td><td data-label="Driver">${VMTL.esc(t.driver ? t.driver.name : '')}</td><td data-label="Destination">${VMTL.esc(t.request ? t.request.destination : '')}</td><td data-label="When">${VMTL.fmtDateTime(t.scheduled_start)}</td><td data-label="Distance">${t.distance != null ? VMTL.fmtKm(t.distance) : '—'}</td><td data-label="Status">${VMTL.statusBadge(t)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No trips found.</div>';
       list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/trips.html?id=${tr.dataset.id}`);
     } catch (e) { list.innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; }
@@ -53,6 +55,9 @@ async function renderDetail(id) {
         <div class="card pad"><div class="between"><h3>Added destinations</h3></div><div id="stops" class="stack" style="margin-top:8px">${stops.length ? stops.map(stopRow).join('') : '<div class="dim">None.</div>'}</div></div>
       </div>
     </div>`;
+  const mapCard = VMTL.el('<section class="card pad mt"><div class="between"><h3>Live map activity</h3><span class="pill" data-map-status>Connecting…</span></div><div class="trip-live-map mt" data-trip-map></div><p class="dim" data-map-detail role="status">Waiting for the driver location.</p></section>');
+  view.appendChild(mapCard);
+  VMTL.mountTripMap(mapCard, id);
   const tp = VMTL.tripProgress(t, t.vehicle ? t.vehicle.vehicle_type_motif : 'car'); if (tp) view.querySelector('#tp').appendChild(tp);
   renderActions(view.querySelector('#actions'), t, reload);
   // wire stop decisions

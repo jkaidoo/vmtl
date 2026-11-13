@@ -49,7 +49,7 @@ module.exports = function register(router) {
     const base = buildWhere(req.query); const sc = await auditScope(req);
     const whereSql = base.whereSql + sc.clause; const params = [...base.params, ...sc.params];
     const sort = String(req.query.sort || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 25));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     const total = (await db.get(`SELECT COUNT(*) AS n ${BASE} WHERE ${whereSql}`, params)).n;
     const rows = await db.all(`SELECT a.*, u.name AS user_name ${BASE} WHERE ${whereSql} ORDER BY a.created_at ${sort}, a.id ${sort} LIMIT ? OFFSET ?`, [...params, perPage, (page - 1) * perPage]);

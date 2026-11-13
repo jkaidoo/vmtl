@@ -28,7 +28,7 @@ module.exports = function register(router) {
     if (req.query.date_to) { where.push('substr(f.purchase_date,1,10) <= substr(?,1,10)'); params.push(req.query.date_to); }
     const rows = await db.all(`${FUEL_SELECT} WHERE ${where.join(' AND ')} ORDER BY f.purchase_date DESC, f.odometer DESC`, params);
     const mapped = rows.map(present.fuelLog);
-    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 15));
+    const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 10));
     const page = Math.max(1, Number(req.query.page) || 1);
     res.json({ data: mapped.slice((page - 1) * perPage, page * perPage), meta: { current_page: page, per_page: perPage, total: mapped.length, last_page: Math.max(1, Math.ceil(mapped.length / perPage)) } });
   });

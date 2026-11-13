@@ -1,0 +1,175 @@
+/* WalkIn dialogs and calendars share the existing light/dark theme tokens. */
+html.wi-has-dialog { overflow: hidden; }
+.modal-backdrop:has(> .wi-dialog), .modal-bg:has(> .wi-dialog) { padding: 20px; background: rgb(8 12 18 / .52); backdrop-filter: blur(3px); }
+.wi-dialog:is(.modal, .sch-modal, dialog, form) {
+  position: relative; box-sizing: border-box; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 16px; padding: 28px;
+  box-shadow: 0 18px 55px -22px rgb(0 0 0 / .5); max-width: min(94vw, 560px);
+  max-height: min(90dvh, calc(var(--wi-viewport-height, 100dvh) - 40px)); overflow: auto; overscroll-behavior: contain;
+  font-family: var(--font, "Segoe UI", sans-serif); animation: wi-dialog-enter .38s cubic-bezier(.2,.9,.25,1.2) both;
+}
+dialog.wi-dialog:not([open]) { display: none; }
+dialog.wi-dialog::backdrop { background: rgb(8 12 18 / .52); backdrop-filter: blur(3px); }
+.wi-dialog > h2, .wi-dialog > h3, .wi-dialog > .between h3, .wi-dialog > form > .between h3 {
+  font-size: 21px; line-height: 1.3; font-weight: 650; letter-spacing: -.02em; margin: 0 42px 10px 0;
+}
+.wi-dialog > .sub, .wi-dialog > p.sub { color: var(--text-2); font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+.wi-dialog .input, .wi-dialog select, .wi-dialog textarea, .wi-dialog input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]) {
+  min-width: 0; max-width: 100%; border-radius: 8px; border-color: var(--border); background: var(--surface-2); color: var(--text);
+}
+.wi-dialog .field { margin-bottom: 16px; }
+.wi-dialog .btn, .wi-dialog .button { border-radius: 8px; min-height: 44px; white-space: normal; overflow-wrap: normal; word-break: normal; justify-content: center; }
+.wi-dialog .btn:not(.btn-primary):not(.btn-danger):not(.primary):not(.danger) { background: var(--surface-2); border-color: transparent; }
+:root[data-theme=dark] :is(.wi-dialog,.wi-calendar) { --primary-contrast: #0c1015; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) :is(.wi-dialog,.wi-calendar) { --primary-contrast: #0c1015; } }
+.wi-dialog.sch-modal.wide { width: min(94vw,780px); max-width: min(94vw,780px); }
+.wi-dialog.job-edit { max-width: min(94vw,640px); }
+.wi-dialog.email-preview-modal { max-width: min(94vw,720px); }
+.wi-dialog.list-modal { max-width: min(94vw,var(--list-modal-width,780px)); }
+.wi-dialog:has(.credentials-actions) { width: min(94vw,440px); max-width: min(94vw,440px); }
+.wi-dialog :is(.foot, .dialog-actions, .se-footer, .at-form-foot, .lecture-modal-foot) { gap: 10px; }
+.wi-dialog.sch-modal > h3 { padding: 0; border: 0; margin: 0 42px 10px 0; }
+.wi-dialog.sch-modal > .sub { padding: 0; }
+.wi-dialog.sch-modal > .body { padding: 10px 0 0; }
+.wi-dialog.sch-modal > .foot { padding: 18px 0 0; margin-top: 24px; background: var(--surface); }
+.wi-dialog .wi-close, .wi-dialog .modal-corner-x.wi-close, .wi-dialog .modal-close.wi-close {
+  position: absolute; top: 10px; right: 10px; z-index: 2; display: grid; place-items: center;
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text-2); font: 26px/1 var(--font, "Segoe UI", sans-serif); box-shadow: none;
+}
+.wi-dialog .wi-close:hover { background: var(--surface-2); color: var(--text); }
+.wi-dialog[aria-busy=true] .wi-close { opacity: .45; cursor: wait; }
+.wi-close-duplicate { display: none !important; }
+.wi-empty-actions { display: none !important; }
+.wi-dialog .wi-dialog-actions { gap: 10px; }
+.wi-dialog #deviceForm { display: flex; gap: 10px; align-items: center; }
+.wi-dialog #deviceForm input { flex: 1; min-width: 0; }
+.wi-dialog #deviceForm button { flex: none; min-width: 64px; white-space: nowrap; }
+.wi-dialog.wi-centered { text-align: center; width: min(94vw, 420px); }
+.wi-centered > h3 { margin: 20px 0 10px; padding: 0; border: 0; }
+.wi-centered > .sub, .wi-centered > p { line-height: 1.65; }
+.wi-result-icon { display: block; width: 112px; height: 112px; margin: 12px auto 0; color: var(--primary); }
+.wi-result-icon svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.wi-result-icon circle { stroke-width: 3; stroke-dasharray: 200; stroke-dashoffset: 200; animation: wi-draw .55s ease forwards; }
+.wi-result-icon path { stroke-width: 5; stroke-dasharray: 80; stroke-dashoffset: 80; animation: wi-draw .42s .42s ease forwards; }
+[data-ui-status=failure] .wi-result-icon { color: var(--status-no, var(--danger)); }
+[data-ui-status=failure] .wi-result-icon path:last-child { animation-delay: .55s; }
+[data-ui-status=danger] .wi-result-icon { color: var(--danger); }
+[data-ui-status=confirm] .wi-result-icon { color: var(--primary); }
+.wi-feedback { width: min(94vw, 400px); text-align: center; }
+.wi-feedback .wi-feedback-message { color: var(--text-2); line-height: 1.65; margin: 0; white-space: pre-line; }
+.wi-feedback .wi-feedback-done { width: 100%; margin-top: 24px; }
+.credentials-actions { display: grid !important; grid-template-columns: 44px minmax(0,1fr) minmax(0,1fr); gap: 10px !important; margin-top: 22px !important; }
+.credentials-actions .btn { width: 100%; white-space: nowrap; }
+.credentials-actions [data-pdf] { width: 44px; padding: 0; display: grid; place-items: center; }
+.credentials-actions svg { display: block; width: 20px; height: 20px; }
+.wi-log-dialog { width: min(94vw, 620px); }
+.wi-log-dialog .wi-log-heading { padding-right: 42px; }
+.wi-log-dialog .wi-log-heading h3 { margin: 0 0 6px; font-size: 21px; }
+.wi-log-kicker { font-size: 11px; letter-spacing: .08em; color: var(--text-2); margin-bottom: 8px; }
+.wi-log-status { display: flex; align-items: center; gap: 10px; margin: 18px 0; color: var(--text-2); font-size: 13px; }
+.wi-log-message { font: 14px/1.6 var(--font); overflow-wrap: anywhere; }
+.wi-log-metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 18px 0; margin: 20px 0; border-block: 1px solid var(--border); }
+.wi-log-metadata dt { color: var(--text-2); font-size: 12px; margin-bottom: 4px; }
+.wi-log-metadata dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.wi-log-technical { background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.wi-log-technical summary { cursor: pointer; padding: 12px 14px; min-height: 44px; font-weight: 600; }
+.wi-log-technical pre { font: 12px/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 14px; border-top: 1px solid var(--border); }
+.wi-log-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+/* Native date inputs retain their names, values and validation semantics. */
+.wi-date-control { position: relative; display: inline-flex; width: 100%; min-width: 0; vertical-align: middle; align-items: center; }
+.wi-date-control > input.wi-date-native { position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; opacity: 0 !important; clip-path: inset(50%); pointer-events: none; }
+.wi-date-trigger { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 44px; width: 100%; border: 1px solid var(--border-strong, var(--border)); border-radius: 8px; padding: 10px 42px 10px 12px; background: var(--surface); color: var(--text); font: 14px/1.5 var(--font, "Segoe UI", sans-serif); text-align: left; cursor: pointer; }
+.wi-date-trigger:focus-visible, .wi-date-trigger[aria-expanded=true] { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.wi-date-trigger svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.wi-date-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-date-trigger:disabled { opacity: .5; cursor: default; }
+.wi-date-clear { position: absolute; right: 0; top: 0; width: 44px; height: 44px; min-height: 44px; border: 0; background: transparent; color: var(--text-2); border-radius: 8px; font: 22px/1 var(--font); cursor: pointer; }
+.wi-date-clear[hidden] { display: none !important; }
+.wi-dialog .wi-date-trigger { background: var(--surface-2); }
+/* Date picker: a filled day grid, the typed date beside the field name, and an
+   icon list of shortcuts. Single dates apply on click; ranges and date & time
+   keep Cancel / Apply. */
+.wi-calendar { position: fixed; inset: auto; z-index: 2200; box-sizing: border-box; width: 316px; max-width: calc(100vw - 24px); max-height: calc(var(--wi-viewport-height, 100dvh) - 24px); overflow: auto; margin: 0; padding: 14px 14px 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 16px 40px -12px rgb(16 24 40 / .28), 0 2px 6px rgb(16 24 40 / .06); font: 14px/1.5 var(--font, "Segoe UI", sans-serif); overscroll-behavior: contain; }
+.wi-calendar:not([data-open]) { display: none; }
+.wi-calendar[data-open] { display: block; }
+.wi-calendar button { font: inherit; cursor: pointer; color: var(--text); box-sizing: border-box; }
+.wi-calendar-nav, .wi-calendar-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wi-calendar-nav { margin-bottom: 12px; }
+.wi-calendar-nav button { border: 0; border-radius: 7px; background: transparent; min-height: 36px; padding: 6px 10px; }
+.wi-calendar-nav button:not(.wi-calendar-month) { font-size: 22px; min-width: 36px; line-height: 1; color: var(--text-2); }
+.wi-calendar-month { flex: 1; text-align: center; font-weight: 600 !important; }
+.wi-calendar-weekdays, .wi-calendar-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; }
+.wi-calendar-weekdays { text-align: center; color: var(--text-3); font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.wi-calendar-weekdays[hidden], .wi-calendar-jump select[hidden] { display: none; }
+.wi-calendar-jump.wi-month-jump { grid-template-columns: 1fr; }
+.wi-calendar-grid.wi-month-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.wi-calendar-grid.wi-month-grid button { height: 48px; }
+.wi-calendar-grid button { display: grid; place-items: center; min-width: 0; width: 100%; height: 36px; min-height: 36px; padding: 0; border: 1.5px solid transparent; border-radius: 6px; background: var(--surface-3); font-size: 13px; font-weight: 500; position: relative; }
+.wi-calendar-grid button[data-outside] { color: var(--text-3); background: var(--surface-2); }
+.wi-calendar-grid button[data-in-range] { background: var(--primary-tint); }
+.wi-calendar-grid button[data-today] { background: var(--surface); border-color: var(--text-3); }
+.wi-calendar-grid button[data-selected], .wi-calendar-grid button[data-selected]:hover { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); font-weight: 600; }
+.wi-calendar-grid button:disabled { opacity: .35; cursor: default; }
+.wi-calendar-editor { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 14px 0 12px; }
+.wi-calendar-editor.wi-calendar-pair { grid-template-columns: 1fr 1fr; }
+.wi-calendar-editor label { display: grid; gap: 5px; min-width: 0; font-size: 12px; color: var(--text-2); margin: 0; }
+.wi-calendar-editor.wi-calendar-row label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; color: var(--text); }
+.wi-calendar-editor.wi-calendar-row label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-calendar-editor input, .wi-calendar-jump select, .wi-calendar-jump input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 38px; border: 1.5px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; background: var(--surface); color: var(--text); font: 14px var(--font, "Segoe UI", sans-serif); font-variant-numeric: tabular-nums; }
+.wi-calendar-editor.wi-calendar-row input { width: 142px; flex: none; text-align: center; letter-spacing: .04em; }
+.wi-calendar-editor input:focus, .wi-calendar-jump :is(input,select):focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.wi-calendar-shortcuts { display: grid; gap: 2px; border-top: 1px solid var(--border); padding: 8px 0 4px; }
+.wi-calendar-shortcuts button { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
+.wi-calendar-shortcuts button[data-active] { background: var(--primary-tint); color: var(--primary-600); font-weight: 600; }
+.wi-calendar-shortcuts svg { width: 22px; height: 22px; flex: none; color: var(--text-2); }
+.wi-calendar-shortcuts button[data-active] svg { color: var(--primary); }
+.wi-calendar-shortcuts svg :is(rect,path,circle) { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.wi-calendar-shortcuts svg text { font: 700 8.5px var(--font, "Segoe UI", sans-serif); fill: currentColor; }
+.wi-calendar-error { color: var(--status-no, var(--danger)); font-size: 12px; margin: 0 0 10px; }
+.wi-calendar-error:empty { display: none; }
+.wi-calendar-actions { justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 10px; position: sticky; bottom: -8px; background: var(--surface); padding-bottom: 6px; }
+.wi-calendar-actions button { min-height: 40px; padding: 8px 16px; border: 0; border-radius: 8px; background: var(--surface-2); }
+.wi-calendar-actions button[data-apply] { background: var(--primary); color: var(--primary-contrast); font-weight: 600; }
+.wi-calendar-jump { display: grid; grid-template-columns: 1fr 90px; gap: 8px; margin-bottom: 12px; }
+.wi-calendar-jump[hidden] { display: none; }
+/* Touch screens keep :hover after a tap; only real pointers get hover styles. */
+@media (hover: hover) {
+  .wi-calendar-nav button:hover { background: var(--surface-2); }
+  .wi-calendar-grid button:hover:not(:disabled):not([data-selected]) { border-color: var(--primary); background: var(--primary-tint); }
+  .wi-calendar-shortcuts button:hover:not([data-active]) { background: var(--surface-2); }
+}
+@keyframes wi-dialog-enter { from { opacity: 0; transform: translateY(18px) scale(.88); } to { opacity: 1; transform: none; } }
+@keyframes wi-draw { to { stroke-dashoffset: 0; } }
+@media (max-width: 640px) {
+  html.wi-has-calendar { overflow: hidden; }
+  .wi-calendar::backdrop { background: rgb(8 12 18 / .35); }
+  .modal-backdrop:has(> .wi-dialog), .modal-bg:has(> .wi-dialog) { align-items: flex-end; padding: 12px; }
+  .wi-dialog:is(.modal, .sch-modal, dialog, form) { padding: 24px 20px; max-width: 100%; max-height: calc(var(--wi-viewport-height, 100dvh) - 24px); border-radius: 16px; }
+  .wi-dialog :is(input, select, textarea, .wi-date-trigger) { font-size: 16px !important; }
+  .wi-dialog :is(.grid-2, .grid-3, .code-form-grid) { grid-template-columns: minmax(0,1fr); }
+  .wi-dialog.sch-modal { display: flex; flex-direction: column; overflow: hidden; }
+  .wi-dialog.sch-modal > .body { overflow: auto; min-height: 0; overscroll-behavior: contain; }
+  .wi-dialog.sch-modal > :is(h3,.sub,.foot) { flex-shrink: 0; }
+  .wi-dialog :is(.at-form-foot,.se-footer,.lecture-modal-foot,.dialog-actions,.wi-dialog-actions) { position: sticky; bottom: -24px; padding-block: 14px; background: var(--surface); z-index: 1; border-top: 1px solid var(--border); }
+  .wi-dialog .staff-create-head { padding: 24px 54px 16px 20px; }
+  .wi-log-metadata { grid-template-columns: 1fr; }
+  .wi-calendar { width: calc(100vw - 24px); max-width: none; left: 12px !important; right: 12px; top: auto !important; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 14px 16px 10px; border-radius: 18px; }
+  .wi-calendar::before { content: ''; display: block; margin: -7px auto 10px; width: 36px; height: 4px; border-radius: 4px; background: var(--border-strong); }
+  .wi-calendar-grid button { height: 44px; min-height: 44px; font-size: 14px; }
+  .wi-calendar-weekdays, .wi-calendar-grid { gap: 3px; }
+  .wi-calendar-nav button, .wi-calendar-shortcuts button { min-height: 44px; }
+  .wi-calendar-editor input, .wi-calendar-jump input, .wi-calendar-jump select { font-size: 16px; min-height: 44px; }
+  /* Two columns keep the sheet short enough for small phones. */
+  .wi-calendar-shortcuts { grid-template-columns: 1fr 1fr; gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wi-dialog, .wi-result-icon circle, .wi-result-icon path { animation-duration: .01ms !important; animation-delay: 0ms !important; }
+}
+@media (max-width: 360px) {
+  /* Seven full touch targets still fit on the narrowest supported phones. */
+  .wi-calendar { width: calc(100vw - 8px); left: 4px !important; right: 4px; max-width: none; padding-inline: 0; }
+  .wi-calendar :is(.wi-calendar-nav,.wi-calendar-jump,.wi-calendar-editor,.wi-calendar-shortcuts,.wi-calendar-actions,.wi-calendar-error) { margin-inline: 12px; }
+  .wi-calendar-weekdays, .wi-calendar-grid { gap: 0; }
+  .wi-calendar-grid:not(.wi-month-grid) button { border-radius: 0; }
+}
