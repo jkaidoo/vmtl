@@ -1,0 +1,125 @@
+'use strict';
+
+// Client for the external KNUST Unified API (the separate `unified-api`
+// project): a read-only service on the campus network that returns live STAFF
+// records — college, department, rank, designation, staff type/category — from
+// the university databases. VMTL calls it after a directory (LDAP/AD) sign-in to
+// learn the person's organisational unit. Staff data only; never vehicle data.
+//
+// Config: saved settings (unified_api_url / unified_api_key / unified_api_enabled)
+// first, then the UNIFIED_API_URL / UNIFIED_API_KEY environment variables.
+// KNUST's cloud serves a certificate signed by UITS, which Node does not trust
+// by default, so HTTPS calls also trust certs/knust-cloud.pem (or the file in
+// UNIFIED_API_CA_FILE). Certificates are still verified; nothing else is affected.
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+const tls = require('tls');
+const settings = require('./settings');
+
+const DEFAULT_CA_FILE = path.join(__dirname, '..', '..', 'certs', 'knust-cloud.pem');
+let caCache;
+function extraCa(env = process.env) {
+  const file = String(env.UNIFIED_API_CA_FILE || '').trim() || DEFAULT_CA_FILE;
+  if (caCache && caCache.file === file) return caCache.pem;
+  let pem = null;
+  try { pem = fs.readFileSync(file, 'utf8'); } catch (_) { /* optional */ }
+  caCache = { file, pem };
+  return pem;
+}
+
+// Minimal GET that trusts the public roots plus `ca`. Returns the parts of a
+// Response this module uses.
+function fetchTrusting(ca) {
+  return (url, { headers = {}, signal } = {}) => new Promise((resolve, reject) => {
+    const req = https.get(url, { headers, ca: ca ? [...tls.rootCertificates, ca] : undefined, signal }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => { const body = Buffer.concat(chunks).toString('utf8'); resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, json: async () => JSON.parse(body) }); });
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+  });
+}
+// https:// goes through the trusting client; http:// (local dev) uses global fetch.
+function doFetch(url, options) {
+  return String(url).startsWith('https:') ? fetchTrusting(extraCa())(url, options) : fetch(url, options);
+}
+const failureReason = (err) => (err && (err.cause?.code || err.code || err.name || err.message)) || 'error';
+
+// Saved settings first, environment variables as the fallback.
+async function config() {
+  let url = '';
+  let key = '';
+  let rawEnabled = '1';
+  try {
+    url = String((await settings.get('unified_api_url', '')) || process.env.UNIFIED_API_URL || '').trim().replace(/\/+$/, '');
+    key = String((await settings.get('unified_api_key', '')) || process.env.UNIFIED_API_KEY || '').trim();
+    rawEnabled = await settings.get('unified_api_enabled', '1');
+  } catch (_) { /* settings table not ready */ }
+  const switchedOn = !(rawEnabled === '0' || rawEnabled === false || rawEnabled === 0);
+  const ms = Number.parseInt(process.env.UNIFIED_API_TIMEOUT_MS, 10);
+  const timeoutMs = ms > 0 ? Math.min(ms, 60000) : 8000;
+  return { url, key, timeoutMs, switchedOn, enabled: Boolean(switchedOn && url && key) };
+}
+async function enabled() { return (await config()).enabled; }
+
+// Admin view of the config; the API key is never returned.
+async function publicConfig() {
+  const c = await config();
+  return { url: c.url, has_key: Boolean(c.key), enabled: c.enabled, switched_on: c.switchedOn };
+}
+async function saveConfig(body = {}) {
+  if (body.url !== undefined) await settings.set('unified_api_url', String(body.url || '').trim().replace(/\/+$/, ''));
+  if (body.key) await settings.set('unified_api_key', String(body.key));
+  if (body.enabled !== undefined) await settings.set('unified_api_enabled', body.enabled ? '1' : '0');
+  return publicConfig();
+}
+
+const headers = (cfg) => ({ 'x-api-key': cfg.key, accept: 'application/json' });
+
+// Search staff by email / username / name. Returns { status, results:[{id_number,
+// full_name, email, username, department, designation_group}] }.
+async function searchStaff(q) {
+  const cfg = await config();
+  if (!cfg.enabled) return { status: 'unavailable', results: [], reason: 'disabled' };
+  const query = String(q || '').trim();
+  if (query.length < 2) return { status: 'invalid', results: [] };
+  try {
+    const res = await doFetch(`${cfg.url}/staff/search?q=${encodeURIComponent(query)}`, { headers: headers(cfg), signal: AbortSignal.timeout(cfg.timeoutMs) });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 400) return { status: 'invalid', results: [], reason: body.error };
+    if (!res.ok || !Array.isArray(body.results)) return { status: 'unavailable', results: [], reason: body.error || `HTTP ${res.status}` };
+    return { status: 'ok', results: body.results };
+  } catch (err) { return { status: 'unavailable', results: [], reason: failureReason(err) }; }
+}
+
+// Full staff profile by id. Returns { status, id_number, fields:{college,
+// department, rank, designation, staff_type, staff_category, ...} }.
+async function staffProfile(idNumber) {
+  const cfg = await config();
+  if (!cfg.enabled) return { status: 'unavailable', reason: 'disabled' };
+  const id = String(idNumber || '').trim();
+  if (!id) return { status: 'not_found' };
+  try {
+    const res = await doFetch(`${cfg.url}/staff/${encodeURIComponent(id)}`, { headers: headers(cfg), signal: AbortSignal.timeout(cfg.timeoutMs) });
+    if (res.status === 404) return { status: 'not_found' };
+    if (!res.ok) return { status: 'unavailable', reason: `HTTP ${res.status}` };
+    const body = await res.json();
+    if (!body || !body.found) return { status: 'not_found' };
+    return { status: 'found', id_number: String(body.id_number || id), fields: body.fields || {} };
+  } catch (err) { return { status: 'unavailable', reason: failureReason(err) }; }
+}
+
+// Admin diagnostics: config + a probe search (no records returned).
+async function status(sample) {
+  const cfg = await config();
+  const report = { configured: Boolean(cfg.url), key_configured: Boolean(cfg.key), switched_on: cfg.switchedOn, enabled: cfg.enabled, url: cfg.url, checks: [] };
+  if (!cfg.enabled) { report.checks.push({ code: cfg.switchedOn ? 'NOT_CONFIGURED' : 'SWITCHED_OFF', ok: false }); return report; }
+  const q = String(sample || '').trim();
+  const out = await searchStaff(q || 'a');
+  report.checks.push({ code: 'STAFF_SEARCH', ok: out.status === 'ok', detail: out.status === 'ok' ? `${out.results.length} result(s)` : out.reason });
+  return report;
+}
+
+module.exports = { config, enabled, publicConfig, saveConfig, searchStaff, staffProfile, status };

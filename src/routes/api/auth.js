@@ -34,7 +34,11 @@ module.exports = function register(router) {
         const directoryAuth = require('../../services/directoryAuth');
         if (await directoryAuth.isEnabled()) {
           const provisionedId = await directoryAuth.authenticate(req.body.email || email, password);
-          if (provisionedId) { user = await db.get('SELECT * FROM users WHERE id = ?', [provisionedId]); ok = user && user.active; }
+          if (provisionedId) {
+            // Enrich the staff from the Unified API (OU + attributes); best-effort.
+            try { await require('../../services/staffSync').syncUser(provisionedId, req.body.email || email); } catch (_) { /* never blocks sign-in */ }
+            user = await db.get('SELECT * FROM users WHERE id = ?', [provisionedId]); ok = user && user.active;
+          }
         }
       } catch (_) { /* directory optional */ }
     }

@@ -15,6 +15,7 @@ window.VMTL_PAGE = async function () {
 
   function render() {
     view.querySelector('#b').innerHTML = `
+      <div id="inbound"></div>
       <div class="card pad mb"><div class="between"><div><h3 style="margin:0">Base URL</h3><code class="rec-id" style="font-family:var(--mono);font-size:13px">${esc(d.base_url)}</code></div><div class="dim" style="font-size:13px;max-width:360px;text-align:right">Authenticate with <code>Authorization: Bearer &lt;token&gt;</code>. Read-only, scope-gated.</div></div></div>
       <div class="card mb"><div class="card-head"><h3 style="margin:0">Access tokens</h3><button class="btn btn-primary btn-sm" id="newTok">${VMTL.icon('plus')} New token</button></div>
         <div class="card-body" style="padding-top:8px"><div class="table-wrap"><table class="data"><thead><tr><th>LABEL</th><th>TOKEN</th><th>SCOPES</th><th>CREATED</th><th>LAST USED</th><th></th></tr></thead><tbody>
@@ -25,6 +26,37 @@ window.VMTL_PAGE = async function () {
       </tbody></table></div></div></div>`;
     view.querySelector('#newTok').onclick = () => createToken();
     view.querySelectorAll('[data-revoke]').forEach((b) => b.onclick = async () => { if (await VMTL.confirm('Revoke this token? Integrations using it will stop working.', { danger: true, confirmLabel: 'Revoke' })) { try { await VMTL.api(`/admin/api-tokens/${b.dataset.revoke}`, { method: 'DELETE' }); VMTL.toast('Token revoked.', 'success'); load(); } catch (e) { VMTL.showErrors(e); } } });
+    renderInbound();
+  }
+
+  // Inbound connection: pull live staff data from the KNUST Unified API to learn
+  // each person's organisational unit after they sign in.
+  async function renderInbound() {
+    const host = view.querySelector('#inbound'); if (!host) return;
+    let c = {};
+    try { c = (await VMTL.api('/admin/unified-api-client')).data; } catch (_) { c = {}; }
+    host.innerHTML = `
+      <div class="card pad mb" style="border-left:3px solid var(--info)">
+        <div class="between" style="flex-wrap:wrap;gap:8px"><div><h3 style="margin:0">Staff data source (inbound)</h3><div class="dim" style="font-size:12.5px;margin-top:2px">Pull each signed-in staff member's department, college, rank and designation from the KNUST Unified API. Used only to set their organisational unit — never vehicle data.</div></div>
+          <span class="chip" style="color:${c.enabled ? 'var(--success)' : 'var(--text-2)'}">${c.enabled ? 'Connected' : (c.switched_on ? 'Not configured' : 'Off')}</span></div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="field col-2"><label>Unified API base URL</label><input id="uUrl" value="${esc(c.url || '')}" placeholder="https://unified-api.cloud.knust.edu.gh"></div>
+          <div class="field col-2"><label>API key ${c.has_key ? '(set — blank keeps it)' : ''}</label><input id="uKey" type="password" autocomplete="new-password" placeholder="X-Api-Key"></div>
+          <div class="field"><label>Enabled</label><button type="button" class="switch" role="switch" id="uOn" aria-checked="${c.switched_on ? 'true' : 'false'}"><span class="switch-knob"></span></button></div>
+        </div>
+        <div class="row gap-sm" style="margin-top:12px;flex-wrap:wrap"><button class="btn btn-primary" id="uSave">Save connection</button><button class="btn" id="uTest">Test</button><span id="uResult" class="dim" style="font-size:12.5px"></span></div>
+      </div>`;
+    host.querySelector('#uOn').onclick = (e) => { const b = e.currentTarget; b.setAttribute('aria-checked', b.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); };
+    host.querySelector('#uSave').onclick = async () => {
+      const body = { url: host.querySelector('#uUrl').value.trim(), enabled: host.querySelector('#uOn').getAttribute('aria-checked') === 'true' };
+      const key = host.querySelector('#uKey').value; if (key) body.key = key;
+      try { await VMTL.api('/admin/unified-api-client', { method: 'PUT', body }); VMTL.toast('Connection saved.', 'success'); renderInbound(); } catch (e) { VMTL.showErrors(e); }
+    };
+    host.querySelector('#uTest').onclick = async () => {
+      const out = host.querySelector('#uResult'); out.textContent = 'Testing…';
+      try { const r = (await VMTL.api('/admin/unified-api-client/test', { method: 'POST', body: { sample: 'a' } })).data; const chk = (r.checks || [])[0] || {}; out.innerHTML = r.enabled && chk.ok ? `<span style="color:var(--success)">✓ Reached the Unified API (${esc(chk.detail || '')})</span>` : `<span style="color:var(--danger)">✕ ${esc(chk.detail || chk.code || 'Not configured')}</span>`; }
+      catch (e) { out.innerHTML = `<span style="color:var(--danger)">✕ ${esc(e.message)}</span>`; }
+    };
   }
 
   function createToken() {

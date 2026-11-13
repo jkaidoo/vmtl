@@ -394,6 +394,18 @@ module.exports = function register(router) {
   router.get('/admin/api-tokens', requireAuth, requireSuper, async (req, res) => {
     res.json({ data: { scopes: API_SCOPES, base_url: `${req.protocol}://${req.get('host')}/api/v1`, tokens: (await apiTokens()).map((t) => ({ id: t.id, label: t.label, prefix: t.prefix, scopes: t.scopes, created_at: t.created_at, last_used_at: t.last_used_at || null })) } });
   });
+  // ---- Unified API (inbound): pull live staff data for OU enrichment -------
+  const unifiedApi = require('../../services/unifiedApi');
+  router.get('/admin/unified-api-client', requireAuth, requireSuper, async (req, res) => res.json({ data: await unifiedApi.publicConfig() }));
+  router.put('/admin/unified-api-client', requireAuth, requireSuper, async (req, res) => {
+    const out = await unifiedApi.saveConfig({ url: req.body.url, key: req.body.key, enabled: req.body.enabled });
+    await audit.from(req, { action: 'unified_api.configured', description: `${req.session.user.name} updated the Unified API staff connection` });
+    res.json({ data: out });
+  });
+  router.post('/admin/unified-api-client/test', requireAuth, requireSuper, async (req, res) => {
+    res.json({ data: await unifiedApi.status(req.body && req.body.sample) });
+  });
+
   router.post('/admin/api-tokens', requireAuth, requireSuper, async (req, res) => {
     const data = validate(req.body, { label: { required: true, type: 'string', maxLength: 80 } });
     const scopes = Array.isArray(req.body.scopes) ? req.body.scopes.filter((s) => API_SCOPES.includes(s)) : API_SCOPES.slice();

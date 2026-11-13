@@ -386,5 +386,18 @@ ensureColumn('users', 'directory_cache_hash', 'TEXT');
 ensureColumn('users', 'directory_cache_at', 'INTEGER');     // epoch milliseconds
 ensureColumn('users', 'directory_cache_source', 'TEXT');    // directory id that accepted the password
 
+// Unified API staff enrichment + OU-change workflow (see 006_staff_unified.sql).
+ensureColumn('users', 'staff_id', 'TEXT');                  // Unified API staff number
+ensureColumn('users', 'staff_rank', 'TEXT');
+ensureColumn('users', 'designation', 'TEXT');
+ensureColumn('users', 'staff_category', 'TEXT');
+ensureColumn('users', 'staff_type', 'TEXT');
+ensureColumn('users', 'college_name', 'TEXT');              // raw Unified API college
+ensureColumn('users', 'department_name', 'TEXT');           // raw Unified API department
+ensureColumn('users', 'unified_synced_at', 'TEXT');
+ensureColumn('users', 'pending_org_unit_id', 'INTEGER');    // OU the source now reports, awaiting admin action
+ensureColumn('users', 'pending_org_since', 'TEXT');
+ensureColumn('users', 'can_drive', 'INTEGER NOT NULL DEFAULT 0'); // a Transport Officer who also drives
+
 module.exports = db;
 module.exports.ensureColumn = ensureColumn;
