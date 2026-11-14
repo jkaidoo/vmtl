@@ -12,7 +12,7 @@ const { conflict } = require('../middleware/errorHandler');
 
 async function assign(requestId, vehicleId, driverId, actor, scheduledStart = null, scheduledEnd = null) {
   const tripId = await db.transaction(async (tx) => {
-    const request = await tx.get('SELECT * FROM vehicle_requests WHERE id = ?', [requestId]);
+    const request = await tx.get('SELECT * FROM vehicle_requests WHERE id = ?'+(db.isPostgres()?' FOR UPDATE':''), [requestId]);
     if (!request) throw conflict('Request not found.');
     if (request.status !== 'approved') throw conflict('Only approved requests can be assigned a vehicle and driver.');
 
@@ -22,15 +22,16 @@ async function assign(requestId, vehicleId, driverId, actor, scheduledStart = nu
     const start = scheduledStart || request.requested_start_time;
     const end = scheduledEnd || request.expected_end_time;
 
-    const vehicle = await tx.get('SELECT * FROM vehicles WHERE id = ?', [vehicleId]);
-    const driver = await tx.get('SELECT * FROM drivers WHERE id = ?', [driverId]);
+    const lock=db.isPostgres()?' FOR UPDATE':'';
+    const vehicle = await tx.get('SELECT * FROM vehicles WHERE id = ?'+lock, [vehicleId]);
+    const driver = await tx.get('SELECT * FROM drivers WHERE id = ?'+lock, [driverId]);
     if (!vehicle) throw conflict('Vehicle not found.');
     if (!driver) throw conflict('Driver not found.');
     if (!vehicle.active || !enums.vehicleStatus.isAssignable(vehicle.status)) throw conflict(`Vehicle ${vehicle.vehicle_number} is not available for assignment.`);
     if (!driver.active || !enums.driverStatus.isAssignable(driver.status)) throw conflict(`Driver ${driver.name} is not available for assignment.`);
     if (vehicle.capacity < request.passenger_count) throw conflict(`Vehicle capacity (${vehicle.capacity}) is less than the requested passengers (${request.passenger_count}).`);
-    if (await availability.vehicleHasConflict(vehicle.id, start, end)) throw conflict(`Vehicle ${vehicle.vehicle_number} is already booked for an overlapping period.`);
-    if (await availability.driverHasConflict(driver.id, start, end)) throw conflict(`Driver ${driver.name} is already booked for an overlapping period.`);
+    if (await tx.get("SELECT id FROM trips WHERE vehicle_id=? AND status IN ('scheduled','in_progress') AND scheduled_start<? AND scheduled_end>? LIMIT 1",[vehicle.id,end,start])) throw conflict(`Vehicle ${vehicle.vehicle_number} is already booked for an overlapping period.`);
+    if (await tx.get("SELECT id FROM trips WHERE driver_id=? AND status IN ('scheduled','in_progress') AND scheduled_start<? AND scheduled_end>? LIMIT 1",[driver.id,end,start])) throw conflict(`Driver ${driver.name} is already booked for an overlapping period.`);
 
     const tripNumber = await sequence.next('trips', 'trip_number', 'TRIP');
     const res = await tx.run(

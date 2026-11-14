@@ -4,12 +4,16 @@
 const isProd = process.env.NODE_ENV === 'production';
 const buffer = [];
 const MAX = 500;
+const startedAt = new Date().toISOString();
+const machine = require('node:os').hostname();
+const redact = require('./redact');
+let sequence = 0;
 
 function emit(level, event, meta) {
-  const entry = { level, event, at: new Date().toISOString(), ...(meta || {}) };
+  const entry = { ...redact(meta || {}), ...(meta?.id != null ? { request_id: meta.id } : {}), id: ++sequence, level, event, at: new Date().toISOString(), category: meta?.category || 'app' };
   buffer.push(entry);
   if (buffer.length > MAX) buffer.shift();
-  const line = isProd ? JSON.stringify(entry) : `[${entry.at}] ${level.toUpperCase()} ${event} ${meta ? JSON.stringify(meta) : ''}`;
+  const line = isProd ? JSON.stringify(entry) : `[${entry.at}] ${level.toUpperCase()} ${event} ${JSON.stringify(redact(meta || {}))}`;
   if (level === 'error') console.error(line);
   else if (level === 'warn') console.warn(line);
   else console.log(line);
@@ -21,4 +25,6 @@ module.exports = {
   error: (event, meta) => emit('error', event, meta),
   success: (event, meta) => emit('success', event, meta),
   recent: (n = 100) => buffer.slice(-n).reverse(),
+  find: id => buffer.find(entry => entry.id === Number(id)),
+  infoAboutStore: () => ({ started_at: startedAt, machine, stored: buffer.length, capacity: MAX }),
 };

@@ -7,18 +7,19 @@ const { isRequesterOnly } = require('./roles');
 const catalogue = [
     { label: 'Workspace', items: [
       { key: 'dashboard', to: '/dashboard.html', label: 'Dashboard', icon: 'dashboard', mobile: true },
-      { key: 'requests', to: '/requests.html', label: 'Requests', icon: 'requests', roles: OPS, mobile: true },
-      { key: 'approvals', to: '/approvals.html', label: 'Approvals', icon: 'approvals', roles: ['approver', 'supervisor', 'administrator'], mobile: true },
+      { key: 'requests', anyCaps: ['requests.create', 'requests.view_all', 'requests.approve', 'requests.assign', 'system.admin'], to: '/requests.html', label: 'Requests', icon: 'requests', roles: OPS, mobile: true },
+      { key: 'approvals', anyCaps: ['requests.approve', 'system.admin'], to: '/approvals.html', label: 'Approvals', icon: 'approvals', roles: ['approver', 'supervisor', 'administrator'], mobile: true },
       { key: 'goodwill', to: '/goodwill.html', label: 'Goodwill', icon: 'gift', cap: 'requests.create_goodwill' },
       { key: 'external', to: '/external-travel.html', label: 'External Travel', icon: 'plane', cap: 'requests.create_external' },
-      { key: 'trips', to: '/trips.html', label: 'Trips', icon: 'trips', mobile: true },
+      { key: 'trips', anyCaps:['trips.operate','requests.assign','requests.view_all'], roles:['driver','transport_admin','approver','administrator','supervisor'], to: '/trips.html', label: 'Trips', icon: 'trips', mobile: true },
     ] },
     { label: 'Fleet', items: [
-      { key: 'vehicles', to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
-      { key: 'tracking', to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
-      { key: 'schedule', to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
-      { key: 'drivers', to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
-      { key: 'maintenance', to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'vehicles', anyCaps: ['vehicles.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
+      { key: 'tracking', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
+      {key:'event-schedules',to:'/event-schedules.html',label:'IDL event scheduling',icon:'calendar',cap:'schedule.events'},
+      { key: 'schedule', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
+      { key: 'drivers', anyCaps: ['drivers.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
+      { key: 'maintenance', anyCaps: ['maintenance.manage', 'system.admin'], to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
     ] },
     { label: 'Insights', items: [
@@ -32,6 +33,8 @@ const catalogue = [
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },
     { label: 'System', items: [
+      {key:'dropdowns',to:'/dropdowns.html',label:'Dropdowns',icon:'sliders',superOnly:true},
+      {key:'file-server',to:'/file-server.html',label:'File Server',icon:'database',superOnly:true},
       { key: 'app-health', to: '/app-health.html', label: 'App Health', icon: 'health', systemAdmin: true },
       { key: 'rbac', to: '/rbac.html', label: 'RBAC', icon: 'shield', systemAdmin: true },
       { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', systemAdmin: true },
@@ -82,7 +85,7 @@ async function defaults(scope = '__all__') {
     if (item.superOnly) return false;
     if (item.systemAdmin) return caps.includes('system.admin');
     if (item.cap) return caps.includes(item.cap);
-    if (item.roles) return item.roles.includes(scope);
+    if (item.roles) return item.roles.includes(scope) || (item.anyCaps || []).some(cap => caps.includes(cap));
     return true;
   };
   return { sections: catalogue.map(section => ({ id: section.label.toLowerCase(), title: section.label,

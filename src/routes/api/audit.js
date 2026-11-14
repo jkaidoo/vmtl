@@ -6,7 +6,9 @@ const { has } = require('../../services/authz');
 const orgScope = require('../../services/orgScope');
 const roleRepository = require('../../services/roleRepository');
 const { requireAuth } = require('../../middleware/auth');
-const { forbidden } = require('../../middleware/errorHandler');
+const { forbidden, notFound } = require('../../middleware/errorHandler');
+const redact = require('../../util/redact');
+function values(value) { if (!value) return null; try { return redact(JSON.parse(value)); } catch (_) { return value; } }
 
 const BASE = 'FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id';
 
@@ -37,8 +39,8 @@ function buildWhere(q) {
 const toRow = (a) => ({
   id: a.id, action: a.action, description: a.description, entity_type: a.entity_type, entity_id: a.entity_id,
   actor: a.user_name || a.actor_name || null, user: a.user_name ? { id: a.user_id, name: a.user_name } : null,
-  ip_address: a.ip_address, old_values: a.old_values ? JSON.parse(a.old_values) : null,
-  new_values: a.new_values ? JSON.parse(a.new_values) : null, created_at: a.created_at,
+  ip_address: a.ip_address, user_agent: a.user_agent, old_values: values(a.old_values),
+  new_values: values(a.new_values), created_at: a.created_at,
 });
 
 function csvCell(v) { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
@@ -70,5 +72,13 @@ module.exports = function register(router) {
     res.set('Content-Type', 'text/csv; charset=utf-8');
     res.set('Content-Disposition', `attachment; filename="audit-log_${stamp}.csv"`);
     res.send('﻿' + lines.join('\r\n'));
+  });
+  router.get('/audit-logs/:id', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.AUDIT_VIEW))) throw forbidden('You may not view the audit log.');
+    if (!/^\d+$/.test(req.params.id)) throw notFound('Audit entry not found.');
+    const scope = await auditScope(req);
+    const row = await db.get(`SELECT a.*, u.name AS user_name ${BASE} WHERE a.id = ?${scope.clause}`, [req.params.id, ...scope.params]);
+    if (!row) throw notFound('Audit entry not found.');
+    res.set('Cache-Control', 'no-store'); res.json({ data: toRow(row) });
   });
 };

@@ -52,7 +52,7 @@ module.exports = function register(router) {
 
   router.post('/vehicles', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.VEHICLES_MANAGE))) throw forbidden('You may not manage vehicles.');
-    const data = validate(req.body, VEHICLE_RULES);
+    const data = validate(req.body, await require('../../services/dropdowns').rules(VEHICLE_RULES, {vehicle_type:'vehicle_type'}));
     await uniqueCheck('vehicle_number', data.vehicle_number); await uniqueCheck('registration_number', data.registration_number);
     const orgUnitId = await resolveOrgUnit(req.session.user, data.org_unit_id);
     const cols = ['vehicle_number', 'registration_number', 'make', 'model', 'year', 'vehicle_type', 'colour', 'capacity', 'current_odometer', 'org_unit_id', 'acquisition_date', 'insurance_expiry', 'roadworthy_expiry', 'service_interval_km', 'last_service_date', 'last_service_odometer', 'notes'];
@@ -65,13 +65,14 @@ module.exports = function register(router) {
   router.get('/vehicles/:id', requireAuth, async (req, res) => {
     const v = await db.get(`${loaders.VEHICLE_SELECT} WHERE v.id = ? AND v.deleted_at IS NULL`, [req.params.id]);
     if (!v) throw notFound('Vehicle not found.');
+    if(!await inScope(req.session.user,v.org_unit_id)) throw forbidden('Vehicle is outside your scope.');
     res.json({ data: present.vehicle(v) });
   });
 
   router.put('/vehicles/:id', requireAuth, async (req, res) => {
     const vehicle = await findVehicle(req.params.id);
     if (!(await has(req, CAP.VEHICLES_MANAGE)) || !(await inScope(req.session.user, vehicle.org_unit_id))) throw forbidden('You may not manage this vehicle.');
-    const data = validate(req.body, VEHICLE_RULES);
+    const data = validate(req.body, await require('../../services/dropdowns').rules(VEHICLE_RULES, {vehicle_type:'vehicle_type'}));
     if (data.vehicle_number !== vehicle.vehicle_number) await uniqueCheck('vehicle_number', data.vehicle_number, vehicle.id);
     if (data.registration_number !== vehicle.registration_number) await uniqueCheck('registration_number', data.registration_number, vehicle.id);
     if (req.body.org_unit_id !== undefined) data.org_unit_id = await resolveOrgUnit(req.session.user, data.org_unit_id);
@@ -95,13 +96,15 @@ module.exports = function register(router) {
   router.delete('/vehicles/:id', requireAuth, async (req, res) => {
     const vehicle = await findVehicle(req.params.id);
     if (!(await has(req, CAP.VEHICLES_MANAGE)) || !(await inScope(req.session.user, vehicle.org_unit_id))) throw forbidden('You may not manage this vehicle.');
+    if(await db.get("SELECT id FROM trips WHERE vehicle_id=? AND status IN ('scheduled','in_progress') LIMIT 1",[vehicle.id])) throw conflict('Cancel or complete the assigned trips before removing this vehicle.');
     await db.run(`UPDATE vehicles SET deleted_at = ${db.now()} WHERE id = ?`, [vehicle.id]);
     await audit.from(req, { action: 'vehicle.deleted', description: `Vehicle ${vehicle.vehicle_number} was removed`, entityType: 'vehicle', entityId: vehicle.id });
     res.json({ message: 'Vehicle removed.' });
   });
 
   router.get('/vehicles/:id/trips', requireAuth, async (req, res) => {
-    await findVehicle(req.params.id);
+    const vehicle=await findVehicle(req.params.id);
+    if(!await inScope(req.session.user,vehicle.org_unit_id)) throw forbidden('Vehicle is outside your scope.');
     const rows = await db.all("SELECT id FROM trips WHERE vehicle_id = ? AND deleted_at IS NULL ORDER BY scheduled_start DESC LIMIT 50", [req.params.id]);
     const data = []; for (const r of rows) data.push(await loaders.loadTrip(r.id, { withRequest: true, withStops: false }));
     res.json({ data });
@@ -109,6 +112,7 @@ module.exports = function register(router) {
 
   router.get('/vehicles/:id/fuel', requireAuth, async (req, res) => {
     const vehicle = await findVehicle(req.params.id);
+    if(!await inScope(req.session.user,vehicle.org_unit_id)) throw forbidden('Vehicle is outside your scope.');
     const agg = await db.get('SELECT COALESCE(SUM(total_cost),0) AS cost, COALESCE(SUM(litres),0) AS litres, COUNT(*) AS fills FROM fuel_logs WHERE vehicle_id = ? AND deleted_at IS NULL', [vehicle.id]);
     const measured = await db.get('SELECT COALESCE(SUM(odometer - previous_odometer),0) AS dist, COALESCE(SUM(litres),0) AS litres, COALESCE(SUM(total_cost),0) AS cost FROM fuel_logs WHERE vehicle_id = ? AND previous_odometer IS NOT NULL AND deleted_at IS NULL', [vehicle.id]);
     const last = await db.get('SELECT purchase_date FROM fuel_logs WHERE vehicle_id = ? AND deleted_at IS NULL ORDER BY purchase_date DESC, odometer DESC LIMIT 1', [vehicle.id]);

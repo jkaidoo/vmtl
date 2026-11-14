@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const db = require('../db/runtime');
 const { ApiError } = require('../middleware/errorHandler');
 const TABLES = [...require('./dbProfiles').TABLES, 'sync_ops', 'vehicle_positions'];
+const OPTIONAL_LEGACY_TABLES = new Set(['fleet_files','transport_events','event_schedules','schedule_expenses']);
 const directory = () => path.resolve(process.env.VMTL_BACKUP_DIR || path.join(__dirname, '../../data/backups'));
 const fail = message => { throw new ApiError(400, message); };
 function file(name) {
@@ -16,7 +17,7 @@ async function read(name) {
   try { data = JSON.parse(await fs.readFile(file(name), 'utf8')); }
   catch (err) { if (err.code === 'ENOENT') throw new ApiError(404, 'Backup not found.'); throw err; }
   const digest = crypto.createHash('sha256').update(JSON.stringify(data.snapshot)).digest('hex');
-  if (data.format !== 'vmtl-backup-1' || digest !== data.sha256 || !TABLES.every(t => Array.isArray(data.snapshot?.tables?.[t]))) fail('Backup verification failed.');
+  if (data.format !== 'vmtl-backup-1' || digest !== data.sha256 || !TABLES.every(t => Array.isArray(data.snapshot?.tables?.[t]) || (OPTIONAL_LEGACY_TABLES.has(t) && !Object.hasOwn(data.snapshot?.tables || {},t)))) fail('Backup verification failed.');
   return data;
 }
 async function list() {
@@ -53,7 +54,7 @@ async function restore(name) {
   await db.transaction(async tx => {
     for (const table of [...TABLES].reverse()) await tx.run(`DELETE FROM ${table}`);
     for (const table of TABLES) {
-      let rows = [...data.snapshot.tables[table]];
+      let rows = [...(data.snapshot.tables[table] || [])];
       // Organisation parents must exist before their children, regardless of ID order.
       if (table === 'org_units') {
         const ordered = []; const done = new Set();

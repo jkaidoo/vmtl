@@ -8,7 +8,7 @@ window.VMTL_PAGE = async function () {
   const esc = VMTL.esc;
   let clients = [];
 
-  view.innerHTML = VMTL.pageHead('Clients', 'Staff who signed in through the directory and are waiting for a role. Their placement is pulled from the Unified API.') +
+  view.innerHTML = VMTL.pageHead('Clients', 'New directory sign-ins appear here until assigned a role. Use Move to Users to choose their access and keep the same account and history.') +
     `<div id="cPending"></div>
      <div class="card">
        <div class="card-head"><h3 class="accounts-title">Clients</h3><div class="row" style="gap:8px">
@@ -36,7 +36,7 @@ window.VMTL_PAGE = async function () {
       <td data-label="Placement">${placement(c)}${c.pending_org_unit_id ? ' <span class="badge amber" title="The directory now reports a different unit">OU change pending</span>' : ''}</td>
       <td data-label="Last sign-in"><span class="dim">${rel(c.last_login_at)}</span></td>
       <td data-label=""><div class="btn-row">
-        <button class="btn btn-sm btn-primary" data-assign="${c.id}"><span class="btn-ic">${VMTL.icon('user-plus')}</span> Assign role</button>
+        <button class="btn btn-sm btn-primary" data-assign="${c.id}"><span class="btn-ic">${VMTL.icon('user-plus')}</span> Move to Users</button>
         <button class="btn btn-sm" data-ou="${c.id}"><span class="btn-ic" style="color:var(--info)">${VMTL.icon('org')}</span> Unit</button>
         <button class="btn btn-sm" data-resync="${c.id}" title="Re-sync from the Unified API"><span class="btn-ic">${VMTL.icon('database')}</span></button>
         <button class="btn btn-sm btn-ghost" data-del="${c.id}" style="color:var(--danger)"><span class="btn-ic">${VMTL.icon('trash')}</span></button>
@@ -55,17 +55,20 @@ window.VMTL_PAGE = async function () {
   const roleOpts = (sel) => (VMTL.meta.roles || []).map((r) => `<option value="${r.id}" ${sel === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
 
   function assignRole(c) {
-    const m = VMTL.openModal(`<div class="modal-head"><h3>Assign a role</h3><button class="icon-btn" data-close>✕</button></div>
-      <div class="modal-body"><div class="dim" style="font-size:12.5px;margin-bottom:10px">Giving <strong>${esc(c.name)}</strong> a role makes them a stakeholder and moves them to Users.</div>
-        <div class="form-grid">
-          <div class="field col-2"><label>Role</label><select id="aRole">${roleOpts(null)}</select></div>
+    const m = VMTL.openModal(`<div class="modal-head"><h3>Move client to Users</h3><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+      <div class="modal-body"><div class="dim" style="font-size:12.5px;margin-bottom:10px">Choose a role for <strong>${esc(c.name)}</strong> (${esc(c.email)}). They will appear in Users and leave Clients. Their sign-in, existing requests and account history are retained.</div>
+        <form id="promoteClient"><div class="form-grid">
+          <div class="field col-2"><label for="aRole">Role</label><select id="aRole" required><option value="" selected disabled>Choose a role</option>${roleOpts(null)}</select></div>
           <div class="field col-2"><label>Organisational unit</label><select id="aOrg"><option value="">— keep current${c.org_unit && c.org_unit.name ? ` (${esc(c.org_unit.name)})` : ''} —</option>${VMTL.orgUnitOptions(c.org_unit_id)}</select></div>
-        </div></div>
-      <div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="aSave">Assign role</button></div>`);
+        </div></form></div>
+      <div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="aSave">Move to Users</button></div>`);
+    m.el.querySelector('#promoteClient').onsubmit = e => { e.preventDefault(); m.el.querySelector('#aSave').click(); };
     m.el.querySelector('#aSave').onclick = async () => {
+      const form = m.el.querySelector('#promoteClient'); if (!form.reportValidity()) return;
+      const button = m.el.querySelector('#aSave'); button.disabled = true;
       const body = { role_id: Number(m.el.querySelector('#aRole').value) };
       const ou = m.el.querySelector('#aOrg').value; if (ou) body.org_unit_id = Number(ou);
-      try { await VMTL.api(`/users/${c.id}`, { method: 'PATCH', body }); m.close(); VMTL.toast(`${c.name} is now a stakeholder.`, 'success'); load(); } catch (e) { VMTL.showErrors(e); }
+      try { await VMTL.api(`/users/${c.id}`, { method: 'PATCH', body }); m.close(); VMTL.toast(`${c.name} moved to Users.`, 'success'); await load(); } catch (e) { VMTL.showErrors(e, form); } finally { button.disabled = false; }
     };
   }
 

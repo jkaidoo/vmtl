@@ -1,6 +1,6 @@
 'use strict';
 // Walk-in template editor, shared by Email and SMS without registering a page renderer.
-window.VMTL_MESSAGE_TEMPLATES = async function (CH, host) {
+window.VMTL_MESSAGE_TEMPLATES = async function (CH, host, { onTest } = {}) {
   const esc = VMTL.esc;
   const IS_EMAIL = CH === 'email'; const NOUN = IS_EMAIL ? 'email' : 'SMS';
   const api = async (path, options) => { const out = await VMTL.api(path, options); if (out.queued) throw new Error('Connect to the server to save templates.'); return out.data; };
@@ -20,7 +20,7 @@ window.VMTL_MESSAGE_TEMPLATES = async function (CH, host) {
     const meta = tpl.meta.find(m => m.key === key); const selected = {};
     for (const field of [meta.subject, meta.body, meta.table]) if (field) selected[field] = value(field);
     button.disabled = true;
-    try { const result = await api(`/admin/messaging/test-${CH}`, { method: 'POST', body: { to, template: key, draft: selected } }); toast(result.message || (result.ok ? 'Sent.' : 'Failed.'), result.ok ? 'ok' : 'err'); }
+    try { const result = await api(`/admin/messaging/test-${CH}`, { method: 'POST', body: { to, template: key, draft: selected } }); toast(result.message || (result.ok ? 'Sent.' : 'Failed.'), result.ok ? 'ok' : 'err'); await onTest?.(); }
     catch (error) { toast(error.message, 'err'); }
     finally { button.disabled = false; }
   };

@@ -1,0 +1,21 @@
+/* Walkin's collapsible messaging layout, using the VMTL theme tokens. */
+.msg-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.msg-wide{grid-column:1/-1}.msg-grid>.card{margin:0;min-width:0}
+.msg-fold>summary{padding:16px 18px;font-size:14px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px}
+.msg-fold>summary::-webkit-details-marker{display:none}.msg-fold>summary::before{content:'›';font-size:20px;line-height:1;color:var(--text-3);transition:transform .15s}
+.msg-fold[open]>summary{border-bottom:1px solid var(--border)}.msg-fold[open]>summary::before{transform:rotate(90deg)}
+.msg-fold>summary:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:var(--radius-lg)}
+.msg-intro{margin:0 0 14px;font-size:13px;line-height:1.6}.msg-hint{font-size:12px;line-height:1.6;margin:12px 0}
+.msg-state{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface-2);border-radius:var(--radius-sm);padding:14px}
+.msg-state p{font-size:12px;line-height:1.5;margin:8px 0 0}.msg-switch{display:flex;align-items:center;gap:8px;font-size:13px;white-space:nowrap;cursor:pointer}
+.msg-switch input{appearance:none;position:relative;flex:none;width:36px;height:22px;margin:0;border:1px solid var(--border-strong);border-radius:999px;background:var(--border-strong);cursor:pointer;transition:background .15s}
+.msg-switch input::before{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-sm);transition:transform .15s}
+.msg-switch input:checked{background:var(--primary);border-color:var(--primary)}.msg-switch input:checked::before{transform:translateX(14px)}.msg-switch input:disabled{opacity:.5;cursor:not-allowed}.msg-switch input:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.msg-steps{list-style:none;padding:0;display:flex;gap:6px;margin:14px 0 0}.msg-step{display:flex;align-items:center;gap:7px;flex:1;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;color:var(--text-3)}
+.msg-step span{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;background:var(--surface-2);font-weight:600}
+.msg-step.current{border-color:var(--primary);color:var(--text)}.msg-step.current span{background:var(--primary);color:white}.msg-step.done span{color:var(--success);background:var(--success-tint)}
+.msg-test-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}.msg-test-row>.btn{margin-bottom:16px}
+.msg-ok{color:var(--success)}.msg-error{color:var(--danger)}
+.msg-fold .message-templates{border:0;border-radius:0;box-shadow:none;margin:0}
+@media(max-width:900px){.msg-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:560px){.msg-steps{flex-direction:column}.msg-test-row{grid-template-columns:minmax(0,1fr)}.msg-state{align-items:flex-start}.msg-state .badge{white-space:normal}}

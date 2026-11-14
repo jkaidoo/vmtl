@@ -26,7 +26,7 @@ async function driverHasConflict(driverId, start, end, exceptTripId = null) {
 
 // Active, assignable, capacity-meeting vehicles with no conflict in [start,end).
 // orgUnitIds: array to scope to those units, or null for no scoping.
-async function availableVehicles(start, end, minCapacity = 1, orgUnitIds = null) {
+async function availableVehicles(start, end, minCapacity = 1, orgUnitIds = null, exceptTripId = null) {
   let sql = `SELECT * FROM vehicles WHERE active = 1 AND status IN ('available','scheduled') AND capacity >= ? AND deleted_at IS NULL`;
   const params = [minCapacity];
   if (orgUnitIds !== null) {
@@ -37,11 +37,11 @@ async function availableVehicles(start, end, minCapacity = 1, orgUnitIds = null)
   sql += ' ORDER BY vehicle_number';
   const rows = await db.all(sql, params);
   const out = [];
-  for (const v of rows) if (!(await vehicleHasConflict(v.id, start, end))) out.push(v);
+  for (const v of rows) if (!(await vehicleHasConflict(v.id, start, end, exceptTripId))) out.push(v);
   return out;
 }
 
-async function availableDrivers(start, end, orgUnitIds = null) {
+async function availableDrivers(start, end, orgUnitIds = null, exceptTripId = null) {
   let sql = `SELECT * FROM drivers WHERE active = 1 AND status = 'available' AND deleted_at IS NULL`;
   const params = [];
   if (orgUnitIds !== null) {
@@ -52,7 +52,7 @@ async function availableDrivers(start, end, orgUnitIds = null) {
   sql += ' ORDER BY name';
   const rows = await db.all(sql, params);
   const out = [];
-  for (const d of rows) if (!(await driverHasConflict(d.id, start, end))) out.push(d);
+  for (const d of rows) if (!(await driverHasConflict(d.id, start, end, exceptTripId))) out.push(d);
   return out;
 }
 

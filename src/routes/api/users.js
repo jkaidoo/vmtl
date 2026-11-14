@@ -8,8 +8,9 @@ const { has } = require('../../services/authz');
 const orgScope = require('../../services/orgScope');
 const present = require('../../services/present');
 const audit = require('../../services/audit');
+const securityAlerts = require('../../services/securityAlerts');
 const directoryAuth = require('../../services/directoryAuth');
-const { hashPassword } = require('../../util/password');
+const { hashPassword, passwordProblems } = require('../../util/password');
 const { requireAuth } = require('../../middleware/auth');
 const { validate } = require('../../util/validate');
 const { forbidden, notFound, badRequest } = require('../../middleware/errorHandler');
@@ -19,6 +20,19 @@ const USER_SELECT = `SELECT u.*, r.slug AS role_slug, r.name AS role_name, o.nam
 
 async function seesAll(req) { return req.session.user.is_super_admin || (await has(req, CAP.USERS_MANAGE) && (await require('../../services/roleRepository').roleSlugForUser(req.session.user.id)) === 'administrator'); }
 async function userDto(id) { return present.user(await db.get(`${USER_SELECT} WHERE u.id = ?`, [id])); }
+async function checkAdminChange(req, before, id) {
+  const after = await db.get('SELECT id, role_id, active, is_super_admin FROM users WHERE id=?', [id]);
+  const caps = require('../../services/roleRepository');
+  const wasAdmin = !!before && !!before.active && (!!before.is_super_admin || (before.role_id && (await caps.capsForRole(before.role_id)).includes('system.admin')));
+  const isAdmin = !!after?.active && (!!after.is_super_admin || (after.role_id && (await caps.capsForRole(after.role_id)).includes('system.admin')));
+  if (!!wasAdmin !== !!isAdmin) securityAlerts.background(securityAlerts.alert('administrator_role_changed', `System Administrator access was ${isAdmin ? 'granted' : 'removed'}.`, { user_id: id, actor_id: req.session.user.id, ip: req.ip }, `role:${id}:${!!isAdmin}`));
+}
+
+// Reject a weak password before it is hashed, surfacing the policy as field errors.
+function assertPasswordStrength(password, field = 'password') {
+  const problems = passwordProblems(password);
+  if (problems.length) throw badRequest('The given data was invalid.', { [field]: problems });
+}
 
 // A scoped manager may act on users in their subtree, plus unassigned accounts.
 async function inUserScope(actor, targetOrgUnitId) {
@@ -29,10 +43,11 @@ async function inUserScope(actor, targetOrgUnitId) {
 }
 
 async function guardAssignment(req, data) {
+  if (data.role_id != null && (!Number.isSafeInteger(data.role_id) || data.role_id < 1 || !await db.get('SELECT id FROM roles WHERE id=?', [data.role_id]))) throw badRequest('Choose a valid role.', { role_id: ['Choose an existing role.'] });
   if (await seesAll(req)) return;
   if (data.role_id) {
     const slug = (await db.get('SELECT slug FROM roles WHERE id = ?', [data.role_id]) || {}).slug;
-    if (slug === 'administrator') throw badRequest('The given data was invalid.', { role_id: ['You cannot assign the System Administrator role.'] });
+    if (slug === 'administrator' || (await require('../../services/roleRepository').capsForRole(data.role_id)).includes('system.admin')) throw badRequest('The given data was invalid.', { role_id: ['You cannot assign the System Administrator role.'] });
   }
   const scope = await orgScope.visibleOrgUnitIds(req.session.user);
   if (scope !== null && data.org_unit_id && !scope.includes(data.org_unit_id)) throw badRequest('The given data was invalid.', { org_unit_id: ['You can only assign units within your organisation.'] });
@@ -42,10 +57,10 @@ async function guardAssignment(req, data) {
 // Transport Officer who drives appears in the driver pool. Retiring the flag
 // retires the auto-linked driver (history is kept).
 async function syncDriverLink(userId) {
-  const u = await db.get('SELECT id, name, phone, org_unit_id, can_drive, active FROM users WHERE id = ?', [userId]);
+  const u = await db.get('SELECT u.id,u.name,u.phone,u.org_unit_id,u.can_drive,u.active,r.slug AS role_slug FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id = ?', [userId]);
   if (!u) return;
   const existing = await db.get('SELECT id, deleted_at FROM drivers WHERE user_id = ?', [userId]);
-  if (u.can_drive && u.active) {
+  if ((u.can_drive || u.role_slug === 'driver') && u.active) {
     if (!existing) await db.run(`INSERT INTO drivers (user_id, name, phone, org_unit_id, status, active, created_at, updated_at) VALUES (?, ?, ?, ?, 'available', 1, ${db.now()}, ${db.now()})`, [userId, u.name, u.phone || null, u.org_unit_id || null]);
     else if (existing.deleted_at) await db.run(`UPDATE drivers SET deleted_at = NULL, active = 1, status = 'available', name = ?, org_unit_id = ?, updated_at = ${db.now()} WHERE id = ?`, [u.name, u.org_unit_id || null, existing.id]);
   } else if (existing && !existing.deleted_at) {
@@ -98,11 +113,13 @@ module.exports = function register(router) {
     });
     const email = data.email.trim().toLowerCase();
     if (await db.get('SELECT id FROM users WHERE lower(email) = ?', [email])) throw badRequest('The given data was invalid.', { email: ['That email is already in use.'] });
+    assertPasswordStrength(data.password);
     await guardAssignment(req, data);
     const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, phone, active, is_super_admin, avatar, can_drive, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ${db.now()}, ${db.now()})`,
       [data.name, email, hashPassword(data.password), data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null, data.active ? 1 : 0, data.avatar || null, data.can_drive ? 1 : 0]);
     await syncDriverLink(r.lastInsertRowid);
     await audit.from(req, { action: 'user.created', description: `User ${data.name} (${email}) was created`, entityType: 'user', entityId: r.lastInsertRowid });
+    await checkAdminChange(req, null, r.lastInsertRowid);
     res.status(201).json({ data: await userDto(r.lastInsertRowid) });
   });
 
@@ -129,7 +146,9 @@ module.exports = function register(router) {
     await guardAssignment(req, data);
     const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, active, is_super_admin, directory_provider, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, 1, 0, ?, ${db.now()}, ${db.now()})`,
       [data.name, email, data.role_id, data.department_id || null, data.org_unit_id || null, provider]);
+    await syncDriverLink(r.lastInsertRowid);
     await audit.from(req, { action: 'user.imported', description: `${data.name} (${email}) was added from the ${provider.toUpperCase()} directory`, entityType: 'user', entityId: r.lastInsertRowid });
+    await checkAdminChange(req, null, r.lastInsertRowid);
     res.status(201).json({ data: await userDto(r.lastInsertRowid) });
   });
 
@@ -161,10 +180,11 @@ module.exports = function register(router) {
     if (req.body.active !== undefined) { sets.push('active = ?'); params.push(data.active ? 1 : 0); }
     if (req.body.avatar !== undefined) { sets.push('avatar = ?'); params.push(data.avatar || null); }
     if (req.body.can_drive !== undefined) { sets.push('can_drive = ?'); params.push(data.can_drive ? 1 : 0); }
-    if (data.password) { sets.push('password_hash = ?'); params.push(hashPassword(data.password)); }
+    if (data.password) { assertPasswordStrength(data.password); sets.push('password_hash = ?'); params.push(hashPassword(data.password)); }
     await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
     await syncDriverLink(target.id);
     await audit.from(req, { action: 'user.updated', description: `User ${data.name} was updated`, entityType: 'user', entityId: target.id });
+    await checkAdminChange(req, target, target.id);
     res.json({ data: await userDto(target.id) });
   });
 
@@ -184,7 +204,9 @@ module.exports = function register(router) {
     if (req.body.active !== undefined) { sets.push('active = ?'); params.push(data.active ? 1 : 0); }
     if (!sets.length) return res.json({ data: await userDto(target.id) });
     await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
-    await audit.from(req, { action: 'user.updated', description: `${target.name} was updated`, entityType: 'user', entityId: target.id });
+    const promoted = !target.role_id && !!data.role_id;
+    await audit.from(req, { action: promoted ? 'user.promoted' : 'user.updated', description: promoted ? `${target.name} moved from Clients to Users` : `${target.name} was updated`, entityType: 'user', entityId: target.id, oldValues: { role_id: target.role_id, org_unit_id: target.org_unit_id }, newValues: { role_id: 'role_id' in req.body ? data.role_id || null : target.role_id, org_unit_id: 'org_unit_id' in req.body ? data.org_unit_id || null : target.org_unit_id } });
+    await checkAdminChange(req, target, target.id);
     res.json({ data: await userDto(target.id) });
   });
 
@@ -228,6 +250,7 @@ module.exports = function register(router) {
     if (!(await inUserScope(req.session.user, target.org_unit_id))) throw forbidden('That user is outside your scope.');
     await db.run(`UPDATE users SET deleted_at = ${db.now()}, active = 0 WHERE id = ?`, [target.id]);
     await audit.from(req, { action: 'user.deleted', description: `User ${target.name} was removed`, entityType: 'user', entityId: target.id });
+    await checkAdminChange(req, target, target.id);
     res.json({ message: 'User removed.' });
   });
 };

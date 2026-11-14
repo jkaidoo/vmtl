@@ -32,7 +32,7 @@ const DOCS = {
 function docContent(slug) {
   if (slug === 'architecture') return `# Technical Overview\n\n## Stack\n- **Backend:** Node.js + Express (plain JavaScript), SQLite (dev) / PostgreSQL (prod), session auth.\n- **Frontend:** Static HTML + vanilla JS + CSS (KNUST UITS design tokens), PWA.\n\n## Layers\n- **Services** hold business logic: availability, assignment, trips, analytics, maintenance alerts, directory auth, web push.\n- **Capability RBAC** (role_capabilities) is enforced server-side on every route; the break-glass System Administrator holds every capability.\n- **Notifications** fan out over in-app, email and Web Push channels.\n\n## Request lifecycle\nRequest → Approval → Assignment (vehicle + driver, conflict-checked) → Trip start → Trip completion (odometer-validated) → Reporting → Analytics, with an append-only audit trail throughout.`;
   if (slug === 'user-guide') return `# User Guide\n\n- **Staff** submit and track vehicle requests, and cancel eligible ones.\n- **Approvers** review pending requests and approve or reject (a reason is required to reject).\n- **Transport Officers** assign a vehicle + driver, then start, end or mark trips as no-show, and record maintenance.\n- **Drivers** operate their own assigned trips from a phone.\n- **Supervisors** manage users and operations within their organisational unit and its sub-units.\n- **Administrators** manage users, departments, settings and the audit log.\n- The **System Administrator** holds the break-glass controls: App Health, RBAC, System Controls, Directory Auth, Database Connections, Documentation.`;
-  if (slug === 'security') return `# Security Assessment\n\n- **Authentication:** server-side sessions (httpOnly, SameSite=strict); passwords hashed (bcrypt); failed sign-ins recorded.\n- **Authorisation:** capability-based RBAC enforced on every route — the UI is never the boundary. One break-glass System Administrator.\n- **Data integrity:** transactions prevent double-booking; odometer readings are validated and every correction is audited. Soft deletes retain history.\n- **Auditability:** an append-only ledger records who did what, when, with IP.\n- **Secrets:** VAPID private key and directory bind passwords are server-side, write-only, and redacted from exports.`;
+  if (slug === 'security') return `# Security Assessment\n\nSee **Doc/SECURITY.md** for the full control inventory and its stated limits.\n\n- **Authentication:** server-side sessions (httpOnly, SameSite=strict, secure in production); the session ID is regenerated on sign-in. Passwords are hashed with bcrypt and must meet a complexity policy (min 8 chars with upper, lower, digit and symbol); users change their own via current-password-gated self-service. Failed sign-ins are recorded and an identity is locked after repeated failures.\n- **Authorisation:** capability-based RBAC enforced on every route — the UI is never the boundary. One break-glass System Administrator; organisational-unit subtree scoping. The public read API is bearer-token + per-scope gated.\n- **Data integrity:** transactions prevent double-booking; odometer readings are validated and every correction is audited. Soft deletes retain history.\n- **Auditability:** an append-only ledger records who did what, when, with IP.\n- **Secrets:** VAPID private key and directory bind passwords are server-side, write-only, and redacted from logs and operational exports. Full database snapshots are not redacted — they retain credentials and personal data, are written owner-only (mode 0600) and require App-Owner password re-authentication to create or download, so they need operational custody.`;
   return '# UITS Vehicle Management & Trip Logging\n\nSee the Technical Overview and User Guide.';
 }
 
@@ -77,6 +77,18 @@ const CODEBASE_GUIDE = [
 ];
 
 module.exports = function register(router) {
+  const connections = require('../../services/messagingConnection');
+  router.get('/admin/messaging/:channel/connection', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store'); res.json({ data: await connections.status(req.params.channel) });
+  });
+  router.put('/admin/messaging/:channel/connection', requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await connections.save(req.params.channel, req.body);
+    await audit.from(req, { action: 'messaging.connection_saved', description: `Updated ${req.params.channel} connection` }); res.json({ data });
+  });
+  router.post('/admin/messaging/:channel/activate', requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await connections.activate(req.params.channel, req.body.enabled);
+    await audit.from(req, { action: 'messaging.activation_updated', description: `${req.params.channel}: ${data.status.enabled ? 'on' : 'off'}` }); res.json({ data });
+  });
   // ---- App Health --------------------------------------------------------
   const FAILED_LOGIN = "('auth.login_failed','auth.login_blocked')";
   function dayBuckets(days) {
@@ -273,13 +285,18 @@ module.exports = function register(router) {
   router.post('/admin/messaging/test-email', requireAuth, requireSystemAdmin, async (req, res) => {
     const to = req.body.to || req.session.user.email;
     const message = await messageTemplates.render('email', req.body.template || 'test', messageTemplates.SAMPLE, req.body.draft || {});
-    const result = await email.send(to, message.subject, message.text, { html: message.html });
+    const cfg = await connections.config('email');
+    const result = await email.send(to, message.subject, message.text, { html: message.html, force: true, hub: true });
+    await connections.recordTest('email', cfg, to, result);
     res.json({ data: result });
   });
   router.post('/admin/messaging/test-sms', requireAuth, requireSystemAdmin, async (req, res) => {
     const { to } = validate(req.body, { to: { required: true, type: 'string', maxLength: 20 } });
     const message = await messageTemplates.render('sms', req.body.template || 'test', messageTemplates.SAMPLE, req.body.draft || {});
-    res.json({ data: await sms.send(to, message.text) });
+    const cfg = await connections.config('sms');
+    const result = await sms.send(to, message.text, { force: true });
+    await connections.recordTest('sms', cfg, to, result);
+    res.json({ data: result });
   });
 
   // ---- Database connections ----------------------------------------------
@@ -362,8 +379,10 @@ module.exports = function register(router) {
   // ---- Application logs (server runtime log — app owner only) -------------
   router.get('/admin/application-logs', requireAuth, requireSystemAdmin, (req, res) => {
     const level = String(req.query.level || 'all');
-    let rows = log.recent(500);
+    const all = log.recent(500);
+    let rows = all;
     if (level !== 'all') rows = rows.filter(e => e.level === level);
+    if (req.query.category) rows = rows.filter(e => e.category === req.query.category);
     if (req.query.search) { const term = String(req.query.search).toLowerCase(); rows = rows.filter(e => JSON.stringify(e).toLowerCase().includes(term)); }
     if (req.query.date_from) rows = rows.filter(e => e.at.slice(0,10) >= String(req.query.date_from).slice(0,10));
     if (req.query.date_to) rows = rows.filter(e => e.at.slice(0,10) <= String(req.query.date_to).slice(0,10));
@@ -371,9 +390,23 @@ module.exports = function register(router) {
     const last = Math.max(1, Math.ceil(total / size)), page = Math.min(last, Math.max(1, parseInt(req.query.page,10) || 1));
     res.set('Cache-Control', 'no-store');
     res.json({ data: rows.slice((page - 1) * size, page * size).map(e => {
-      const { level, at, event, message, ...context } = e;
-      return { level, timestamp: at, event, message: message || event, data: Object.keys(context).length ? JSON.stringify(context) : null };
-    }), meta: { current_page: page, per_page: size, total, last_page: last }, retention: 'Latest 500 events from the current server process' });
+      const { id, category, level, at, event, message, ...context } = e;
+      return { id, category, level, timestamp: at, event, message: message || event, fields: context, data: Object.keys(context).length ? JSON.stringify(context) : null };
+    }), meta: { current_page: page, per_page: size, total, last_page: last }, counts: all.reduce((out, e) => { out[e.level] = (out[e.level] || 0) + 1; return out; }, {}), store: log.infoAboutStore(), retention: 'Latest 500 events from the current server process' });
+  });
+  router.get('/admin/application-logs/:id', requireAuth, requireSystemAdmin, (req, res) => {
+    const entry = log.find(req.params.id);
+    if (!entry) throw notFound('This log entry is no longer available. It may have expired or the server restarted.');
+    res.set('Cache-Control', 'no-store'); res.json({ data: entry });
+  });
+  const securityAlerts = require('../../services/securityAlerts');
+  router.get('/admin/security-alerts', requireAuth, requireSystemAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store'); res.json({ data: await securityAlerts.status() });
+  });
+  router.put('/admin/security-alerts', requireAuth, requireSystemAdmin, async (req, res) => {
+    const data = await securityAlerts.save(req.body);
+    await audit.from(req, { action: 'security.alert_settings_updated', description: data.enabled ? 'Enabled suspicious activity emails' : 'Disabled suspicious activity emails' });
+    res.json({ data });
   });
 
   // ---- Navigation settings ----------------------------------------------

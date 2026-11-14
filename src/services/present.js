@@ -3,6 +3,7 @@
 // plain row; rows may carry joined alias columns (e.g. requester_name,
 // org_unit_name) which are folded into nested objects when present.
 const enums = require('./enums');
+const dropdowns = require('./dropdowns');
 
 const bool = (v) => !!v;
 const label = (map, v) => (v == null ? null : (map[v] || v));
@@ -17,13 +18,14 @@ function orgUnitMini(row, prefix = 'org_unit') {
 function vehicle(v) {
   if (!v) return null;
   return {
+    photo_url: v.photo_file_id ? `/api/fleet-files/${v.photo_file_id}` : `/api/fleet-files/vehicle/${v.id}/latest/photo`,
     id: v.id, vehicle_number: v.vehicle_number, registration_number: v.registration_number,
     make: v.make, model: v.model, year: v.year,
     vehicle_type: v.vehicle_type,
-    vehicle_type_label: enums.vehicleType.labelFor(v.vehicle_type),
+    vehicle_type_label: dropdowns.label('vehicle_type',v.vehicle_type,enums.vehicleType.labelFor(v.vehicle_type)),
     vehicle_type_motif: enums.vehicleType.motifFor(v.vehicle_type),
     colour: v.colour, capacity: v.capacity, current_odometer: v.current_odometer,
-    status: v.status, status_label: label(enums.vehicleStatus.labels, v.status), status_color: enums.vehicleStatus.colors[v.status] || 'grey',
+    status: v.status, status_label: dropdowns.label('vehicle_status',v.status,label(enums.vehicleStatus.labels, v.status)), status_color: enums.vehicleStatus.colors[v.status] || 'grey',
     acquisition_date: dateOnly(v.acquisition_date), insurance_expiry: dateOnly(v.insurance_expiry),
     roadworthy_expiry: dateOnly(v.roadworthy_expiry), service_interval_km: v.service_interval_km,
     last_service_date: dateOnly(v.last_service_date), last_service_odometer: v.last_service_odometer,
@@ -35,9 +37,10 @@ function vehicle(v) {
 function driver(d) {
   if (!d) return null;
   return {
+    photo_url: d.photo_file_id ? `/api/fleet-files/${d.photo_file_id}` : (d.account_avatar || `/api/fleet-files/driver/${d.id}/latest/photo`), licence_url: d.licence_file_id ? `/api/fleet-files/${d.licence_file_id}` : null,
     id: d.id, user_id: d.user_id, name: d.name, employee_id: d.employee_id, phone: d.phone,
     licence_number: d.licence_number, licence_expiry: dateOnly(d.licence_expiry),
-    status: d.status, status_label: label(enums.driverStatus.labels, d.status), status_color: enums.driverStatus.colors[d.status] || 'grey',
+    status: d.status, status_label: dropdowns.label('driver_status',d.status,label(enums.driverStatus.labels, d.status)), status_color: enums.driverStatus.colors[d.status] || 'grey',
     notes: d.notes, active: bool(d.active), org_unit_id: d.org_unit_id, org_unit: orgUnitMini(d),
     has_account: d.user_id != null, account_email: d.account_email, created_at: d.created_at,
   };
@@ -69,7 +72,7 @@ function request(r, { approvals, trip } = {}) {
     destination: r.destination, additional_destination: r.additional_destination, purpose: r.purpose,
     passenger_count: r.passenger_count, contact_number: r.contact_number,
     special_requirements: r.special_requirements, remarks: r.remarks,
-    status: r.status, status_label: label(enums.requestStatus.labels, r.status), status_color: enums.requestStatus.colors[r.status] || 'grey',
+    status: r.status, status_label: dropdowns.label('request_status',r.status,label(enums.requestStatus.labels, r.status)), status_color: enums.requestStatus.colors[r.status] || 'grey',
     is_cancellable: enums.requestStatus.isCancellable(r.status),
     is_goodwill: bool(r.is_goodwill), goodwill_reason: r.goodwill_reason,
     is_external: bool(r.is_external), external_org: r.external_org,
@@ -91,7 +94,7 @@ function trip(t, { vehicle: v, driver: d, request: req, stops } = {}) {
     actual_start: t.actual_start, actual_end: t.actual_end,
     starting_odometer: t.starting_odometer, ending_odometer: t.ending_odometer,
     distance: t.distance, duration_minutes: t.duration_minutes,
-    status: t.status, status_label: label(enums.tripStatus.labels, t.status), status_color: enums.tripStatus.colors[t.status] || 'grey',
+    status: t.status, status_label: dropdowns.label('trip_status',t.status,label(enums.tripStatus.labels, t.status)), status_color: enums.tripStatus.colors[t.status] || 'grey',
     start_notes: t.start_notes, end_notes: t.end_notes, admin_remarks: t.admin_remarks,
     start_checklist: t.start_checklist ? (() => { try { return JSON.parse(t.start_checklist); } catch (_) { return null; } })() : null,
     started_by: t.started_by_name ? { id: t.started_by, name: t.started_by_name } : undefined,
@@ -107,7 +110,7 @@ function fuelLog(f) {
   const litres = Number(f.litres);
   const kmPerLitre = (distance == null || litres <= 0) ? null : Math.round((distance / litres) * 1000) / 1000;
   return {
-    id: f.id, vehicle_id: f.vehicle_id, vehicle: f.vehicle_number ? { id: f.vehicle_id, vehicle_number: f.vehicle_number } : undefined,
+    id: f.id, schedule_id:f.schedule_id || null, vehicle_id: f.vehicle_id, vehicle: f.vehicle_number ? { id: f.vehicle_id, vehicle_number: f.vehicle_number } : undefined,
     driver_id: f.driver_id, driver: f.driver_name ? { id: f.driver_id, name: f.driver_name } : undefined,
     purchase_date: f.purchase_date, odometer: f.odometer, previous_odometer: f.previous_odometer,
     distance_since_last: distance, litres: f.litres, price_per_litre: f.price_per_litre, total_cost: f.total_cost,
@@ -119,8 +122,9 @@ function fuelLog(f) {
 function maintenance(m) {
   if (!m) return null;
   return {
+    receipt_url: m.receipt_file_id ? `/api/fleet-files/${m.receipt_file_id}` : null,
     id: m.id, vehicle_id: m.vehicle_id, vehicle: m.vehicle_number ? { id: m.vehicle_id, vehicle_number: m.vehicle_number } : undefined,
-    maintenance_type: m.maintenance_type, maintenance_type_label: require('./enums').maintenanceType.labels[m.maintenance_type] || m.maintenance_type,
+    maintenance_type: m.maintenance_type, maintenance_type_label: dropdowns.label('maintenance_type',m.maintenance_type,require('./enums').maintenanceType.labels[m.maintenance_type]),
     service_date: dateOnly(m.service_date), odometer: m.odometer, description: m.description, cost: m.cost,
     service_provider: m.service_provider, next_service_date: dateOnly(m.next_service_date), next_service_odometer: m.next_service_odometer,
     remarks: m.remarks, recorded_by: m.recorded_by_name ? { id: m.recorded_by, name: m.recorded_by_name } : undefined, created_at: m.created_at,
@@ -148,7 +152,7 @@ function orgUnit(u) {
   if (!u) return null;
   return {
     id: u.id, name: u.name, code: u.code, type: u.type,
-    type_label: require('./enums').orgUnitType.labels[u.type] || u.type,
+    type_label: dropdowns.label('org_unit_type',u.type,require('./enums').orgUnitType.labels[u.type]),
     parent_id: u.parent_id, path: u.path,
     depth: u.path ? Math.max(0, (u.path.match(/\//g) || []).length - 2) : 0,
   };

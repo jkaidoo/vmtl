@@ -46,7 +46,21 @@ module.exports = router => {
     const ids = [...new Set(entries)];
     const out = await backups.exclusive(async () => {
       const backup = await backups.create('Before cleanup');
-      const deleted = await db.transaction(async tx => (await tx.run(`DELETE FROM vehicle_requests WHERE id IN (${ids.map(() => '?').join(',')})`, ids)).changes);
+      const deleted = await db.transaction(async tx => {
+        const marks=ids.map(()=>'?').join(',');
+        const resources=await tx.all(`SELECT vehicle_id,driver_id FROM trips WHERE vehicle_request_id IN (${marks})`,ids);
+        const schedules=`SELECT s.id FROM event_schedules s JOIN trips t ON t.id=s.trip_id WHERE t.vehicle_request_id IN (${marks})`;
+        await tx.run(`DELETE FROM schedule_expenses WHERE schedule_id IN (${schedules})`,ids);
+        await tx.run(`DELETE FROM event_schedules WHERE id IN (${schedules})`,ids);
+        const count=(await tx.run(`DELETE FROM vehicle_requests WHERE id IN (${marks})`,ids)).changes;
+        for(const vehicleId of new Set(resources.map(r=>r.vehicle_id))){
+          if(!await tx.get("SELECT id FROM trips WHERE vehicle_id=? AND status IN ('scheduled','in_progress') LIMIT 1",[vehicleId])) await tx.run("UPDATE vehicles SET status='available' WHERE id=? AND status IN ('scheduled','on_trip')",[vehicleId]);
+        }
+        for(const driverId of new Set(resources.map(r=>r.driver_id))){
+          if(!await tx.get("SELECT id FROM trips WHERE driver_id=? AND status='in_progress' LIMIT 1",[driverId])) await tx.run("UPDATE drivers SET status='available' WHERE id=? AND status='on_trip'",[driverId]);
+        }
+        return count;
+      });
       return { deleted, backup: backup.name };
     });
     await audit.from(req, { action: 'CLEANUP_DELETED', description: reason.trim(), oldValues: { request_ids: ids }, newValues: out });

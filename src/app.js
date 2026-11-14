@@ -28,7 +28,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 // Pages a requester-only (Staff) user may open; everything else sends them home.
 const REQUESTER_ALLOWED = new Set(['/dashboard.html', '/requests.html', '/request-create.html', '/request-detail.html', '/trips.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html']);
 // App-Owner-only pages (is_super_admin).
-const APP_OWNER_PAGES = new Set(['/broadcasts.html', '/backup-cleanup.html']);
+const APP_OWNER_PAGES = new Set(['/broadcasts.html', '/backup-cleanup.html', '/dropdowns.html', '/file-server.html']);
 // System section pages — the App Owner or a System Administrator (system.admin).
 const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
@@ -87,6 +87,7 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
   if (isProd) app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(requestId);
+  app.use(require('./middleware/requestLog'));
   // Google Maps JavaScript API endpoints (Live Map). The Maps JS key is a
   // referrer-restricted client key, so the script, its tiles/markers and its
   // XHRs must be allow-listed here while the rest of the CSP stays locked down.

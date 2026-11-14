@@ -11,7 +11,7 @@ const maintenanceAlerts = require('../../services/maintenanceAlerts');
 const { requireAuth } = require('../../middleware/auth');
 const { forbidden } = require('../../middleware/errorHandler');
 
-const MANAGES = ['administrator', 'supervisor', 'transport_admin'];
+const MANAGES = ['administrator', 'supervisor', 'transport_admin', 'schedule_transport_officer'];
 
 module.exports = function register(router) {
   router.get('/dashboard', requireAuth, async (req, res) => {
@@ -19,6 +19,11 @@ module.exports = function register(router) {
     const caps = user.is_super_admin ? require('../../services/capabilities').all() : await roleRepository.capsForUser(user.id);
     if (roles.isRequesterOnly(caps)) throw forbidden('The dashboard is not available for your role.');
 
+    if(caps.includes('fleet.global') && !caps.includes('requests.assign')) {
+      const vehicles=await db.all(`${loaders.VEHICLE_SELECT} WHERE v.deleted_at IS NULL ORDER BY v.vehicle_number`);
+      const drivers=await db.all(`${loaders.DRIVER_SELECT} WHERE d.deleted_at IS NULL ORDER BY d.name`);
+      return res.json({data:{fleet_only:true,vehicles:vehicles.map(present.vehicle),drivers:drivers.map(present.driver)}});
+    }
     const roleSlug = await roleRepository.roleSlugForUser(user.id);
     const manages = user.is_super_admin || MANAGES.includes(roleSlug);
     const isApprover = roleSlug === 'approver';

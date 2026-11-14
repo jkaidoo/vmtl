@@ -20,7 +20,7 @@ async function renderList() {
     const list = view.querySelector('#list'); const qs = new URLSearchParams(); qs.set('all', '1');
     if (view.querySelector('#fStatus').value) qs.set('status', view.querySelector('#fStatus').value);
     if (view.querySelector('#fSearch').value) qs.set('search', view.querySelector('#fSearch').value);
-    try { const r = await VMTL.pagedApi(`/vehicles?${qs}`, list, load); list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Number</th><th>Reg</th><th>Type</th><th>Make/Model</th><th>Odometer</th><th>Status</th></tr></thead><tbody>${r.data.map((v) => `<tr class="click" data-id="${v.id}"><td data-label="Number">${VMTL.esc(v.vehicle_number)}</td><td data-label="Reg">${VMTL.esc(v.registration_number)}</td><td data-label="Type">${VMTL.esc(v.vehicle_type_label || '—')}</td><td data-label="Make/Model">${VMTL.esc([v.make, v.model].filter(Boolean).join(' '))}</td><td data-label="Odometer">${VMTL.fmtNumber(v.current_odometer)} km</td><td data-label="Status">${VMTL.statusBadge(v)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No vehicles.</div>'; list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/vehicles.html?id=${tr.dataset.id}`); }
+    try { const r = await VMTL.pagedApi(`/vehicles?${qs}`, list, load); list.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>Number</th><th>Reg</th><th>Type</th><th>Make/Model</th><th>Odometer</th><th>Status</th></tr></thead><tbody>${r.data.map((v) => `<tr class="click" data-id="${v.id}"><td data-label="Number"><img src="${VMTL.esc(v.photo_url)}" alt="Vehicle" class="fleet-thumb" loading="lazy">${VMTL.esc(v.vehicle_number)}</td><td data-label="Reg">${VMTL.esc(v.registration_number)}</td><td data-label="Type">${VMTL.esc(v.vehicle_type_label || '—')}</td><td data-label="Make/Model">${VMTL.esc([v.make, v.model].filter(Boolean).join(' '))}</td><td data-label="Odometer">${VMTL.fmtNumber(v.current_odometer)} km</td><td data-label="Status">${VMTL.statusBadge(v)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No vehicles.</div>'; list.querySelectorAll('tr.click').forEach((tr) => tr.onclick = () => location.href = `/vehicles.html?id=${tr.dataset.id}`); }
     catch (e) { list.innerHTML = `<div class="empty">${VMTL.esc(e.message)}</div>`; }
   };
   view.querySelector('#fGo').onclick = load;
@@ -63,10 +63,11 @@ async function renderDetail(id) {
 
 function vehicleModal(v, done) {
   const e = v || {};
+  let savedRecord=null;
   const typeGroups = new Map();
   for (const option of VMTL.meta.enums.vehicle_type || []) { if (!typeGroups.has(option.group)) typeGroups.set(option.group, []); typeGroups.get(option.group).push(option); }
   const typeOpts = [...typeGroups].map(([group, options]) => `<optgroup label="${VMTL.esc(group)}">${options.map(o => `<option value="${o.value}" ${e.vehicle_type === o.value ? 'selected' : ''}>${VMTL.esc(o.label)}</option>`).join('')}</optgroup>`).join('');
-  const m = VMTL.openModal(`<div class="modal-head"><h3>${v ? 'Edit vehicle' : 'Add vehicle'}</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><form id="vf"><div class="form-grid">
+  const m = VMTL.openModal(`<div class="modal-head"><h3>${v ? 'Edit vehicle' : 'Add vehicle'}</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><form id="vf"><div class="form-grid">${VMTL.uploadFields('vehicle')}
     <div class="field"><label>Vehicle number</label><input name="vehicle_number" value="${VMTL.esc(e.vehicle_number || '')}" required></div>
     <div class="field"><label>Registration</label><input name="registration_number" value="${VMTL.esc(e.registration_number || '')}" required></div>
     <div class="field"><label>Make</label><input name="make" value="${VMTL.esc(e.make || '')}"></div>
@@ -85,9 +86,10 @@ function vehicleModal(v, done) {
   m.el.querySelector('[name=vehicle_type]').onchange = event => { const type = VMTL.meta.enums.vehicle_type.find(option => option.value === event.target.value); if (type) m.el.querySelector('[name=capacity]').value = type.seats; };
   m.el.querySelector('#save').onclick = async () => {
     const form = m.el.querySelector('#vf'); const body = {};
+    if(!form.reportValidity()) return;
     new FormData(form).forEach((val, k) => { if (val !== '') body[k] = val; });
     ['year', 'capacity', 'current_odometer', 'service_interval_km', 'org_unit_id'].forEach((k) => { if (body[k] != null) body[k] = Number(body[k]); });
-    try { if (v) await VMTL.api(`/vehicles/${v.id}`, { method: 'PUT', body }); else await VMTL.api('/vehicles', { method: 'POST', body }); m.close(); VMTL.toast('Saved.', 'success'); done(); }
-    catch (err) { VMTL.showErrors(err, form); }
+    try { const saved = (savedRecord || v) ? await VMTL.api(`/vehicles/${savedRecord?.data.id || v.id}`, { method: 'PUT', body }) : await VMTL.api('/vehicles', { method: 'POST', body }); savedRecord=saved; await VMTL.uploadFiles(form,'vehicle',saved.data.id); m.close(); VMTL.toast('Saved.', 'success'); done(); }
+    catch (err) { if(savedRecord) VMTL.toast('The record was saved. Fix the file issue and Save again to retry the upload.','error'); VMTL.showErrors(err, form); }
   };
 }

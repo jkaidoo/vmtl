@@ -1,0 +1,92 @@
+'use strict';
+process.env.VMTL_DB = ':memory:';
+delete process.env.DB_RUNTIME;
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const db = require('../src/db/runtime');
+const alerts = require('../src/services/securityAlerts');
+const email = require('../src/services/email');
+const log = require('../src/util/log');
+const flush = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };
+
+test('suspicious patterns trigger bounded alerts and configured recipients use the existing email sender', async t => {
+  const send = email.send; const sent = []; email.send = async (...args) => { sent.push(args); return { ok: true }; }; t.after(() => { email.send = send; });
+  await assert.rejects(alerts.save({ enabled: true, recipient: '' }), /valid recipient/);
+  await assert.rejects(alerts.save({ enabled: true, recipient: 'invalid' }), /valid recipient/);
+  await alerts.save({ enabled: true, recipient: 'Security@example.test, security@example.test, it@example.test' });
+  assert.equal((await alerts.config()).recipient, 'security@example.test, it@example.test');
+  for (let i = 0; i < 4; i++) alerts.loginFailure('account' + i, '192.0.2.1');
+  assert.equal(log.recent(500).filter(e => e.event === 'security_alert').length, 0);
+  alerts.loginFailure('account4', '192.0.2.1'); alerts.loginFailure('account5', '192.0.2.1');
+  await flush();
+  assert.equal(log.recent(500).filter(e => e.kind === 'multiple_accounts').length, 1);
+  assert.equal(sent.length, 1); assert.equal(sent[0][0], 'security@example.test, it@example.test'); assert.deepEqual(sent[0][3], { hub: true });
+  for (let i = 0; i < 5; i++) alerts.loginFailure('target', '198.51.100.' + i);
+  alerts.loginFailure('recovered', '203.0.113.1'); alerts.loginFailure('recovered', '203.0.113.1'); alerts.loginSuccess('recovered', '203.0.113.1');
+  await flush();
+  assert.equal(log.recent(500).filter(e => e.kind === 'multiple_addresses').length, 1);
+  assert.equal(log.recent(500).filter(e => e.kind === 'success_after_failures').length, 1);
+  alerts.loginSuccess('recovered', '203.0.113.1'); await flush(); assert.equal(sent.length, 3);
+  await alerts.save({ enabled: false, recipient: 'security@example.test' });
+  await alerts.alert('disabled_test', 'Alert is still recorded with emails disabled.');
+  assert.equal(sent.length, 3);
+  assert.equal((await db.get("SELECT COUNT(*) AS n FROM audit_logs WHERE action='security.alert'")).n, 4);
+});
+
+test('audit details obey organisation scope; runtime details and alert configuration require a system administrator', async t => {
+  await db.run("INSERT INTO roles(id,slug,name) VALUES(1,'viewer','Viewer'),(2,'system','System')");
+  await db.run("INSERT INTO role_capabilities(role_id,capability) VALUES(1,'audit.view'),(2,'audit.view'),(2,'system.admin')");
+  await db.run("INSERT INTO org_units(id,name,type) VALUES(1,'One','unit'),(2,'Two','unit')");
+  await db.run("INSERT INTO users(id,name,email,password_hash,role_id,org_unit_id) VALUES(1,'Viewer','one@test','x',1,1),(2,'Other','two@test','x',1,2),(3,'System','system@test','x',2,NULL)");
+  const audit = require('../src/services/audit');
+  await audit.record({ userId: 1, actorName: 'Viewer', action: 'detail_fixture', userAgent: 'Fixture browser', oldValues: { password_hash: 'must-hide', status: 'pending' }, newValues: { status: 'approved' } });
+  await audit.record({ userId: 2, action: 'other_fixture' });
+  const own = (await db.get("SELECT id FROM audit_logs WHERE action='detail_fixture'")).id;
+  const other = (await db.get("SELECT id FROM audit_logs WHERE action='other_fixture'")).id;
+  log.info('runtime_detail_fixture', { id: 'request-123', category: 'request', ip: '192.0.2.3', duration_ms: 42, nested: { api_key: 'never-show' } });
+  const runtimeId = log.recent(1)[0].id;
+  const express = require('express'); const app = require('../src/middleware/asyncSafe').asyncSafe(express()); app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: db.raw.prepare('SELECT * FROM users WHERE id=?').get(Number(req.headers['x-user'] || 0)) }; next(); });
+  require('../src/routes/api/audit')(app); require('../src/routes/api/admin')(app); app.use(require('../src/middleware/errorHandler'));
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const get = (url, user) => fetch(base + url, { headers: { 'x-user': String(user || 0) } });
+  assert.equal((await get('/audit-logs/' + own)).status, 401);
+  const entry = await (await get('/audit-logs/' + own, 1)).json(); assert.equal(entry.data.user_agent, 'Fixture browser'); assert.equal(entry.data.old_values.password_hash, '[redacted]');
+  assert.equal((await get('/audit-logs/' + other, 1)).status, 404);
+  assert.equal((await get('/audit-logs/' + other, 3)).status, 200);
+  assert.equal((await get('/admin/application-logs/' + runtimeId, 1)).status, 403);
+  const runtime = await (await get('/admin/application-logs/' + runtimeId, 3)).json();
+  assert.equal(runtime.data.request_id, 'request-123'); assert.equal(runtime.data.nested.api_key, '[redacted]');
+  assert.equal((await get('/admin/application-logs/999999', 3)).status, 404);
+  assert.equal((await get('/admin/security-alerts', 1)).status, 403);
+  assert.equal((await get('/admin/security-alerts', 3)).status, 200);
+  const put = (user, body) => fetch(base + '/admin/security-alerts', { method: 'PUT', headers: { 'x-user': String(user), 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await put(1, { enabled: true, recipient: 'security@example.test' })).status, 403);
+  assert.equal((await put(3, { enabled: true, recipient: 'bad' })).status, 400);
+  assert.equal((await put(3, { enabled: false, recipient: 'security@example.test' })).status, 200);
+});
+
+test('request logs keep the original API path through router mounts without logging query credentials or viewer polling', async t => {
+  const express = require('express'); const app = express(); app.use(require('../src/middleware/requestLog'));
+  const router = express.Router(); router.get('/fixture', (req, res) => res.json({ ok: true })); router.get('/admin/application-logs', (req, res) => res.json({})); app.use('/api', router);
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  await fetch(base + '/api/fixture?api_key=never-record-query');
+  const entry = log.recent(1)[0]; assert.equal(entry.path, '/api/fixture'); assert.equal(entry.category, 'request'); assert.equal(entry.status, 200); assert.ok(entry.duration_ms >= 0); assert.doesNotMatch(JSON.stringify(entry), /never-record-query/);
+  await fetch(base + '/api/admin/application-logs'); assert.equal(log.recent(1)[0].id, entry.id);
+});
+
+test('real sign-in failures alert when the administrator lock threshold is reached', async t => {
+  const prior = process.env.LOGIN_LOCK_THRESHOLD; process.env.LOGIN_LOCK_THRESHOLD = '2'; t.after(() => { if (prior === undefined) delete process.env.LOGIN_LOCK_THRESHOLD; else process.env.LOGIN_LOCK_THRESHOLD = prior; });
+  await db.run("INSERT INTO users(id,name,email,password_hash,is_super_admin) VALUES(4,'Locked Admin','locked-admin@example.test',?,1)", [require('../src/util/password').hashPassword('fixture-password')]);
+  const express = require('express'); const app = require('../src/middleware/asyncSafe').asyncSafe(express()); app.use(express.json());
+  app.use(require('express-session')({ secret: 'isolated-test-session', resave: false, saveUninitialized: false }));
+  require('../src/routes/api/auth')(app); app.use(require('../src/middleware/errorHandler'));
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
+  const login = () => fetch(`http://127.0.0.1:${server.address().port}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'locked-admin@example.test', password: 'wrong' }) });
+  assert.equal((await login()).status, 401); assert.equal((await login()).status, 401); await flush();
+  assert.equal(log.recent(500).filter(e => e.kind === 'administrator_locked').length, 1);
+  assert.equal((await login()).status, 429); await flush();
+  assert.equal(log.recent(500).filter(e => e.kind === 'administrator_locked').length, 1);
+});

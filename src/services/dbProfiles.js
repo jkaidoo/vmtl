@@ -11,7 +11,7 @@ const runtime = require('../db/runtime');
 
 const PROVIDERS = { SUPABASE: 'Supabase', NEON: 'Neon', AWS_RDS: 'AWS RDS', AZURE_POSTGRES: 'Azure Database for PostgreSQL', POSTGRES: 'Generic PostgreSQL' };
 // Parent-first so foreign keys resolve during a copy.
-const TABLES = ['roles', 'departments', 'org_units', 'users', 'vehicles', 'drivers', 'role_capabilities', 'vehicle_requests', 'request_approvals', 'trips', 'trip_stops', 'maintenance_records', 'odometer_readings', 'fuel_logs', 'audit_logs', 'system_settings', 'notifications', 'push_subscriptions'];
+const TABLES = ['roles', 'departments', 'org_units', 'users', 'vehicles', 'drivers', 'role_capabilities', 'vehicle_requests', 'request_approvals', 'trips', 'trip_stops', 'maintenance_records', 'odometer_readings', 'fuel_logs', 'audit_logs', 'system_settings', 'notifications', 'push_subscriptions', 'fleet_files', 'transport_events', 'event_schedules', 'schedule_expenses'];
 
 function encryptionConfigured() { return !!(process.env.DATABASE_PROFILE_ENCRYPTION_KEY || process.env.SESSION_SECRET); }
 function key() { return crypto.scryptSync(process.env.DATABASE_PROFILE_ENCRYPTION_KEY || process.env.SESSION_SECRET || 'dev-secret-change-me', 'vmtl-db-profiles', 32); }

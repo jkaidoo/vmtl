@@ -1,0 +1,7 @@
+'use strict';
+window.VMTL_PAGE=async()=>{
+ const view=VMTL.view;const data=(await VMTL.api('/dropdowns')).data;
+ view.innerHTML=VMTL.pageHead('Dropdowns','Edit fixed choices. Roles are managed on RBAC; people, vehicles and organisational units come from their own pages.')+`<div class="card pad"><div class="field"><label>Dropdown</label><select id="key">${Object.keys(data).filter(k=>k!=='role_type').map(k=>`<option>${VMTL.esc(k)}</option>`).join('')}</select></div><p class="dim">One choice per line: value | label. Workflow states and organisation types can be relabelled; their keys are fixed to preserve application rules.</p><form id="choices"><div class="field"><label>Choices</label><textarea id="items" rows="18" required></textarea></div><button class="btn btn-primary">Save choices</button></form></div>`;
+ const key=view.querySelector('#key'),items=view.querySelector('#items');const render=()=>items.value=data[key.value].map(o=>`${o.value} | ${o.label}`).join('\n');key.onchange=render;render();
+ view.querySelector('#choices').onsubmit=async e=>{e.preventDefault();try{const options=items.value.split('\n').filter(x=>x.trim()).map(line=>{const [value,...label]=line.split('|');return {value:value.trim(),label:label.join('|').trim()};});const r=await VMTL.api('/dropdowns/'+key.value,{method:'PUT',body:{options}});Object.assign(data,r.data);VMTL.meta.enums=r.data;VMTL.toast('Choices saved.','success');}catch(err){VMTL.showErrors(err);}};
+};

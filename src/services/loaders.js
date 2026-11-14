@@ -12,8 +12,8 @@ const REQUEST_SELECT = `
     LEFT JOIN users u ON u.id = r.requester_id
     LEFT JOIN roles ru ON ru.id = u.role_id`;
 
-const VEHICLE_SELECT = `SELECT v.*, o.name AS org_unit_name, o.type AS org_unit_type FROM vehicles v LEFT JOIN org_units o ON o.id = v.org_unit_id`;
-const DRIVER_SELECT = `SELECT d.*, o.name AS org_unit_name, o.type AS org_unit_type, u.email AS account_email FROM drivers d LEFT JOIN org_units o ON o.id = d.org_unit_id LEFT JOIN users u ON u.id = d.user_id`;
+const VEHICLE_SELECT = `SELECT v.*, (SELECT id FROM fleet_files WHERE entity_type='vehicle' AND entity_id=v.id AND kind='photo' ORDER BY id DESC LIMIT 1) AS photo_file_id, o.name AS org_unit_name, o.type AS org_unit_type FROM vehicles v LEFT JOIN org_units o ON o.id = v.org_unit_id`;
+const DRIVER_SELECT = `SELECT d.*, u.avatar AS account_avatar, (SELECT id FROM fleet_files WHERE entity_type='driver' AND entity_id=d.id AND kind='photo' ORDER BY id DESC LIMIT 1) AS photo_file_id, (SELECT id FROM fleet_files WHERE entity_type='driver' AND entity_id=d.id AND kind='licence' ORDER BY id DESC LIMIT 1) AS licence_file_id, o.name AS org_unit_name, o.type AS org_unit_type, u.email AS account_email FROM drivers d LEFT JOIN org_units o ON o.id = d.org_unit_id LEFT JOIN users u ON u.id = d.user_id`;
 
 async function approvalsFor(requestId) {
   const rows = await db.all(`SELECT a.*, u.name AS approver_name FROM request_approvals a LEFT JOIN users u ON u.id = a.approver_id WHERE a.vehicle_request_id = ? ORDER BY a.created_at`, [requestId]);

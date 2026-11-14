@@ -30,6 +30,8 @@ async function boot() {
   // self-creates its schema on require, so this is a no-op there.
   try { const applied = await runtime.ensureSchema(); if (applied.length) log.info('schema_migrated', { applied }); }
   catch (err) { log.error('schema_migration_failed', { message: err.message, stack: err.stack }); throw err; }
+  await require('./src/services/fleetSetup').ensureRoles();
+  await require('./src/services/dropdowns').options();
   // Record each start so App Health can report server starts and uptime.
   try { await require('./src/services/audit').record({ action: 'system.server_start', description: 'Application server started' }); } catch (_) { /* non-fatal */ }
 }

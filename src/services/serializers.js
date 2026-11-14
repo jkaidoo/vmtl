@@ -9,7 +9,7 @@ const roles = require('./roles');
 async function userForClient(userId) {
   const u = await db.get(
     `SELECT u.id, u.name, u.email, u.phone, u.active, u.is_super_admin, u.directory_provider, u.last_login_at, u.avatar,
-            u.role_id, r.slug AS role_slug, u.org_unit_id, o.name AS org_unit_name, o.path AS org_unit_path, o.type AS org_unit_type
+            u.role_id, r.slug AS role_slug, r.name AS role_name, u.org_unit_id, o.name AS org_unit_name, o.path AS org_unit_path, o.type AS org_unit_type
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id
        LEFT JOIN org_units o ON o.id = u.org_unit_id
@@ -21,7 +21,7 @@ async function userForClient(userId) {
     active: !!u.active, is_super_admin: !!u.is_super_admin,
     directory_provider: u.directory_provider, last_login_at: u.last_login_at,
     avatar: u.avatar || null,
-    role: u.role_slug ? { slug: u.role_slug, label: roles.LABELS[u.role_slug] || u.role_slug } : null,
+    role: u.role_slug ? { slug: u.role_slug, label: u.role_name || roles.LABELS[u.role_slug] || u.role_slug } : null,
     org_unit: u.org_unit_id ? { id: u.org_unit_id, name: u.org_unit_name, type: u.org_unit_type, path: u.org_unit_path } : null,
     capabilities: caps,
     requester_only: !u.is_super_admin && roles.isRequesterOnly(caps),

@@ -1,0 +1,36 @@
+'use strict';
+process.env.VMTL_DB = ':memory:';
+delete process.env.DB_RUNTIME;
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const db = require('../src/db/runtime');
+
+test('moving a client to Users preserves identity and request history, validates the role and enforces scope', async t => {
+  const org = require('../src/services/orgUnits');
+  const one = await org.create({ name: 'One', type: 'unit' }); const two = await org.create({ name: 'Two', type: 'unit' });
+  await db.run("INSERT INTO roles(id,slug,name) VALUES(1,'staff','Staff'),(2,'administrator','System Administrator'),(3,'supervisor','Supervisor')");
+  await db.run("INSERT INTO role_capabilities(role_id,capability) VALUES(1,'requests.create'),(2,'system.admin'),(3,'users.manage')");
+  await db.run("INSERT INTO users(id,name,email,is_super_admin,role_id,org_unit_id,directory_provider,staff_id) VALUES(1,'Owner','owner@test',1,NULL,NULL,NULL,NULL),(2,'Client','client@test',0,NULL,?,'ldap','STAFF-123'),(3,'Manager','manager@test',0,3,?,NULL,NULL)", [one, two]);
+  await db.run("INSERT INTO vehicle_requests(request_number,requester_id,travel_date,requested_start_time,expected_end_time,destination,purpose) VALUES('REQ-KEEP',2,'2026-11-14','09:00','10:00','Campus','Keep history')");
+  const express = require('express'); const app = require('../src/middleware/asyncSafe').asyncSafe(express()); app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: db.raw.prepare('SELECT * FROM users WHERE id=?').get(Number(req.headers['x-user'] || 0)) }; next(); });
+  require('../src/routes/api/users')(app); app.use(require('../src/middleware/errorHandler'));
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const patch = (user, body) => fetch(base + '/users/2', { method: 'PATCH', headers: { 'content-type': 'application/json', 'x-user': String(user) }, body: JSON.stringify(body) });
+  const list = async type => (await (await fetch(base + '/users?type=' + type, { headers: { 'x-user': '1' } })).json()).data;
+  assert.ok((await list('client')).some(u => u.id === 2));
+  assert.equal((await patch(2, { role_id: 1 })).status, 403);
+  assert.equal((await patch(3, { role_id: 1 })).status, 403);
+  assert.equal((await patch(1, { role_id: 999 })).status, 422);
+  assert.equal((await patch(1, { role_id: 0 })).status, 422);
+  await db.run('UPDATE users SET org_unit_id=? WHERE id=3', [one]);
+  assert.equal((await patch(3, { role_id: 2 })).status, 422);
+  const moved = await patch(1, { role_id: 1 }); assert.equal(moved.status, 200);
+  const user = (await moved.json()).data;
+  assert.equal(user.id, 2); assert.equal(user.role.id, 1); assert.equal(user.org_unit_id, one); assert.equal(user.directory_provider, 'ldap'); assert.equal(user.staff_id, 'STAFF-123');
+  assert.ok(!(await list('client')).some(u => u.id === 2)); assert.ok((await list('stakeholder')).some(u => u.id === 2));
+  assert.equal((await db.get("SELECT requester_id FROM vehicle_requests WHERE request_number='REQ-KEEP'")).requester_id, 2);
+  assert.equal((await db.get('SELECT password_hash FROM users WHERE id=2')).password_hash, null);
+  const event = await db.get("SELECT * FROM audit_logs WHERE action='user.promoted'"); assert.equal(event.entity_id, 2); assert.equal(JSON.parse(event.old_values).role_id, null); assert.equal(JSON.parse(event.new_values).role_id, 1);
+});

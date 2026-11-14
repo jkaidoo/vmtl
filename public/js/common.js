@@ -382,18 +382,19 @@
   const NAV = [
     { label: 'Workspace', items: [
       { key: 'dashboard', to: '/dashboard.html', label: 'Dashboard', icon: 'dashboard', mobile: true },
-      { key: 'requests', to: '/requests.html', label: 'Requests', icon: 'requests', roles: OPS, mobile: true },
-      { key: 'approvals', to: '/approvals.html', label: 'Approvals', icon: 'approvals', roles: ['approver', 'supervisor', 'administrator'], mobile: true },
+      { key: 'requests', anyCaps: ['requests.create', 'requests.view_all', 'requests.approve', 'requests.assign', 'system.admin'], to: '/requests.html', label: 'Requests', icon: 'requests', roles: OPS, mobile: true },
+      { key: 'approvals', anyCaps: ['requests.approve', 'system.admin'], to: '/approvals.html', label: 'Approvals', icon: 'approvals', roles: ['approver', 'supervisor', 'administrator'], mobile: true },
       { key: 'goodwill', to: '/goodwill.html', label: 'Goodwill', icon: 'gift', cap: 'requests.create_goodwill' },
       { key: 'external', to: '/external-travel.html', label: 'External Travel', icon: 'plane', cap: 'requests.create_external' },
-      { key: 'trips', to: '/trips.html', label: 'Trips', icon: 'trips', mobile: true },
+      { key: 'trips', anyCaps:['trips.operate','requests.assign','requests.view_all'], roles:['driver','transport_admin','approver','administrator','supervisor'], to: '/trips.html', label: 'Trips', icon: 'trips', mobile: true },
     ] },
     { label: 'Fleet', items: [
-      { key: 'vehicles', to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
-      { key: 'tracking', to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
-      { key: 'schedule', to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
-      { key: 'drivers', to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
-      { key: 'maintenance', to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'vehicles', anyCaps: ['vehicles.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
+      { key: 'tracking', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
+      {key:'event-schedules',to:'/event-schedules.html',label:'IDL event scheduling',icon:'calendar',cap:'schedule.events'},
+      { key: 'schedule', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
+      { key: 'drivers', anyCaps: ['drivers.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
+      { key: 'maintenance', anyCaps: ['maintenance.manage', 'system.admin'], to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
     ] },
     { label: 'Insights', items: [
@@ -407,6 +408,8 @@
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },
     { label: 'System', items: [
+      {key:'dropdowns',to:'/dropdowns.html',label:'Dropdowns',icon:'sliders',superOnly:true},
+      {key:'file-server',to:'/file-server.html',label:'File Server',icon:'database',superOnly:true},
       { key: 'app-health', to: '/app-health.html', label: 'App Health', icon: 'health', systemAdmin: true },
       { key: 'rbac', to: '/rbac.html', label: 'RBAC', icon: 'shield', systemAdmin: true },
       { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', systemAdmin: true },
@@ -435,7 +438,7 @@
     if (item.superOnly) return VMTL.isSuper();
     if (item.systemAdmin) return VMTL.isSuper() || VMTL.can('system.admin');
     if (item.cap) return VMTL.can(item.cap);
-    if (item.roles) return VMTL.roleSlug() && item.roles.includes(VMTL.roleSlug());
+    if (item.roles) return (VMTL.roleSlug() && item.roles.includes(VMTL.roleSlug())) || (item.anyCaps || []).some(cap => VMTL.can(cap));
     return true;
   }
 
@@ -660,6 +663,8 @@
       trip_stop_accepted: `"${d.destination || ''}" accepted on ${d.trip_number || ''}`,
       trip_stop_declined: `"${d.destination || ''}" declined on ${d.trip_number || ''}`,
       trip_delay_warning: `Possible delay to trip ${d.trip_number || ''}`,
+      trip_rescheduled: `Trip ${d.trip_number || ''} rescheduled: ${d.vehicle || ''} ${d.start || ''} → ${d.end || ''}`,
+      trip_cancelled: `Trip ${d.trip_number || ''} was cancelled`,
       ou_change_pending: `${d.name || 'A staff member'}'s unit changed: ${d.from || '—'} → ${d.to || '—'} — review in Clients`,
       ou_auto_moved: `${d.name || 'A staff member'} was automatically moved to ${d.to || 'a new unit'}`,
       compliance_digest: `Fleet compliance: ${d.total || 0} item(s) need attention${d.summary ? ` — ${d.summary}` : ''}`,
@@ -672,7 +677,7 @@
   VMTL.pageHead = (title, sub, actions) => `<div class="page-head"><div><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>${actions ? `<div class="btn-row">${actions}</div>` : ''}</div>`;
   // Indented org-unit <option>s from the scoped meta list.
   VMTL.orgUnitOptions = (selected) => (VMTL.meta.org_units || []).map((u) => `<option value="${u.id}" ${String(selected) === String(u.id) ? 'selected' : ''}>${'  '.repeat(u.depth || 0)}${esc(u.name)}</option>`).join('');
-  VMTL.enumOptions = (name, selected) => (VMTL.meta.enums[name] || []).map((o) => `<option value="${o.value}" ${String(selected) === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+  VMTL.enumOptions = (name, selected) => (VMTL.meta.enums[name] || []).map((o) => `<option value="${esc(o.value)}" ${String(selected) === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
 
   // ---- trip progress graphic (ports lib/trip.ts + TripProgress.tsx) -----
   const MIN = 60000;
@@ -843,3 +848,22 @@
     }).catch(() => {});
   });
 })();
+
+VMTL.uploadFields = type => type === 'maintenance' ? '<div class="field"><label>Receipt (image or PDF)</label><input type="file" data-upload="receipt" accept="image/jpeg,image/png,image/webp,application/pdf"></div>' : '<div class="field"><label>Photo</label><input type="file" data-upload="photo" accept="image/jpeg,image/png,image/webp"></div>' + (type==='driver' ? '<div class="field"><label>Licence photo</label><input type="file" data-upload="licence" accept="image/jpeg,image/png,image/webp"></div>' : '');
+VMTL.uploadFiles = async (form,type,id) => {
+ for(const input of form.querySelectorAll('[data-upload]')) {
+  let file=input.files[0]; if(!file) continue;
+  const cfg=await VMTL.api('/file-upload-config');if(!cfg.enabled) throw Error('File uploads are turned off.');
+  if(file.type.startsWith('image/')){
+   const bitmap=await createImageBitmap(file);const scale=Math.min(1,cfg.images.maxEdge/Math.max(bitmap.width,bitmap.height));
+   const canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',cfg.images.quality));if(blob)file=new File([blob],file.name.replace(/\.[^.]+$/,'.webp'),{type:'image/webp'});
+  }
+  if(file.size>cfg.maxMB*1048576) throw Error(`File exceeds the ${cfg.maxMB} MB limit.`);
+  if(file.size>8*1024*1024) throw Error('File exceeds the 8 MB maximum.');
+  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});
+  await VMTL.api(`/fleet-files/${type}/${id}/${input.dataset.upload}`,{method:'POST',body:{data,name:file.name}}); input.value='';
+ }
+};
+VMTL.otherField = field => `<select name="${field}" required>${VMTL.enumOptions(field)}</select><input name="${field}_other" placeholder="Enter name" hidden maxlength="255">`;
+VMTL.bindOther = (root,field) => {const select=root.querySelector(`[name=${field}]`),input=root.querySelector(`[name=${field}_other]`);const sync=()=>{input.hidden=select.value!=='other'; input.required=!input.hidden;};select.onchange=sync;sync();};

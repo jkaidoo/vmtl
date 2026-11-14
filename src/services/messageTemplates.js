@@ -15,13 +15,15 @@ const EVENTS = {
   trip_stop_accepted: ['Added destination accepted', 'When the driver accepts an added destination.', 'Hello {recipient_name},\n\nThe destination {destination} has been accepted for trip {trip_number}.'],
   trip_stop_declined: ['Added destination declined', 'When the driver declines an added destination.', 'Hello {recipient_name},\n\nThe destination {destination} has been declined for trip {trip_number}.'],
   trip_delay_warning: ['Possible trip delay', 'When a trip may be delayed.', 'Hello {recipient_name},\n\nTrip {trip_number} may be delayed. Please check the trip for updates.'],
+  trip_rescheduled: ['Trip rescheduled', 'When a scheduled trip\'s time, vehicle or destination changes.', 'Hello {recipient_name},\n\nTrip {trip_number} has been rescheduled. Vehicle {vehicle}, {start} to {end}.'],
+  trip_cancelled: ['Trip cancelled', 'When a scheduled trip is cancelled or reassigned to another driver.', 'Hello {recipient_name},\n\nTrip {trip_number} has been cancelled. You are no longer assigned to it.'],
   ou_change_pending: ['Organisational-unit change pending', 'When staff sync detects a change that needs review.', 'Hello {recipient_name},\n\n{name} has moved from {from} to {to} in the staff directory. Please review the pending change.'],
   ou_auto_moved: ['Organisational-unit updated', 'When a pending staff organisational-unit move is applied.', 'Hello {recipient_name},\n\n{name} has been moved to {to} after the organisational-unit change grace period.'],
   compliance_digest: ['Fleet compliance reminder', 'When fleet documents or services need attention.', 'Hello {recipient_name},\n\n{summary}'],
   broadcast: ['{title}', 'When an administrator sends a broadcast.', '{message}'],
   notification: ['{title}', 'Fallback for other notification types.', '{message}'],
 };
-const SAMPLE = { recipient_name: 'Ama Mensah', request_number: 'REQ-2026-0042', requester: 'Kwame Asante', trip_number: 'TRP-2026-0018', vehicle: 'UITS 012', distance: '42', destination: 'KNUST Main Administration', reason: 'Please update the travel date and passenger count.', comment: 'Approved for the requested travel date.', note: 'Please meet at the UITS car park.', name: 'Kwame Asante', from: 'College of Science', to: 'University Information Technology Services', summary: '2 insurance certificates and 1 vehicle service need attention.', title: 'Service update', message: 'Vehicle requests are now open for the coming week.' };
+const SAMPLE = { recipient_name: 'Ama Mensah', request_number: 'REQ-2026-0042', requester: 'Kwame Asante', trip_number: 'TRP-2026-0018', vehicle: 'UITS 012', start: '2026-12-01 08:00', end: '2026-12-01 18:00', distance: '42', destination: 'KNUST Main Administration', reason: 'Please update the travel date and passenger count.', comment: 'Approved for the requested travel date.', note: 'Please meet at the UITS car park.', name: 'Kwame Asante', from: 'College of Science', to: 'University Information Technology Services', summary: '2 insurance certificates and 1 vehicle service need attention.', title: 'Service update', message: 'Vehicle requests are now open for the coming week.' };
 function channelCheck(channel) { if (!['email', 'sms'].includes(channel)) throw bad('Choose email or SMS.'); }
 function definitions(channel) {
   channelCheck(channel);

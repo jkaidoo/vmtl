@@ -9,6 +9,9 @@ window.VMTL_PAGE = async function () {
   try { data = (await VMTL.api('/dashboard')).data; }
   catch (e) { view.innerHTML = `<div class="empty">${VMTL.esc(e.message || 'Could not load the dashboard.')}</div>`; return; }
 
+  if(data.fleet_only){
+    view.innerHTML=VMTL.pageHead('University fleet','All vehicles and drivers across organisational units.','<a class="btn btn-primary" href="/vehicles.html">Manage vehicles</a><a class="btn" href="/drivers.html">Manage drivers</a>')+`<div class="grid cols-2"><div class="card pad"><h3>${data.vehicles.length} vehicles</h3>${data.vehicles.map(v=>`<p><a href="/vehicles.html?id=${v.id}">${VMTL.esc(v.vehicle_number)}</a> · ${VMTL.esc(v.org_unit?.name||'Unassigned')} ${VMTL.statusBadge(v)}</p>`).join('')}</div><div class="card pad"><h3>${data.drivers.length} drivers</h3>${data.drivers.map(d=>`<p>${VMTL.esc(d.name)} · ${VMTL.esc(d.org_unit?.name||'Unassigned')} ${VMTL.statusBadge(d)}</p>`).join('')}<a href="/drivers.html">Open driver management</a></div></div>`; return;
+  }
   const c = data.cards;
   const kpi = (label, value, sub, href) => `<a href="${href}" class="kpi"><div class="label">${label}</div><div class="value metric">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</a>`;
   const statusBadge = (s, label, color) => VMTL.badge(label || s, color || 'grey');

@@ -1,0 +1,50 @@
+'use strict';
+process.env.VMTL_DB = ':memory:';
+if (process.env.VMTL_TEST_ROLES_PG === '1') { process.env.DB_RUNTIME = 'postgres'; process.env.PGLITE_DIR = 'memory://'; delete process.env.DATABASE_URL; }
+else delete process.env.DB_RUNTIME;
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const db = require('../src/db/runtime');
+const roles = require('../src/services/roleManagement');
+
+test('role lifecycle validates input, preserves account access on deletion, updates navigation and audits changes', async t => {
+  if (db.isPostgres()) { await db.ensureSchema(); t.after(() => require('../src/db/postgres').close()); }
+  await db.run("INSERT INTO roles(id,slug,name) VALUES(100,'administrator','Administrator'),(101,'staff','Staff')");
+  await db.run("INSERT INTO role_capabilities(role_id,capability) VALUES(100,'system.admin'),(101,'requests.create')");
+  await db.run("INSERT INTO users(id,name,email,is_super_admin,role_id) VALUES(1,'Owner','owner@test',1,NULL),(2,'Admin','admin@test',0,100),(3,'Staff','staff@test',0,101)");
+  const express = require('express'); const app = require('../src/middleware/asyncSafe').asyncSafe(express()); app.use(express.json());
+  app.use(async (req, res, next) => { req.session = { user: await db.get('SELECT * FROM users WHERE id=?', [Number(req.headers['x-user'] || 0)]) }; next(); });
+  require('../src/routes/api/rbac')(app); app.use(require('../src/middleware/errorHandler'));
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
+  const request = (method, url, body, user = 1) => fetch(`http://127.0.0.1:${server.address().port}/rbac${url}`, { method, headers: { 'content-type': 'application/json', 'x-user': String(user) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  assert.equal((await request('POST', '/roles', { name: 'Forbidden' }, 3)).status, 403);
+  assert.equal((await request('POST', '/roles', { name: '' })).status, 422);
+  assert.equal((await request('POST', '/roles', { name: 'Invalid', slug: '__owner__' })).status, 422);
+  assert.equal((await request('POST', '/roles', { name: 'Invalid', capabilities: ['invented'] })).status, 422);
+  const response = await request('POST', '/roles', { name: 'Dispatch team', description: 'Handles assignments', capabilities: ['requests.assign', 'requests.create'] });
+  assert.equal(response.status, 201);
+  const role = (await response.json()).data.roles.find(r => r.slug === 'dispatch_team'); assert.ok(role); assert.equal(Number(role.user_count), 0);
+  assert.equal((await request('POST', '/roles', { name: 'Dispatch team' })).status, 409);
+  const update = await request('PUT', '/roles/' + role.id, { name: 'Fleet dispatch', description: 'Coordinates vehicles' }); assert.equal(update.status, 200);
+  assert.equal((await request('PUT', '/roles/' + role.id, { name: 'Changed', slug: 'changed_key' })).status, 422);
+  await db.run('UPDATE users SET role_id=? WHERE id=3', [role.id]);
+  const dto = await require('../src/services/serializers').userForClient(3); assert.equal(dto.role.label, 'Fleet dispatch'); assert.equal(dto.requester_only, false);
+  const layout = await require('../src/services/navigation').effective({ id: 3 }); const keys = layout.sections.flatMap(s => s.items.map(i => i.key)); assert.ok(keys.includes('vehicles')); assert.ok(keys.includes('schedule'));
+  assert.equal((await request('DELETE', '/roles/' + role.id, {})).status, 409);
+  assert.equal((await request('DELETE', '/roles/' + role.id, { replacement_role_id: role.id })).status, 422);
+  assert.equal((await request('DELETE', '/roles/' + role.id, { replacement_role_id: 99999 })).status, 422);
+  await require('../src/services/settings').set('navigation_layout:dispatch_team', '{}');
+  assert.equal((await request('DELETE', '/roles/' + role.id, { replacement_role_id: 101 })).status, 200);
+  assert.equal((await db.get('SELECT role_id FROM users WHERE id=3')).role_id, 101);
+  assert.equal(await db.get('SELECT id FROM roles WHERE id=?', [role.id]), undefined);
+  assert.equal((await db.get('SELECT COUNT(*) AS n FROM role_capabilities WHERE role_id=?', [role.id])).n, 0);
+  assert.equal(await require('../src/services/settings').get('navigation_layout:dispatch_team'), null);
+  for (const action of ['role.created', 'role.updated', 'role.deleted']) assert.ok(await db.get('SELECT id FROM audit_logs WHERE action=?', [action]));
+  assert.equal((await request('DELETE', '/roles/100', { replacement_role_id: 101 }, 2)).status, 409);
+  assert.equal((await request('PUT', '/roles/100/capabilities', { capabilities: [] }, 2)).status, 409);
+  const unused = await roles.create({ name: 'Unused' }); assert.equal((await request('DELETE', '/roles/' + unused.id, {})).status, 200);
+  const system = await roles.create({ name: 'Custom system role', capabilities: ['requests.create', 'system.admin'] });
+  await db.run('UPDATE users SET role_id=? WHERE id=3', [system.id]);
+  assert.equal((await require('../src/services/serializers').userForClient(3)).requester_only, false);
+  assert.ok((await require('../src/services/navigation').effective({ id: 3 })).sections.flatMap(s => s.items).some(i => i.key === 'rbac'));
+});

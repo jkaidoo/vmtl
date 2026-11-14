@@ -22,6 +22,8 @@ function describe(type, data) {
     trip_stop_accepted: ['Added destination accepted', `"${data.destination || ''}" was accepted on ${data.trip_number || ''}.`],
     trip_stop_declined: ['Added destination declined', `"${data.destination || ''}" was declined on ${data.trip_number || ''}.`],
     trip_delay_warning: ['Possible delay', `Trip ${data.trip_number || ''} may be delayed.`],
+    trip_rescheduled: ['Trip rescheduled', `Trip ${data.trip_number || ''} was rescheduled (${data.start || ''} to ${data.end || ''}).`],
+    trip_cancelled: ['Trip cancelled', `Trip ${data.trip_number || ''} was cancelled.`],
   };
   return map[type] || [data.title || 'Notification', data.message || data.summary || ''];
 }

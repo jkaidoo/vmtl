@@ -14,11 +14,11 @@ function toE164(raw) {
   return `+${d}`;
 }
 
-async function enabled() { return !!(await settings.get('sms_enabled', false)); }
-async function activeProvider() { return (await settings.get('sms_provider', 'hubtel')) || 'hubtel'; }
+async function enabled() { return [true, 1, '1', 'true'].includes(await settings.get('sms_enabled', false)); }
+async function activeProvider() { return (await settings.get('sms_provider', 'mnotify')) || 'mnotify'; }
 
-async function send(to, message) {
-  if (!(await enabled())) return { ok: false, message: 'SMS is not enabled.' };
+async function send(to, message, { force = false } = {}) {
+  if (!force && !(await enabled())) return { ok: false, message: 'SMS is not enabled.' };
   const provider = await activeProvider();
   const sender = (await settings.get('sms_sender_id', 'UITS')) || 'UITS';
   const number = toE164(to);
@@ -31,10 +31,13 @@ async function send(to, message) {
       return { ok: res.ok, message: res.ok ? `Sent via Arkesel to ${number}.` : `Arkesel error: ${JSON.stringify(body)}` };
     }
     if (provider === 'mnotify') {
-      const key = await settings.get('mnotify_api_key', '');
+      const key = await settings.get('sms_api_key', '') || await settings.get('mnotify_api_key', '') || process.env.SMS_API_KEY || '';
       if (!key) return { ok: false, message: 'mNotify API key is not set.' };
-      const res = await fetch(`https://api.mnotify.com/api/sms/quick?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: [number.replace('+', '')], sender, message }) });
-      return { ok: res.ok, message: res.ok ? `Sent via mNotify to ${number}.` : `mNotify error (${res.status}).` };
+      const url = new URL(await settings.get('sms_api_url', '') || process.env.SMS_API_URL || 'https://api.mnotify.com/api/sms/quick'); url.searchParams.set('key', key);
+      const res = await fetch(url, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: [number.replace('+', '')], sender, message, is_schedule: 'false', schedule_date: '' }), signal: AbortSignal.timeout(10000) });
+      const data = await res.json().catch(() => ({}));
+      const ok = res.ok && (data.status === 'success' || String(data.code) === '2000');
+      return { ok, message: ok ? `Sent via mNotify to ${number}.` : `mNotify rejected the message (HTTP ${res.status}). Check the API key and approved sender ID.` };
     }
     if (provider === 'hubtel') {
       const id = await settings.get('hubtel_client_id', ''); const secret = await settings.get('hubtel_client_secret', '');

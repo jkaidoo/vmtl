@@ -7,6 +7,8 @@ const router = asyncSafe(express.Router());
 
 require('./api/auth')(router);
 require('./api/meta')(router);
+require('./api/fleet-operations')(router);
+require('./api/event-schedules')(router);
 require('./api/dashboard')(router);
 require('./api/notifications')(router);
 require('./api/push')(router);

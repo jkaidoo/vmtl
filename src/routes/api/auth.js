@@ -2,10 +2,11 @@
 // Authentication: local-first sign-in (directory/LDAP fallback added later),
 // session lifecycle, the current-user endpoint and avatar upload.
 const db = require('../../db/runtime');
-const { verifyPassword } = require('../../util/password');
+const { verifyPassword, hashPassword, passwordProblems } = require('../../util/password');
 const { userForClient, sessionSnapshot } = require('../../services/serializers');
 const { requireAuth } = require('../../middleware/auth');
 const audit = require('../../services/audit');
+const securityAlerts = require('../../services/securityAlerts');
 const sessionPolicy = require('../../config/sessionPolicy');
 const { badRequest } = require('../../middleware/errorHandler');
 
@@ -29,6 +30,9 @@ module.exports = function register(router) {
     const windowStart = new Date(Date.now() - LOCK_WINDOW_MIN * 60000).toISOString().slice(0, 19).replace('T', ' ');
     const recentFails = (await db.get("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'auth.login_failed' AND lower(actor_name) = ? AND created_at >= ?", [email, windowStart])).n;
     if (recentFails >= LOCK_THRESHOLD) {
+      securityAlerts.loginFailure(email, req.ip);
+      const locked = await db.get('SELECT id, role_id, is_super_admin FROM users WHERE lower(email)=? AND deleted_at IS NULL', [email]);
+      if (locked && (locked.is_super_admin || (await require('../../services/roleRepository').capsForUser(locked.id)).includes('system.admin'))) securityAlerts.background(securityAlerts.alert('administrator_locked', 'An administrator account was temporarily locked after failed sign-ins.', { user_id: locked.id, ip: req.ip }, `locked:${locked.id}`));
       return res.status(429).json({ error: `Too many failed sign-in attempts. Please wait ${LOCK_WINDOW_MIN} minutes and try again.` });
     }
 
@@ -53,11 +57,14 @@ module.exports = function register(router) {
     }
 
     if (!ok) {
+      securityAlerts.loginFailure(email, req.ip);
       await audit.record({ actorName: email, action: 'auth.login_failed', description: `Failed sign-in for ${email}`, ip: req.ip, userAgent: req.headers['user-agent'] });
+      if (recentFails + 1 >= LOCK_THRESHOLD && user && (user.is_super_admin || (await require('../../services/roleRepository').capsForUser(user.id)).includes('system.admin'))) securityAlerts.background(securityAlerts.alert('administrator_locked', 'An administrator account was temporarily locked after failed sign-ins.', { user_id: user.id, ip: req.ip }, `locked:${user.id}`));
       return res.status(401).json({ error: 'Those credentials do not match our records.' });
     }
 
     const mode = sessionModeFor(req.body.device_name);
+    securityAlerts.loginSuccess(email, req.ip);
     await new Promise((resolve, reject) => req.session.regenerate((err) => (err ? reject(err) : resolve())));
     req.session.user = sessionSnapshot(user);
     req.session.mode = mode;
@@ -81,6 +88,24 @@ module.exports = function register(router) {
     const dto = await userForClient(req.session.user.id);
     if (!dto) { return req.session.destroy(() => res.status(401).json({ error: 'Not authenticated' })); }
     res.json({ user: dto });
+  });
+
+  // Self-service password change. Requires the current password, an active local
+  // account and a new password that meets the complexity policy and differs from
+  // the current one. Directory accounts manage their password in the directory.
+  router.post('/me/password', requireAuth, async (req, res) => {
+    const current = String(req.body.current_password || '');
+    const next = String(req.body.new_password || '');
+    const user = await db.get('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL', [req.session.user.id]);
+    if (!user || !user.active) return req.session.destroy(() => res.status(401).json({ error: 'Not authenticated' }));
+    if (!user.password_hash) throw badRequest('Your password is managed by your directory sign-in. Change it there.');
+    if (!verifyPassword(current, user.password_hash)) throw badRequest('The given data was invalid.', { current_password: ['That does not match your current password.'] });
+    const problems = passwordProblems(next);
+    if (problems.length) throw badRequest('The given data was invalid.', { new_password: problems });
+    if (verifyPassword(next, user.password_hash)) throw badRequest('The given data was invalid.', { new_password: ['Choose a password different from your current one.'] });
+    await db.run(`UPDATE users SET password_hash = ?, updated_at = ${db.now()} WHERE id = ?`, [hashPassword(next), user.id]);
+    await audit.record({ userId: user.id, actorName: user.name, action: 'auth.password_changed', description: `${user.name} changed their password`, ip: req.ip, userAgent: req.headers['user-agent'] });
+    res.json({ ok: true });
   });
 
   router.post('/me/avatar', requireAuth, async (req, res) => {

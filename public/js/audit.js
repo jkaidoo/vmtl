@@ -5,6 +5,17 @@
 window.VMTL_PAGE = async function () {
   const view = VMTL.view;
   const esc = VMTL.esc;
+  const current = window.WalkinUI?.captureView() || (() => view.isConnected);
+  if (!window.VMTL_MOUNT_APPLICATION_LOGS) {
+    window.__logToolsLoad ||= new Promise((resolve, reject) => {
+      const script = document.createElement('script'); script.src = '/js/application-logs.js';
+      script.onload = resolve; script.onerror = () => { window.__logToolsLoad = null; reject(new Error('Could not load log viewer.')); }; document.head.appendChild(script);
+    });
+    await window.__logToolsLoad;
+  }
+  if (!current()) return;
+  let application = false, applicationViewer = null, version = 0;
+  VMTL.onLeave(() => { ++version; applicationViewer?.setActive(false); });
   const TABS = [
     { label: 'All activity', entity: '' },
     { label: 'Requests', entity: 'vehicle_request' },
@@ -15,7 +26,7 @@ window.VMTL_PAGE = async function () {
   ];
   // The server runtime log is visible only to the app owner (System Administrator).
   if (VMTL.isSuper() || VMTL.can('system.admin')) TABS.push({ label: 'Application logs', appLogs: true });
-  let appLevel = 'all';
+
   const state = { entity: '', search: '', from: '', to: '', page: 1, perPage: 10, sort: 'desc', total: 0, lastPage: 1 };
 
   const prettyAction = (a) => String(a || '').replace(/[._]/g, ' ').toUpperCase();
@@ -53,10 +64,12 @@ window.VMTL_PAGE = async function () {
   };
 
   const load = async () => {
+    const request = ++version;
     const list = view.querySelector('#list');
     list.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
     try {
       const r = await VMTL.api(`/audit-logs?${qs({ page: state.page, per_page: state.perPage })}`);
+      if (!current() || application || request !== version) return;
       state.total = r.meta.total; state.lastPage = r.meta.last_page;
       view.querySelector('#count').textContent = `${r.meta.total.toLocaleString()} ${r.meta.total === 1 ? 'entry' : 'entries'} · page ${r.meta.current_page} of ${r.meta.last_page}`;
       view.querySelector('#prev').disabled = state.page <= 1;
@@ -67,13 +80,20 @@ window.VMTL_PAGE = async function () {
         <td data-label="Action"><span class="audit-chip">${esc(prettyAction(a.action))}</span></td>
         <td data-label="By">${esc(a.actor || '—')}</td>
         <td data-label="Record">${a.entity_type ? `<strong>${esc(prettyType(a.entity_type))}</strong>${a.entity_id ? `<span class="rec-id">#${esc(a.entity_id)}</span>` : ''}` : '—'}</td>
-        <td data-label="Detail">${esc(a.description || '')}</td></tr>`).join('');
+        <td data-label="Detail">${esc(a.description || '')}</td><td><button class="btn btn-sm" data-audit-detail="${a.id}">Details</button></td></tr>`).join('');
       list.innerHTML = r.data.length
-        ? `<table class="data"><thead><tr><th class="sortable" id="sortWhen">When<span class="sort-ind">${arrow}</span></th><th>Action</th><th>By</th><th>Record</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`
+        ? `<table class="data"><thead><tr><th class="sortable" id="sortWhen">When<span class="sort-ind">${arrow}</span></th><th>Action</th><th>By</th><th>Record</th><th>Detail</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
         : '<div class="empty">No entries.</div>';
+      list.querySelectorAll('[data-audit-detail]').forEach(button => button.onclick = async () => {
+        button.disabled = true;
+        try {
+          const entry = (await VMTL.api(`/audit-logs/${button.dataset.auditDetail}`)).data;
+          if (current() && !application) window.VMTL_LOG_DETAIL('Audit entry details', entry, 'audit');
+        } catch (error) { if (current()) VMTL.showErrors(error); } finally { button.disabled = false; }
+      });
       const sw = view.querySelector('#sortWhen');
       if (sw) sw.onclick = () => { state.sort = state.sort === 'asc' ? 'desc' : 'asc'; state.page = 1; load(); };
-    } catch (e) { list.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { if (!current() || application || request !== version) return; list.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   };
 
   // Tabs
@@ -81,6 +101,7 @@ window.VMTL_PAGE = async function () {
   const bar = view.querySelector('.audit-bar');
   view.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => {
     view.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
+    application = !!b.dataset.applogs; ++version; applicationViewer?.setActive(false);
     if (b.dataset.applogs) { filterCard.classList.add('hidden'); bar.classList.add('hidden'); renderAppLogs(); return; }
     filterCard.classList.remove('hidden'); bar.classList.remove('hidden');
     state.entity = b.dataset.entity; state.page = 1; load();
@@ -110,19 +131,10 @@ window.VMTL_PAGE = async function () {
 
   async function renderAppLogs() {
     const list = view.querySelector('#list');
-    const levelBadge = (l) => VMTL.badge((l || 'info').toUpperCase(), l === 'error' ? 'red' : l === 'warn' ? 'amber' : l === 'success' ? 'green' : l === 'info' ? 'blue' : 'grey');
-    try {
-      let logs = view.querySelector('#applicationEntries');
-      if (!logs) { list.innerHTML = '<div class="pad"><div class="row wrap gap-sm"><label>Level <select id="appLevel"><option value="all">All</option><option value="error">Errors</option><option value="warn">Warnings</option><option value="info">Info</option><option value="success">Success</option></select></label><input id="appSearch" placeholder="Search application logs"><button class="btn btn-sm" id="appRefresh">Refresh</button></div><p class="dim">Latest 500 events from the current server process.</p></div><div id="applicationEntries" data-app-logs></div>'; logs = view.querySelector('#applicationEntries'); }
-      const query = new URLSearchParams({ level: appLevel, search: view.querySelector('#appSearch').value });
-      const r = await VMTL.pagedApi(`/admin/application-logs?${query}`, logs, renderAppLogs);
-      const rows = r.data.map((e) => `<tr><td data-label="Level">${levelBadge(e.level)}</td><td data-label="When">${VMTL.fmtDateTime(e.timestamp)}</td><td data-label="Event"><span class="audit-chip">${esc(String(e.event || '').toUpperCase())}</span></td><td data-label="Message">${esc(e.message || '')}${e.data ? ` <span class="dim" style="font-size:12px;font-family:var(--mono)">${esc(e.data)}</span>` : ''}</td></tr>`).join('');
-      logs.innerHTML = r.data.length ? `<table class="data"><thead><tr><th>LEVEL</th><th>WHEN</th><th>EVENT</th><th>MESSAGE</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No log entries.</div>';
-      const sel = view.querySelector('#appLevel'); if (sel) { sel.value = appLevel; sel.onchange = () => { appLevel = sel.value; renderAppLogs(); }; }
-      view.querySelector('#appSearch').onkeydown = e => { if (e.key === 'Enter') renderAppLogs(); };
-      const rf = view.querySelector('#appRefresh'); if (rf) rf.onclick = renderAppLogs;
-    } catch (e) { list.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    if (!applicationViewer || !list.querySelector('[data-application-viewer]')) applicationViewer = window.VMTL_MOUNT_APPLICATION_LOGS(list);
+    applicationViewer.setActive(true);
   }
 
-  load();
+  if (location.hash === '#application' && view.querySelector('[data-applogs]')) view.querySelector('[data-applogs]').click();
+  else await load();
 };

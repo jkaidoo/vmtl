@@ -8,7 +8,7 @@ const orgScope = require('../../services/orgScope');
 const loaders = require('../../services/loaders');
 const present = require('../../services/present');
 const audit = require('../../services/audit');
-const { hashPassword } = require('../../util/password');
+const { hashPassword, passwordProblems } = require('../../util/password');
 const { requireAuth } = require('../../middleware/auth');
 const { validate } = require('../../util/validate');
 const { forbidden, notFound, conflict, badRequest } = require('../../middleware/errorHandler');
@@ -23,23 +23,34 @@ const DRIVER_RULES = {
 async function findDriver(id) { const d = await db.get('SELECT * FROM drivers WHERE id = ? AND deleted_at IS NULL', [id]); if (!d) throw notFound('Driver not found.'); return d; }
 async function driverDto(id) { return present.driver(await db.get(`${loaders.DRIVER_SELECT} WHERE d.id = ?`, [id])); }
 
-async function syncLogin(driver, body) {
+const wantsLogin=body=>[true,1,'1','true'].includes(body.create_login);
+async function authorizeLogin(req,driver){
+  if(!wantsLogin(req.body)) return;
+  if(!await has(req,CAP.USERS_MANAGE)) throw forbidden('Accounts and roles are assigned on the Users page.');
+  if(driver?.user_id && !req.session.user.is_super_admin){
+    const linked=await db.get('SELECT u.*,r.slug AS role_slug FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=?',[driver.user_id]);
+    if(!linked || linked.is_super_admin || linked.role_slug!=='driver' || !await inScope(req.session.user,linked.org_unit_id)) throw forbidden('Manage this linked account on the Users page.');
+  }
+}
+
+async function syncLogin(driver, body, conn=db) {
   if (!(body.create_login === true || body.create_login === '1' || body.create_login === 'true')) return;
   const email = String(body.login_email || '').trim().toLowerCase();
   if (!email) throw badRequest('The given data was invalid.', { login_email: ['A login email is required to create an account.'] });
   const password = body.login_password;
-  const roleId = (await db.get("SELECT id FROM roles WHERE slug = 'driver'")).id;
+  if (password) { const problems = passwordProblems(password); if (problems.length) throw badRequest('The given data was invalid.', { login_password: problems }); }
+  const roleId = (await conn.get("SELECT id FROM roles WHERE slug = 'driver'")).id;
   if (driver.user_id) {
     const sets = ['name = ?', 'email = ?', 'phone = ?']; const params = [driver.name, email, driver.phone];
     if (password) { sets.push('password_hash = ?'); params.push(hashPassword(password)); }
-    await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, driver.user_id]);
+    await conn.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, driver.user_id]);
     return;
   }
   if (!password) throw badRequest('The given data was invalid.', { login_password: ['A password is required to create a new login account.'] });
-  const dupe = await db.get('SELECT id FROM users WHERE lower(email) = ?', [email]);
+  const dupe = await conn.get('SELECT id FROM users WHERE lower(email) = ?', [email]);
   if (dupe) throw badRequest('The given data was invalid.', { login_email: ['That email is already in use.'] });
-  const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, phone, org_unit_id, active, is_super_admin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ${db.now()}, ${db.now()})`, [driver.name, email, hashPassword(password), roleId, driver.phone, driver.org_unit_id]);
-  await db.run(`UPDATE drivers SET user_id = ?, updated_at = ${db.now()} WHERE id = ?`, [r.lastInsertRowid, driver.id]);
+  const r = await conn.run(`INSERT INTO users (name, email, password_hash, role_id, phone, org_unit_id, active, is_super_admin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ${db.now()}, ${db.now()})`, [driver.name, email, hashPassword(password), roleId, driver.phone, driver.org_unit_id]);
+  await conn.run(`UPDATE drivers SET user_id = ?, updated_at = ${db.now()} WHERE id = ?`, [r.lastInsertRowid, driver.id]);
   driver.user_id = r.lastInsertRowid;
 }
 
@@ -62,28 +73,35 @@ module.exports = function register(router) {
 
   router.post('/drivers', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.DRIVERS_MANAGE))) throw forbidden('You may not manage drivers.');
-    const data = validate(req.body, DRIVER_RULES);
+    await authorizeLogin(req, null);
+    const data = validate(req.body, await require('../../services/dropdowns').rules(DRIVER_RULES, {status:'driver_status'}));
     if (data.employee_id) { const dupe = await db.get('SELECT id FROM drivers WHERE employee_id = ? AND deleted_at IS NULL', [data.employee_id]); if (dupe) throw badRequest('The given data was invalid.', { employee_id: ['That employee ID is already in use.'] }); }
     const orgUnitId = await resolveOrgUnit(req.session.user, data.org_unit_id);
-    const r = await db.run(`INSERT INTO drivers (name, employee_id, phone, licence_number, licence_expiry, status, org_unit_id, notes, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ${db.now()}, ${db.now()})`,
+    const driver=await db.transaction(async tx=>{
+    const r = await tx.run(`INSERT INTO drivers (name, employee_id, phone, licence_number, licence_expiry, status, org_unit_id, notes, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ${db.now()}, ${db.now()})`,
       [data.name, data.employee_id || null, data.phone || null, data.licence_number || null, data.licence_expiry || null, data.status || 'available', orgUnitId, data.notes || null]);
-    const driver = await findDriver(r.lastInsertRowid);
-    await syncLogin(driver, req.body);
+    const driver=await tx.get('SELECT * FROM drivers WHERE id=?',[r.lastInsertRowid]);
+    await syncLogin(driver, req.body, tx);
+      return driver;
+    });
     await audit.from(req, { action: 'driver.created', description: `Driver ${data.name} was added`, entityType: 'driver', entityId: driver.id });
     res.status(201).json({ data: await driverDto(driver.id) });
   });
 
-  router.get('/drivers/:id', requireAuth, async (req, res) => { await findDriver(req.params.id); res.json({ data: await driverDto(req.params.id) }); });
+  router.get('/drivers/:id', requireAuth, async (req, res) => { const driver=await findDriver(req.params.id); if(!await inScope(req.session.user,driver.org_unit_id)) throw forbidden('Driver is outside your scope.'); res.json({ data: await driverDto(req.params.id) }); });
 
   router.put('/drivers/:id', requireAuth, async (req, res) => {
     const driver = await findDriver(req.params.id);
     if (!(await has(req, CAP.DRIVERS_MANAGE)) || !(await inScope(req.session.user, driver.org_unit_id))) throw forbidden('You may not manage this driver.');
-    const data = validate(req.body, DRIVER_RULES);
+    await authorizeLogin(req, driver);
+    const data = validate(req.body, await require('../../services/dropdowns').rules(DRIVER_RULES, {status:'driver_status'}));
     if (req.body.org_unit_id !== undefined) data.org_unit_id = await resolveOrgUnit(req.session.user, data.org_unit_id);
     const fields = []; const params = [];
     for (const k of Object.keys(DRIVER_RULES)) if (req.body[k] !== undefined) { fields.push(`${k} = ?`); params.push(data[k]); }
-    if (fields.length) await db.run(`UPDATE drivers SET ${fields.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, driver.id]);
-    await syncLogin(await findDriver(driver.id), req.body);
+    await db.transaction(async tx=>{
+    if (fields.length) await tx.run(`UPDATE drivers SET ${fields.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, driver.id]);
+    await syncLogin(await tx.get('SELECT * FROM drivers WHERE id=?',[driver.id]), req.body, tx);
+    });
     await audit.from(req, { action: 'driver.updated', description: `Driver ${driver.name} was updated`, entityType: 'driver', entityId: driver.id });
     res.json({ data: await driverDto(driver.id) });
   });
@@ -101,13 +119,15 @@ module.exports = function register(router) {
   router.delete('/drivers/:id', requireAuth, async (req, res) => {
     const driver = await findDriver(req.params.id);
     if (!(await has(req, CAP.DRIVERS_MANAGE)) || !(await inScope(req.session.user, driver.org_unit_id))) throw forbidden('You may not manage this driver.');
+    if(await db.get("SELECT id FROM trips WHERE driver_id=? AND status IN ('scheduled','in_progress') LIMIT 1",[driver.id])) throw conflict('Cancel or complete the assigned trips before removing this driver.');
     await db.run(`UPDATE drivers SET deleted_at = ${db.now()} WHERE id = ?`, [driver.id]);
     await audit.from(req, { action: 'driver.deleted', description: `Driver ${driver.name} was removed`, entityType: 'driver', entityId: driver.id });
     res.json({ message: 'Driver removed.' });
   });
 
   router.get('/drivers/:id/trips', requireAuth, async (req, res) => {
-    await findDriver(req.params.id);
+    const driver=await findDriver(req.params.id);
+    if(!await inScope(req.session.user,driver.org_unit_id)) throw forbidden('Driver is outside your scope.');
     const rows = await db.all("SELECT id FROM trips WHERE driver_id = ? AND deleted_at IS NULL ORDER BY scheduled_start DESC LIMIT 50", [req.params.id]);
     const data = []; for (const r of rows) data.push(await loaders.loadTrip(r.id, { withRequest: true, withStops: false }));
     res.json({ data });

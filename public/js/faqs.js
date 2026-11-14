@@ -26,9 +26,9 @@ window.VMTL_PAGE = function () {
 
   VMTL.view.innerHTML = VMTL.pageHead('FAQs', 'Common questions about the system. Tap a question to expand.') +
     `<div class="faq-list">${faqs.map(([q, a], i) => `
-      <div class="faq" style="animation-delay:${i * 60}ms">
-        <button class="faq-q" type="button" aria-expanded="false">${VMTL.esc(q)}${chev}</button>
-        <div class="faq-a"><div><p>${VMTL.esc(a)}</p></div></div>
+      <div class="faq" style="animation-delay:${Math.min(i * 65, 390)}ms">
+        <button class="faq-q" id="faq-question-${i}" type="button" aria-expanded="false" aria-controls="faq-answer-${i}">${VMTL.esc(q)}${chev}</button>
+        <div class="faq-a" id="faq-answer-${i}" role="region" aria-labelledby="faq-question-${i}" aria-hidden="true"><div><p>${VMTL.esc(a)}</p></div></div>
       </div>`).join('')}</div>`;
 
   VMTL.view.querySelectorAll('.faq-q').forEach((btn) => {
@@ -36,6 +36,7 @@ window.VMTL_PAGE = function () {
       const item = btn.closest('.faq');
       const open = item.classList.toggle('open');
       btn.setAttribute('aria-expanded', String(open));
+      item.querySelector('.faq-a').setAttribute('aria-hidden', String(!open));
     });
   });
 };

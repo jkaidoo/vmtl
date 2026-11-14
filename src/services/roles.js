@@ -4,6 +4,8 @@
 const { CAP } = require('./capabilities');
 
 const LABELS = {
+  university_transport_officer: 'University Transport Officer',
+  schedule_transport_officer: 'Schedule Transport Officer',
   staff: 'Staff',
   approver: 'Approver',
   transport_admin: 'Transport / Admin Officer',
@@ -17,7 +19,7 @@ function roleOptions() { return Object.entries(LABELS).map(([value, label]) => (
 // A requester-only user (Staff) may only reach the Requests area.
 function isRequesterOnly(caps) {
   const set = new Set(caps);
-  if (set.has(CAP.REQUESTS_VIEW_ALL) || set.has(CAP.ANALYTICS_VIEW) || set.has(CAP.TRIPS_OPERATE) || set.has(CAP.VEHICLES_MANAGE) || set.has(CAP.USERS_MANAGE)) return false;
+  if ([...set].some(cap => cap !== CAP.REQUESTS_CREATE)) return false;
   return set.has(CAP.REQUESTS_CREATE) || set.size === 0;
 }
 
