@@ -38,6 +38,7 @@ test('audit details obey organisation scope; runtime details and alert configura
   await db.run("INSERT INTO role_capabilities(role_id,capability) VALUES(1,'audit.view'),(2,'audit.view'),(2,'system.admin')");
   await db.run("INSERT INTO org_units(id,name,type) VALUES(1,'One','unit'),(2,'Two','unit')");
   await db.run("INSERT INTO users(id,name,email,password_hash,role_id,org_unit_id) VALUES(1,'Viewer','one@test','x',1,1),(2,'Other','two@test','x',1,2),(3,'System','system@test','x',2,NULL)");
+  await require('../src/services/settings').set('owner_page_access', JSON.stringify({ 'app-health': { roles: ['system'], users: [] }, 'system-controls': { roles: ['system'], users: [] } }));
   const audit = require('../src/services/audit');
   await audit.record({ userId: 1, actorName: 'Viewer', action: 'detail_fixture', userAgent: 'Fixture browser', oldValues: { password_hash: 'must-hide', status: 'pending' }, newValues: { status: 'approved' } });
   await audit.record({ userId: 2, action: 'other_fixture' });

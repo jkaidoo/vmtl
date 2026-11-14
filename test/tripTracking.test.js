@@ -57,6 +57,7 @@ test('application logs allow system administrators and paginate filtered events'
     INSERT INTO role_capabilities(role_id,capability) VALUES (99,'system.admin');
     INSERT INTO users(id,name,email,password_hash,role_id) VALUES (99,'Log Admin','logs@test','x',99);
   `);
+  await require('../src/services/settings').set('owner_page_access', JSON.stringify({ 'app-health': { roles: ['log_admin'], users: [] } }));
   const log = require('../src/util/log');
   for (let i = 0; i < 12; i++) log.info('log_pagination_fixture', { message: `Event ${i}`, data: { index: i } });
   log.warn('log_filter_fixture', { message: 'Warning fixture' });

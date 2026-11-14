@@ -12,6 +12,8 @@ const dbProfiles = require('../../services/dbProfiles');
 const audit = require('../../services/audit');
 const log = require('../../util/log');
 const { requireAuth, requireSuper, requireSystemAdmin } = require('../../middleware/auth');
+// System pages: System Administrators always, plus roles/people the App Owner shares them with (Owner page access).
+const { requirePage: sharedPage, requireChannelPage: sharedChannel } = require('../../services/ownerAccess');
 const { validate } = require('../../util/validate');
 const { notFound, badRequest } = require('../../middleware/errorHandler');
 
@@ -90,14 +92,14 @@ const CODEBASE_GUIDE = [
 
 module.exports = function register(router) {
   const connections = require('../../services/messagingConnection');
-  router.get('/admin/messaging/:channel/connection', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/messaging/:channel/connection', requireAuth, sharedChannel, async (req, res) => {
     res.set('Cache-Control', 'no-store'); res.json({ data: await connections.status(req.params.channel) });
   });
-  router.put('/admin/messaging/:channel/connection', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/messaging/:channel/connection', requireAuth, sharedChannel, async (req, res) => {
     const data = await connections.save(req.params.channel, req.body);
     await audit.from(req, { action: 'messaging.connection_saved', description: `Updated ${req.params.channel} connection` }); res.json({ data });
   });
-  router.post('/admin/messaging/:channel/activate', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/messaging/:channel/activate', requireAuth, sharedChannel, async (req, res) => {
     const data = await connections.activate(req.params.channel, req.body.enabled);
     await audit.from(req, { action: 'messaging.activation_updated', description: `${req.params.channel}: ${data.status.enabled ? 'on' : 'off'}` }); res.json({ data });
   });
@@ -156,11 +158,11 @@ module.exports = function register(router) {
   }
   const windowFrom = (q) => { const n = Number(q.window); return [7, 30, 90].includes(n) ? n : 30; };
 
-  router.get('/admin/app-health', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/app-health', requireAuth, sharedPage('app-health'), async (req, res) => {
     res.json({ data: await healthData(windowFrom(req.query)) });
   });
 
-  router.get('/admin/app-health/export', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/app-health/export', requireAuth, sharedPage('app-health'), async (req, res) => {
     const d = await healthData(windowFrom(req.query));
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -187,16 +189,16 @@ module.exports = function register(router) {
 
   // ---- System Controls ---------------------------------------------------
   const systemControls = require('../../services/systemControls');
-  router.get('/admin/system-controls/config', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/system-controls/config', requireAuth, sharedPage('system-controls'), async (req, res) => {
     res.set('Cache-Control', 'no-store'); res.json({ data: await systemControls.config() });
   });
-  router.put('/admin/system-controls/:section', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/system-controls/:section', requireAuth, sharedPage('system-controls'), async (req, res) => {
     const data = await systemControls.save(req.params.section, req.body);
     await audit.from(req, { action: 'system_controls.updated', description: `${req.session.user.name} updated ${req.params.section} controls` });
     res.json({ data });
   });
-  router.get('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await systemControls.list() }));
-  router.put('/admin/system-controls', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/system-controls', requireAuth, sharedPage('system-controls'), async (req, res) => res.json({ data: await systemControls.list() }));
+  router.put('/admin/system-controls', requireAuth, sharedPage('system-controls'), async (req, res) => {
     const data = await systemControls.saveLegacy(req.body.settings);
     await audit.from(req, { action: 'system_controls.updated', description: `${req.session.user.name} updated system controls` });
     res.json({ data });
@@ -204,31 +206,31 @@ module.exports = function register(router) {
 
   // ---- Directory Auth (a list of LDAP/AD directories, tried in order) -----
   const sendDirErr = (res, e) => res.status(e && e.status ? e.status : 500).json({ error: e && e.status ? e.message : 'The directory settings could not be saved.' });
-  router.get('/admin/directory-auth', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: {
+  router.get('/admin/directory-auth', requireAuth, sharedPage('directory-auth'), async (req, res) => res.json({ data: {
     directories: await directoryAuth.list(), offline_days: await directoryAuth.offlineDays(), offline_days_max: directoryAuth.OFFLINE_DAYS_MAX,
   } }));
-  router.get('/admin/directory-auth/activity', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days, req.query) }));
-  router.post('/admin/directory-auth', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/directory-auth/activity', requireAuth, sharedPage('directory-auth'), async (req, res) => res.json({ data: await directoryAuth.activity(req.query.days, req.query) }));
+  router.post('/admin/directory-auth', requireAuth, sharedPage('directory-auth'), async (req, res) => {
     try {
       const entry = await directoryAuth.create(req.body || {});
       await audit.from(req, { action: 'directory_auth.added', description: `${req.session.user.name} added directory "${entry.name}" (${entry.provider}, ${entry.url || 'no URL'})` });
       res.status(201).json({ data: { directory: entry } });
     } catch (e) { sendDirErr(res, e); }
   });
-  router.put('/admin/directory-auth/order', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/directory-auth/order', requireAuth, sharedPage('directory-auth'), async (req, res) => {
     const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.map(String) : [];
     const directories = await directoryAuth.reorder(ids);
     await audit.from(req, { action: 'directory_auth.reordered', description: `${req.session.user.name} reordered directory sign-in: ${directories.map((d) => d.name).join(', ')}` });
     res.json({ data: { directories } });
   });
-  router.put('/admin/directory-auth/offline', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/directory-auth/offline', requireAuth, sharedPage('directory-auth'), async (req, res) => {
     try {
       const days = await directoryAuth.setOfflineDays((req.body || {}).days);
       await audit.from(req, { action: 'directory_auth.updated', description: `${req.session.user.name} set directory saved sign-in to ${days ? `${days} day(s)` : 'off'}` });
       res.json({ data: { offline_days: days } });
     } catch (e) { sendDirErr(res, e); }
   });
-  router.patch('/admin/directory-auth/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.patch('/admin/directory-auth/:id', requireAuth, sharedPage('directory-auth'), async (req, res) => {
     try {
       const entry = await directoryAuth.update(req.params.id, req.body || {});
       if (!entry) return res.status(404).json({ error: 'Directory not found.' });
@@ -236,13 +238,13 @@ module.exports = function register(router) {
       res.json({ data: { directory: entry } });
     } catch (e) { sendDirErr(res, e); }
   });
-  router.delete('/admin/directory-auth/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.delete('/admin/directory-auth/:id', requireAuth, sharedPage('directory-auth'), async (req, res) => {
     const entry = await directoryAuth.remove(req.params.id);
     if (!entry) return res.status(404).json({ error: 'Directory not found.' });
     await audit.from(req, { action: 'directory_auth.removed', description: `${req.session.user.name} removed directory "${entry.name}". Reason: ${String((req.body || {}).deletion_reason || '').trim().slice(0, 500)}` });
     res.json({ data: { ok: true } });
   });
-  router.post('/admin/directory-auth/:id/test', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/directory-auth/:id/test', requireAuth, sharedPage('directory-auth'), async (req, res) => {
     const { username, password } = req.body || {};
     const out = await directoryAuth.test(req.params.id, { username, password });
     if (!out) return res.status(404).json({ error: 'Directory not found.' });
@@ -252,15 +254,15 @@ module.exports = function register(router) {
 
   // ---- Messaging (email / SMS) ------------------------------------------
   const messageTemplates = require('../../services/messageTemplates');
-  router.get('/admin/messaging/:channel/templates', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/messaging/:channel/templates', requireAuth, sharedChannel, async (req, res) => {
     res.set('Cache-Control', 'no-store'); res.json({ data: await messageTemplates.catalogue(req.params.channel) });
   });
-  router.put('/admin/messaging/:channel/templates', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/messaging/:channel/templates', requireAuth, sharedChannel, async (req, res) => {
     const data = await messageTemplates.save(req.params.channel, req.body.templates);
     await audit.from(req, { action: 'messaging.templates_updated', description: `${req.session.user.name} updated ${req.params.channel} message templates` });
     res.json({ data });
   });
-  router.post('/admin/messaging/:channel/preview', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/messaging/:channel/preview', requireAuth, sharedChannel, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ data: await messageTemplates.render(req.params.channel, req.body.template, messageTemplates.SAMPLE, req.body.draft || {}, { preview: true }) });
   });
@@ -275,8 +277,8 @@ module.exports = function register(router) {
       sms: { enabled: !!(await settings.get('sms_enabled', false)), provider: (await settings.get('sms_provider', 'hubtel')) || 'hubtel', sender_id: (await settings.get('sms_sender_id', 'UITS')) || 'UITS', providers },
     } };
   }
-  router.get('/admin/messaging', requireAuth, requireSystemAdmin, async (req, res) => res.json(await messagingPayload()));
-  router.put('/admin/messaging', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/messaging', requireAuth, requireSuper, async (req, res) => res.json(await messagingPayload()));
+  router.put('/admin/messaging', requireAuth, requireSuper, async (req, res) => {
     if (req.body.email) {
       const em = req.body.email;
       await settingSet('mail_enabled', em.enabled ? '1' : '0', 'boolean');
@@ -294,7 +296,7 @@ module.exports = function register(router) {
     await audit.from(req, { action: 'messaging.updated', description: `${req.session.user.name} updated messaging (email/SMS) settings` });
     res.json(await messagingPayload());
   });
-  router.post('/admin/messaging/test-email', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/messaging/test-email', requireAuth, sharedPage('email'), async (req, res) => {
     const to = req.body.to || req.session.user.email;
     const message = await messageTemplates.render('email', req.body.template || 'test', messageTemplates.SAMPLE, req.body.draft || {});
     const cfg = await connections.config('email');
@@ -302,7 +304,7 @@ module.exports = function register(router) {
     await connections.recordTest('email', cfg, to, result);
     res.json({ data: result });
   });
-  router.post('/admin/messaging/test-sms', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/messaging/test-sms', requireAuth, sharedPage('sms'), async (req, res) => {
     const { to } = validate(req.body, { to: { required: true, type: 'string', maxLength: 20 } });
     const message = await messageTemplates.render('sms', req.body.template || 'test', messageTemplates.SAMPLE, req.body.draft || {});
     const cfg = await connections.config('sms');
@@ -312,7 +314,7 @@ module.exports = function register(router) {
   });
 
   // ---- Database connections ----------------------------------------------
-  router.get('/admin/database', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/database', requireAuth, sharedPage('database'), async (req, res) => {
     const counts = [];
     for (const t of dbProfiles.TABLES) { try { counts.push({ table: t, rows: Number((await db.get(`SELECT COUNT(*) AS n FROM ${t}`)).n) }); } catch (_) { counts.push({ table: t, rows: null }); } }
     res.json({ data: {
@@ -323,29 +325,29 @@ module.exports = function register(router) {
       tables: counts,
     } });
   });
-  router.post('/admin/database/profiles', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/database/profiles', requireAuth, sharedPage('database'), async (req, res) => {
     const data = validate(req.body, { name: { required: true, type: 'string', maxLength: 120 }, provider: { type: 'string' }, host: { type: 'string' }, port: { type: 'string' }, database: { type: 'string' }, username: { type: 'string' }, ssl_mode: { type: 'string' }, password: { type: 'string' }, connection: { type: 'string' } });
     const p = await dbProfiles.create(data);
     await audit.from(req, { action: 'database.profile_saved', description: `${req.session.user.name} saved database profile ${data.name}` });
     res.status(201).json({ data: p });
   });
-  router.put('/admin/database/profiles/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/database/profiles/:id', requireAuth, sharedPage('database'), async (req, res) => {
     const p = await dbProfiles.update(req.params.id, req.body || {}); if (!p) throw notFound('Profile not found.');
     await audit.from(req, { action: 'database.profile_saved', description: `${req.session.user.name} updated database profile ${p.name}` });
     res.json({ data: p });
   });
-  router.delete('/admin/database/profiles/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.delete('/admin/database/profiles/:id', requireAuth, sharedPage('database'), async (req, res) => {
     if (!(await dbProfiles.remove(req.params.id))) throw notFound('Profile not found.');
     await audit.from(req, { action: 'database.profile_removed', description: `${req.session.user.name} removed a database profile` });
     res.json({ ok: true });
   });
-  router.post('/admin/database/profiles/:id/test', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/database/profiles/:id/test', requireAuth, sharedPage('database'), async (req, res) => {
     const result = await dbProfiles.test(req.params.id);
     await audit.from(req, { action: 'database.profile_tested', description: `${req.session.user.name} tested a database profile — ${result.ok ? 'connected' : 'failed'}` });
     res.json({ data: result });
   });
-  router.post('/admin/database/profiles/:id/select', requireAuth, requireSystemAdmin, async (req, res) => { await dbProfiles.select(req.params.id); res.json({ ok: true }); });
-  router.post('/admin/database/migrate', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/database/profiles/:id/select', requireAuth, sharedPage('database'), async (req, res) => { await dbProfiles.select(req.params.id); res.json({ ok: true }); });
+  router.post('/admin/database/migrate', requireAuth, sharedPage('database'), async (req, res) => {
     const id = req.body.profile_id; if (!id) throw badRequest('Select a migration target first.');
     if (String(req.body.confirmation || '').toUpperCase() !== 'MIGRATE') throw badRequest('Type MIGRATE to confirm.');
     const out = await dbProfiles.migrate(id);
@@ -354,10 +356,10 @@ module.exports = function register(router) {
   });
 
   // ---- Documentation -----------------------------------------------------
-  router.get('/admin/documentation', requireAuth, requireSystemAdmin, (req, res) => {
+  router.get('/admin/documentation', requireAuth, sharedPage('documentation'), (req, res) => {
     res.json({ data: Object.entries(DOCS).map(([slug, m]) => ({ slug, title: m.title, summary: m.summary })) });
   });
-  router.get('/admin/documentation/:slug', requireAuth, requireSystemAdmin, (req, res) => {
+  router.get('/admin/documentation/:slug', requireAuth, sharedPage('documentation'), (req, res) => {
     const meta = DOCS[req.params.slug];
     if (!meta) throw notFound('Document not found.');
     res.json({ data: { slug: req.params.slug, title: meta.title, content: docContent(req.params.slug) } });
@@ -388,10 +390,10 @@ module.exports = function register(router) {
   });
 
   // ---- Codebase guide ----------------------------------------------------
-  router.get('/admin/codebase-guide', requireAuth, requireSystemAdmin, (req, res) => res.json({ data: CODEBASE_GUIDE }));
+  router.get('/admin/codebase-guide', requireAuth, sharedPage('codebase-guide'), (req, res) => res.json({ data: CODEBASE_GUIDE }));
 
   // ---- Application logs (server runtime log — app owner only) -------------
-  router.get('/admin/application-logs', requireAuth, requireSystemAdmin, (req, res) => {
+  router.get('/admin/application-logs', requireAuth, sharedPage('app-health'), (req, res) => {
     const level = String(req.query.level || 'all');
     const all = log.recent(500);
     let rows = all;
@@ -408,16 +410,16 @@ module.exports = function register(router) {
       return { id, category, level, timestamp: at, event, message: message || event, fields: context, data: Object.keys(context).length ? JSON.stringify(context) : null };
     }), meta: { current_page: page, per_page: size, total, last_page: last }, counts: all.reduce((out, e) => { out[e.level] = (out[e.level] || 0) + 1; return out; }, {}), store: log.infoAboutStore(), retention: 'Latest 500 events from the current server process' });
   });
-  router.get('/admin/application-logs/:id', requireAuth, requireSystemAdmin, (req, res) => {
+  router.get('/admin/application-logs/:id', requireAuth, sharedPage('app-health'), (req, res) => {
     const entry = log.find(req.params.id);
     if (!entry) throw notFound('This log entry is no longer available. It may have expired or the server restarted.');
     res.set('Cache-Control', 'no-store'); res.json({ data: entry });
   });
   const securityAlerts = require('../../services/securityAlerts');
-  router.get('/admin/security-alerts', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/security-alerts', requireAuth, sharedPage('system-controls'), async (req, res) => {
     res.set('Cache-Control', 'no-store'); res.json({ data: await securityAlerts.status() });
   });
-  router.put('/admin/security-alerts', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/security-alerts', requireAuth, sharedPage('system-controls'), async (req, res) => {
     const data = await securityAlerts.save(req.body);
     await audit.from(req, { action: 'security.alert_settings_updated', description: data.enabled ? 'Enabled suspicious activity emails' : 'Disabled suspicious activity emails' });
     res.json({ data });
@@ -425,18 +427,18 @@ module.exports = function register(router) {
 
   // ---- Navigation settings ----------------------------------------------
   const navigation = require('../../services/navigation');
-  router.get('/admin/navigation', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/navigation', requireAuth, sharedPage('navigation'), async (req, res) => {
     res.json({ data: { hidden: (await settings.get('nav_hidden', [])) || [], roles: await navigation.contexts(), pages: navigation.pages.map(({ key, label, section }) => ({ key, label, section })) } });
   });
-  router.get('/admin/navigation/:role', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/navigation/:role', requireAuth, sharedPage('navigation'), async (req, res) => {
     res.set('Cache-Control', 'no-store'); res.json({ data: await navigation.editor(req.params.role) });
   });
-  router.put('/admin/navigation/:role', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/navigation/:role', requireAuth, sharedPage('navigation'), async (req, res) => {
     const data = await navigation.save(req.params.role, req.body);
     await audit.from(req, { action: 'navigation.updated', description: `${req.session.user.name} updated navigation layout for ${req.params.role}` });
     res.json({ data });
   });
-  router.put('/admin/navigation', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/navigation', requireAuth, sharedPage('navigation'), async (req, res) => {
     const hidden = Array.isArray(req.body.hidden) ? req.body.hidden.map(String) : [];
     await settingSetJson('nav_hidden', hidden);
     await audit.from(req, { action: 'navigation.updated', description: `${req.session.user.name} updated navigation visibility (${hidden.length} hidden)` });
@@ -454,8 +456,8 @@ module.exports = function register(router) {
       paper: (await settings.get('report_paper', 'A4')) || 'A4',
     };
   }
-  router.get('/admin/report-config', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await reportConfig() }));
-  router.put('/admin/report-config', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/report-config', requireAuth, sharedPage('report-config'), async (req, res) => res.json({ data: await reportConfig() }));
+  router.put('/admin/report-config', requireAuth, sharedPage('report-config'), async (req, res) => {
     const b = req.body || {};
     await settings.set('report_org_name', String(b.org_name ?? ''));
     await settings.set('report_title_prefix', String(b.title_prefix ?? ''));
@@ -471,12 +473,12 @@ module.exports = function register(router) {
   const crypto = require('crypto');
   const API_SCOPES = ['vehicles.read', 'trips.read', 'requests.read', 'analytics.read'];
   async function apiTokens() { return (await settings.get('api_tokens', [])) || []; }
-  router.get('/admin/api-tokens', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/api-tokens', requireAuth, sharedPage('unified-api'), async (req, res) => {
     res.json({ data: { scopes: API_SCOPES, base_url: `${req.protocol}://${req.get('host')}/api/v1`, tokens: (await apiTokens()).map((t) => ({ id: t.id, label: t.label, prefix: t.prefix, scopes: t.scopes, created_at: t.created_at, last_used_at: t.last_used_at || null })) } });
   });
   // ---- Unified API (inbound): pull live staff data for OU enrichment -------
   const unifiedApi = require('../../services/unifiedApi');
-  router.get('/admin/unified-api-client/photo/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/unified-api-client/photo/:id', requireAuth, sharedPage('unified-api'), async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     const photo = await unifiedApi.staffPhoto(req.params.id);
     if (!photo) return res.status(404).end();
@@ -485,8 +487,8 @@ module.exports = function register(router) {
     res.send(Buffer.from(data, 'base64'));
   });
   const unifiedConsole = require('../../services/unifiedApiConsole');
-  const consoleGet = (path, fn) => router.get(`/admin/unified-api-console/${path}`, requireAuth, requireSystemAdmin, async (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: await fn(req) }); });
-  const consoleWrite = (method, path, fn) => router[method](`/admin/unified-api-console/${path}`, requireAuth, requireSystemAdmin, async (req, res) => {
+  const consoleGet = (path, fn) => router.get(`/admin/unified-api-console/${path}`, requireAuth, sharedPage('unified-api'), async (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: await fn(req) }); });
+  const consoleWrite = (method, path, fn) => router[method](`/admin/unified-api-console/${path}`, requireAuth, sharedPage('unified-api'), async (req, res) => {
     const data = await fn(req);
     if (method === 'put') await audit.from(req, { action: 'unified_api.configured', description: `${req.session.user.name} updated Unified API ${path}` });
     res.set('Cache-Control', 'no-store'); res.json({ data });
@@ -499,30 +501,30 @@ module.exports = function register(router) {
   consoleWrite('put', 'field-order', (req) => unifiedConsole.saveFieldOrder(req.body));
   consoleWrite('post', 'test-staff-search', (req) => unifiedConsole.testStaffSearch(req.body.q));
   consoleWrite('post', 'test-lookup', (req) => unifiedConsole.testLookup(req.body.id, { source: req.body.source }));
-  router.put('/admin/unified-api-client/fields', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/admin/unified-api-client/fields', requireAuth, sharedPage('unified-api'), async (req, res) => {
     const fields = await unifiedApi.saveFields(req.body.fields);
     await audit.from(req, { action: 'unified_api.fields_configured', description: `${req.session.user.name} updated Unified API staff data fields` });
     res.json({ data: { fields } });
   });
-  router.get('/admin/unified-api-client/search', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/unified-api-client/search', requireAuth, sharedPage('unified-api'), async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (q.length < 2 || q.length > 100) return res.status(400).json({ error: 'Enter a name, staff ID or email between 2 and 100 characters.' });
     res.json({ data: await unifiedApi.manualSearch(q) });
   });
-  router.get('/admin/unified-api-client/profile/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/unified-api-client/profile/:id', requireAuth, sharedPage('unified-api'), async (req, res) => {
     res.json({ data: await unifiedApi.manualProfile(req.params.id) });
   });
-  router.get('/admin/unified-api-client', requireAuth, requireSystemAdmin, async (req, res) => res.json({ data: await unifiedApi.publicConfig() }));
-  router.put('/admin/unified-api-client', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.get('/admin/unified-api-client', requireAuth, sharedPage('unified-api'), async (req, res) => res.json({ data: await unifiedApi.publicConfig() }));
+  router.put('/admin/unified-api-client', requireAuth, sharedPage('unified-api'), async (req, res) => {
     const out = await unifiedApi.saveConfig({ url: req.body.url, key: req.body.key, enabled: req.body.enabled });
     await audit.from(req, { action: 'unified_api.configured', description: `${req.session.user.name} updated the Unified API staff connection` });
     res.json({ data: out });
   });
-  router.post('/admin/unified-api-client/test', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/unified-api-client/test', requireAuth, sharedPage('unified-api'), async (req, res) => {
     res.json({ data: await unifiedApi.status(req.body && req.body.sample) });
   });
 
-  router.post('/admin/api-tokens', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.post('/admin/api-tokens', requireAuth, sharedPage('unified-api'), async (req, res) => {
     const data = validate(req.body, { label: { required: true, type: 'string', maxLength: 80 } });
     const scopes = Array.isArray(req.body.scopes) ? req.body.scopes.filter((s) => API_SCOPES.includes(s)) : API_SCOPES.slice();
     const secret = 'vmtl_' + crypto.randomBytes(24).toString('hex');
@@ -531,7 +533,7 @@ module.exports = function register(router) {
     await audit.from(req, { action: 'api_token.created', description: `${req.session.user.name} created API token ${data.label}` });
     res.status(201).json({ data: { id: token.id, label: token.label, token: secret, scopes } });
   });
-  router.delete('/admin/api-tokens/:id', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.delete('/admin/api-tokens/:id', requireAuth, sharedPage('unified-api'), async (req, res) => {
     const tokens = await apiTokens(); const next = tokens.filter((t) => t.id !== req.params.id);
     if (next.length === tokens.length) throw notFound('Token not found.');
     await settingSetJson('api_tokens', next);

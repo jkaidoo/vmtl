@@ -9,6 +9,8 @@ const tracking = require('../../services/tracking');
 const settings = require('../../services/settings');
 const { CAP } = require('../../services/capabilities');
 const { requireAuth, requireAnyCap, requireSystemAdmin } = require('../../middleware/auth');
+// System pages: System Administrators always, plus roles/people the App Owner shares them with (Owner page access).
+const { requirePage: sharedPage, requireChannelPage: sharedChannel } = require('../../services/ownerAccess');
 
 const MAP_KEY = 'google_maps_api_key';
 const MAP_CENTER = 'map_default_center'; // "lat,lng" fallback when the viewer blocks geolocation
@@ -40,18 +42,25 @@ module.exports = function register(router) {
     res.json({ data: vehicles, server_time: new Date().toISOString(), stale_after_seconds: tracking.STALE_AFTER_SECONDS });
   });
 
-  router.get('/tracking/config', requireAuth, canView, async (req, res) => {
+  // Readable by live-map viewers and by anyone who may open Maps configuration (incl. shared access).
+  const mapsPage = sharedPage('maps-config');
+  const canViewOrConfigure = (req, res, next) => canView(req, res, (err) => (err ? next(err) : next()))
+    && undefined;
+  router.get('/tracking/config', requireAuth, async (req, res, next) => {
+    if (await require('../../services/ownerAccess').can(req.session.user, 'maps-config')) return next();
+    return canView(req, res, next);
+  }, async (req, res) => {
     const key = (await settings.get(MAP_KEY, '')) || '';
     res.json({
       has_key: !!key,
       key, // a Maps JS key is a referrer-restricted client key — safe to hand the browser
-      can_configure: !!req.session.user.is_super_admin,
+      can_configure: await require('../../services/ownerAccess').can(req.session.user, 'maps-config'),
       default_center: parseCenter(await settings.get(MAP_CENTER, '')),
       default_zoom: parseZoom(await settings.get(MAP_ZOOM, '')),
     });
   });
 
-  router.put('/tracking/config', requireAuth, requireSystemAdmin, async (req, res) => {
+  router.put('/tracking/config', requireAuth, sharedPage('maps-config'), async (req, res) => {
     if (typeof req.body.key === 'string') await settings.set(MAP_KEY, req.body.key.trim());
     if (typeof req.body.default_center === 'string') await settings.set(MAP_CENTER, req.body.default_center.trim());
     if (req.body.default_zoom !== undefined && req.body.default_zoom !== null && req.body.default_zoom !== '') {

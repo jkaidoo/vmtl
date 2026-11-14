@@ -1,7 +1,7 @@
 'use strict';
 window.VMTL_PAGE = async function () {
   const { view, esc } = VMTL;
-  if (!VMTL.isSuper()) { view.innerHTML = '<div class="empty">App Owner access only.</div>'; return; }
+  if (!VMTL.ownerPage('backup-cleanup')) { view.innerHTML = '<div class="empty">App Owner access only.</div>'; return; }
   let tab = 'backup', rows = [], page = 1, query = '';
   const selected = new Set();
   const api = async (url = '', options) => (await VMTL.api('/admin/backups' + url, options)).data;

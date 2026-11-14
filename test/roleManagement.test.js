@@ -40,11 +40,11 @@ test('role lifecycle validates input, preserves account access on deletion, upda
   assert.equal((await db.get('SELECT COUNT(*) AS n FROM role_capabilities WHERE role_id=?', [role.id])).n, 0);
   assert.equal(await require('../src/services/settings').get('navigation_layout:dispatch_team'), null);
   for (const action of ['role.created', 'role.updated', 'role.deleted']) assert.ok(await db.get('SELECT id FROM audit_logs WHERE action=?', [action]));
-  assert.equal((await request('DELETE', '/roles/100', { replacement_role_id: 101 }, 2)).status, 409);
-  assert.equal((await request('PUT', '/roles/100/capabilities', { capabilities: [] }, 2)).status, 409);
+  assert.equal((await request('DELETE', '/roles/100', { replacement_role_id: 101 }, 2)).status, 403);
+  assert.equal((await request('PUT', '/roles/100/capabilities', { capabilities: [] }, 2)).status, 403);
   const unused = await roles.create({ name: 'Unused' }); assert.equal((await request('DELETE', '/roles/' + unused.id, {})).status, 200);
   const system = await roles.create({ name: 'Custom system role', capabilities: ['requests.create', 'system.admin'] });
   await db.run('UPDATE users SET role_id=? WHERE id=3', [system.id]);
   assert.equal((await require('../src/services/serializers').userForClient(3)).requester_only, false);
-  assert.ok((await require('../src/services/navigation').effective({ id: 3 })).sections.flatMap(s => s.items).some(i => i.key === 'rbac'));
+  assert.ok(!(await require('../src/services/navigation').effective({ id: 3 })).sections.flatMap(s => s.items).some(i => i.key === 'rbac'));
 });

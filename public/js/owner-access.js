@@ -6,7 +6,7 @@ window.VMTL_PAGE = async function () {
   if (!document.querySelector('link[href^="/css/owner-access.css"]')) {
     const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/css/owner-access.css'; document.head.appendChild(link);
   }
-  if (!VMTL.isSuper()) { view.innerHTML = VMTL.pageHead('Owner page access', '') + '<div class="empty">App Owner access only.</div>'; return; }
+  if (!VMTL.ownerPage('owner-access')) { view.innerHTML = VMTL.pageHead('Owner page access', '') + '<div class="empty">App Owner access only.</div>'; return; }
   view.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
 
   const ICONS = { 'app-overview': 'compass', dropdowns: 'sliders', 'file-server': 'database', broadcasts: 'megaphone' };
@@ -40,7 +40,7 @@ window.VMTL_PAGE = async function () {
     const g = draft[p.key]; const [text, on] = summary(g);
     return `<section class="oa-page" data-page="${p.key}" aria-labelledby="oa-h-${p.key}">
       <div class="oa-top"><div class="oa-ic">${icon(ICONS[p.key] || 'key')}</div>
-        <div><h2 id="oa-h-${p.key}"><a href="${p.path}">${esc(p.label)}</a></h2><p>${esc(p.description)}</p></div>
+        <div><h2 id="oa-h-${p.key}"><a href="${p.path}">${esc(p.label)}</a></h2><p>${esc(p.description)}</p>${p.warning ? `<p><strong>${esc(p.warning)}</strong></p>` : ''}</div>
         <span class="oa-summary ${on ? 'on' : ''}" data-summary="${p.key}">${esc(text)}</span></div>
       <div><p class="oa-label" id="oa-r-${p.key}">Roles</p>
         <div class="oa-roles" role="group" aria-labelledby="oa-r-${p.key}">${roles.map((r) => `<button type="button" class="oa-role" data-role="${p.key}:${esc(r.slug)}" aria-pressed="${g.roles.has(r.slug)}">${g.roles.has(r.slug) ? TICK : ''}${esc(r.name)}</button>`).join('')}</div></div>
@@ -50,16 +50,12 @@ window.VMTL_PAGE = async function () {
           <ul class="oa-results" id="oa-l-${p.key}" hidden></ul></div></div>
     </section>`;
   };
-  const locked = (ic, title, text) => `<section class="oa-page locked"><div class="oa-top"><div class="oa-ic">${icon(ic)}</div><div><h2>${title}</h2><p>${text}</p></div><span class="oa-summary">Always only you</span></div></section>`;
-
   const render = () => {
-  view.innerHTML = VMTL.pageHead('Owner page access', 'Share selected App Owner pages with roles or specific people. Only you can change these settings.') + `<div class="oa">
-    <div class="oa-note">${icon('shield')}<p>People you share a page with can do everything you can on that page — for example, send broadcasts to every user or change where uploaded files are stored. Shared pages appear in their menu straight away. Every change here is recorded in the audit log.</p></div>
+  view.innerHTML = VMTL.pageHead('Owner page access', 'Share selected App Owner pages with roles or specific people. Access is granted separately for each page.') + `<div class="oa">
+    <div class="oa-note">${icon('shield')}<p>People you share a page with can do everything you can on that page — including restoring backups or granting access to others when those pages are shared. Shared pages appear in their menu straight away. Every change here is recorded in the audit log.</p></div>
     <div class="oa-bar"><span class="status" id="oaStatus" role="status">All changes saved.</span><div class="btn-row"><button type="button" class="btn" id="oaDiscard" disabled>Discard changes</button><button type="button" class="btn btn-primary" id="oaSave" disabled>Save access</button></div></div>
     <div class="oa-pages" id="oaPages">${pages.map(pageCard).join('')}
-      ${locked('database', 'Backup &amp; cleanup', 'Full database snapshots hold password hashes and saved secrets, and restore and cleanup permanently change data, so this page cannot be shared.')}
-      ${locked('key', 'Owner page access', 'This page. It cannot be shared, so nobody else can widen their own access.')}
-    </div></div>`;
+          </div></div>`;
 
   const status = view.querySelector('#oaStatus'); const saveBtn = view.querySelector('#oaSave'); const discardBtn = view.querySelector('#oaDiscard');
   const refreshState = () => {

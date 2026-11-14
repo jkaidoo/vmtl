@@ -25,7 +25,7 @@ window.VMTL_PAGE = async function () {
     { label: 'Users', entity: 'user' },
   ];
   // The server runtime log is visible only to the app owner (System Administrator).
-  if (VMTL.isSuper() || VMTL.can('system.admin')) TABS.push({ label: 'Application logs', appLogs: true });
+  if (VMTL.ownerPage('app-health')) TABS.push({ label: 'Application logs', appLogs: true });
 
   const state = { entity: '', search: '', from: '', to: '', page: 1, perPage: 10, sort: 'desc', total: 0, lastPage: 1 };
 

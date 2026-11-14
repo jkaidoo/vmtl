@@ -40,8 +40,18 @@ test('owner pages open only to the App Owner until shared, and sharing follows r
   const share = (pages, user = 1) => call('/admin/owner-access', user, { method: 'PUT', body: JSON.stringify({ pages }) });
   assert.equal((await share({ dropdowns: { roles: ['transport_admin'], users: [] } }, 5)).status, 403);
 
-  // Backup & cleanup and Owner page access can never be shared.
-  for (const key of ['backup-cleanup', 'owner-access']) assert.equal((await share({ [key]: { roles: ['staff'], users: [] } })).status, 422, key);
+  // Every System page is available to share, but administrators need grants too.
+  for (const page of navigation.catalogue.find((s) => s.label === 'System').items) {
+    assert.ok(ownerAccess.DELEGABLE[page.key], page.key);
+    assert.equal(await ownerAccess.can({ id: 5 }, page.key), false, page.key);
+  }
+  assert.equal((await share({ unknown: { roles: [], users: [] } })).status, 422);
+  assert.equal((await share({ 'backup-cleanup': { roles: ['staff'], users: [] }, 'owner-access': { roles: [], users: [3] }, 'app-health': { roles: ['transport_admin'], users: [] } })).status, 200);
+  assert.equal(await ownerAccess.can({ id: 2 }, 'backup-cleanup'), true);
+  assert.equal((await call('/admin/owner-access', 3)).status, 200);
+  assert.equal(await ownerAccess.can({ id: 3 }, 'app-health'), true);
+  assert.ok((await navigation.defaults('transport_admin')).sections.flatMap((s) => s.items).some((p) => p.key === 'app-health'));
+
   assert.equal((await share({ dropdowns: { roles: ['no_such_role'], users: [] } })).status, 422);
   assert.equal((await share({ dropdowns: { roles: [], users: [999] } })).status, 422);
 

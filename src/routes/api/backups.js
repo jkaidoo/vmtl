@@ -2,7 +2,7 @@
 const db = require('../../db/runtime');
 const backups = require('../../services/backups');
 const audit = require('../../services/audit');
-const { requireSuper } = require('../../middleware/auth');
+const requireBackupPage = require('../../services/ownerAccess').requirePage('backup-cleanup');
 const { ApiError } = require('../../middleware/errorHandler');
 const { verifyPassword } = require('../../util/password');
 async function confirmOwner(req) {
@@ -10,7 +10,7 @@ async function confirmOwner(req) {
   if (!user?.active || !user.is_super_admin || !verifyPassword(req.body.password, user.password_hash)) throw new ApiError(403, 'Enter your current App Owner password.');
 }
 module.exports = router => {
-  router.use('/admin/backups', requireSuper, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  router.use('/admin/backups', requireBackupPage, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   router.get('/admin/backups', async (req, res) => res.json({ data: { backups: await backups.list(), runtime: db.mode() } }));
   router.post('/admin/backups', async (req, res) => {
     const out = await backups.exclusive(() => backups.create(req.body.label));
