@@ -6,6 +6,7 @@
 // computed client-side from the browser's geolocation.
 const db = require('../db/runtime');
 const orgScope = require('./orgScope');
+const beaconToken = require('./beaconToken');
 
 const STALE_AFTER_SECONDS = 150; // a fix older than this is shown as "last seen"
 
@@ -28,6 +29,17 @@ async function activeTripForUser(userId) {
       LIMIT 1`,
     [userId]
   );
+}
+
+// Mint a scoped location-reporting token for a driver who is currently on an
+// in-progress trip. With no active trip there is nothing to report, so the
+// device is told to stand down ({ active:false }) rather than handed a token.
+// The token lets the device post GPS fixes without leaning on the full session.
+async function issueBeacon(user) {
+  const trip = await activeTripForUser(user.id);
+  if (!trip) return { active: false };
+  const { token, expires_at } = beaconToken.issue(user.id, trip.trip_id);
+  return { active: true, token, expires_at, trip_id: trip.trip_id, trip_number: trip.trip_number };
 }
 
 // Record a fix sent by a driver. Returns { tracked, vehicle_id?, trip_id? }.
@@ -113,4 +125,4 @@ async function visibleVehicles(user) {
   });
 }
 
-module.exports = { recordDriverFix, visibleVehicles, activeTripForUser, STALE_AFTER_SECONDS };
+module.exports = { recordDriverFix, visibleVehicles, activeTripForUser, issueBeacon, STALE_AFTER_SECONDS };

@@ -180,27 +180,53 @@
 
   // ---- driver location beacon ------------------------------------------
   // A driver's device shares its GPS fix while they operate a trip, so the Live
-  // Map can show where each vehicle is. The server only keeps the fix when the
-  // driver has an in-progress trip ({tracked:true}); otherwise the beacon backs
-  // off. One permission prompt, then quiet reporting while the app is open. The
-  // screen is held awake during an active trip; nothing is shared for other
-  // roles, and nothing is stored when no trip is active.
+  // Map can show where each vehicle is. Location reporting is decoupled from the
+  // login session: the device mints a short-lived, trip-scoped token (only
+  // granted while on an in-progress trip) and posts fixes with that token, not
+  // the full session. The server only keeps a fix when the actor is a driver on
+  // an in-progress trip ({tracked:true}); otherwise the beacon backs off. One
+  // permission prompt, then quiet reporting while the app is open. The screen is
+  // held awake during an active trip; nothing is shared for other roles, and
+  // nothing is stored when no trip is active.
   let beaconStarted = false;
   function startDriverBeacon() {
     if (beaconStarted || VMTL.roleSlug() !== 'driver' || !('geolocation' in navigator) || !window.isSecureContext) return;
     beaconStarted = true;
     let timer = null, delay = 20000, stopped = false, lastCoords = null, wakeRelease = null, sending = false;
+    const beacon = { token: null, exp: 0 };
     const schedule = () => { clearTimeout(timer); timer = setTimeout(beat, delay); };
     const setTracked = (on) => {
       if (on && !wakeRelease) wakeRelease = VMTL.keepAwake();     // keep screen alive on an active trip
       if (!on && wakeRelease) { wakeRelease(); wakeRelease = null; }
     };
+    // A valid scoped token, or null when the driver is not on a trip (stand down).
+    async function ensureToken() {
+      if (beacon.token && beacon.exp - Date.now() > 60000) return beacon.token;
+      try {
+        const r = await api('/tracking/beacon-token', { method: 'POST', body: {} });
+        if (r && r.active && r.token) {
+          beacon.token = r.token;
+          beacon.exp = Date.parse(r.expires_at) || (Date.now() + 10 * 60000);
+          return beacon.token;
+        }
+      } catch (_) { /* offline / session expired: skip this cycle, retry later */ }
+      beacon.token = null; beacon.exp = 0;
+      return null;
+    }
     async function send(coords) {
       if (!coords || sending) return;
       sending = true;
       try {
-        const r = await api('/tracking/location', { method: 'POST', body: { lat: coords.lat, lng: coords.lng, heading: coords.heading, speed: coords.speed, accuracy: coords.accuracy } });
-        if (r && r.tracked) { delay = 15000; setTracked(true); } else { delay = 45000; setTracked(false); }
+        const token = await ensureToken();
+        if (!token) { delay = 45000; setTracked(false); return; } // no active trip: nothing to report
+        const res = await fetch('/api/tracking/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ lat: coords.lat, lng: coords.lng, heading: coords.heading, speed: coords.speed, accuracy: coords.accuracy }),
+        });
+        let data = null; try { data = await res.json(); } catch (_) { /* non-json */ }
+        if (res.status === 401 && data && data.retoken) { beacon.token = null; beacon.exp = 0; delay = 15000; setTracked(false); return; }
+        if (data && data.tracked) { delay = 15000; setTracked(true); } else { delay = 45000; setTracked(false); }
       } catch (_) { delay = 60000; /* offline: hold lastCoords and resend on reconnect */ }
       finally { sending = false; }
     }
@@ -708,16 +734,20 @@
     return { applicable: false };
   }
   function humanizeMinutes(total) { const m = Math.round(Math.abs(total)); if (m < 1) return '<1m'; const d = Math.floor(m / 1440); const h = Math.floor((m % 1440) / 60); const mm = m % 60; const p = []; if (d) p.push(`${d}d`); if (h) p.push(`${h}h`); if (mm && !d) p.push(`${mm}m`); return p.length ? p.join(' ') : `${m}m`; }
-  function vehicleSvg(motif) {
-    const paths = {
-      truck: '<path d="M3 7h32v18H3z M36 14h15l9 10v1H36z" fill="currentColor"/>',
-      motorcycle: '<path d="M15 25l12-15 12 15H15l12-15h11l5 15M37 7h9" fill="none" stroke="currentColor" stroke-width="4"/>',
-      pickup: '<path d="M3 25 L3 20 L30 20 L30 8 L44 8 L50 17 L60 17 L60 25 Z" fill="currentColor"/>',
-      suv: '<path d="M4 25 L4 18 Q4 10 14 10 L44 10 Q54 10 58 18 L60 18 L60 25 Z" fill="currentColor"/>',
-      bus: '<path d="M3 25 L3 9 Q3 7 6 7 L56 7 Q60 7 60 11 L60 25 Z" fill="currentColor"/><rect x="8" y="11" width="46" height="7" rx="1" fill="rgba(255,255,255,.35)"/>',
-      car: '<path d="M3 25 L3 19 L14 19 L20 11 L42 11 L50 19 L60 19 L60 25 Z" fill="currentColor"/>',
-    };
-    return `<svg viewBox="0 0 64 34" width="50" height="27" style="color:var(--primary)" aria-hidden="true">${paths[motif] || paths.car}<circle cx="16" cy="26" r="5" fill="var(--text)"/><circle cx="48" cy="26" r="5" fill="var(--text)"/></svg>`;
+  // The moving marker on the trip-progress track: a silver side-profile sedan,
+  // matching the uploaded vehicle graphic's palette (silver body, dark glass) but
+  // drawn side-on so it reads along the horizontal track.
+  function vehicleSvg() {
+    return `<svg viewBox="0 0 88 40" width="54" height="25" style="display:block;filter:drop-shadow(0 3px 3px rgba(0,0,0,.25))" aria-hidden="true">
+      <defs><linearGradient id="vmCarBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset=".5" stop-color="#cfd4db"/><stop offset="1" stop-color="#aab1bb"/></linearGradient></defs>
+      <ellipse cx="44" cy="36.6" rx="36" ry="2.3" fill="rgba(0,0,0,.14)"/>
+      <path d="M5 29 C5 25 7 23.5 11 23 L23 22 C26 15.5 31 12.5 41 12.5 L52 12.5 C60 12.5 64 15.5 69 21 L79 23.5 C84 24.5 85.5 26.5 85.5 29.5 C85.5 31 84.5 31.8 82.5 31.8 L7.5 31.8 C5.8 31.8 5 31 5 29 Z" fill="url(#vmCarBody)" stroke="#949ba6" stroke-width=".7"/>
+      <path d="M27 21 C29 16.5 33 14.6 41 14.6 L50 14.6 C55.5 14.6 58.5 16.5 62 20.4 Z" fill="#2b3644"/>
+      <rect x="43.2" y="14.8" width="1.3" height="6" fill="#b6bcc6"/>
+      <rect x="80.4" y="25.4" width="3.4" height="3" rx="1.2" fill="#ffe6a0"/>
+      <circle cx="25" cy="31.8" r="6.6" fill="#1f2630"/><circle cx="25" cy="31.8" r="2.9" fill="#c7ccd4"/><circle cx="25" cy="31.8" r="1.1" fill="#6b7280"/>
+      <circle cx="65" cy="31.8" r="6.6" fill="#1f2630"/><circle cx="65" cy="31.8" r="2.9" fill="#c7ccd4"/><circle cx="65" cy="31.8" r="1.1" fill="#6b7280"/>
+    </svg>`;
   }
   // Returns {el} and self-ticks for in-progress trips. motif from vehicle.
   VMTL.tripProgress = function (trip, motif) {

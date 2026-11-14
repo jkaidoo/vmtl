@@ -33,6 +33,23 @@ window.VMTL_PAGE = async function () {
 
   const board = (data.vehicle_board || []).map((v) => `<a href="/vehicles.html?id=${v.id}" class="card pad fleet-link"><div class="between"><strong>${VMTL.esc(v.vehicle_number)}</strong>${statusBadge(v.status, v.status_label, v.status_color)}</div><div class="dim" style="font-size:12.5px;margin-top:4px">${VMTL.esc([v.make, v.model].filter(Boolean).join(' '))} · ${VMTL.fmtNumber(v.current_odometer)} km</div>${v.active_trip ? `<div class="pill mt">On: ${VMTL.esc(v.active_trip.trip_number)}</div>` : ''}</a>`).join('');
 
+  // Interactive fleet-status donut + today's trips-by-hour heat strip.
+  const COLORMAP = { green: 'var(--success)', amber: 'var(--warning)', blue: 'var(--info)', red: 'var(--danger)', grey: 'var(--text-3)', violet: 'var(--violet)' };
+  const fleetSeg = (() => {
+    const map = new Map();
+    (data.vehicle_board || []).forEach((v) => { const k = v.status; if (!map.has(k)) map.set(k, { label: v.status_label || v.status, value: 0, color: COLORMAP[v.status_color] || 'var(--text-3)', status: v.status }); map.get(k).value += 1; });
+    return [...map.values()];
+  })();
+  const todayHours = (() => {
+    const map = new Map();
+    (data.todays_schedule || []).forEach((t) => { const dt = new Date(String(t.scheduled_start).replace(' ', 'T')); if (isNaN(dt)) return; const h = dt.getHours(); map.set(h, (map.get(h) || 0) + 1); });
+    return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([h, c]) => ({ label: `${String(h).padStart(2, '0')}:00`, value: c }));
+  })();
+  const insight = (VMTL.charts && fleetSeg.length) ? `<div class="grid cols-2 mt">
+      <div class="card pad"><div class="ch-card-head"><h3>Fleet status</h3><span class="ch-hint">${(data.vehicle_board || []).length} vehicles · click to open</span></div><div class="mt">${VMTL.charts.donut(fleetSeg, { centerLabel: 'Vehicles' })}</div></div>
+      <div class="card pad"><div class="ch-card-head"><h3>Today by hour</h3><span class="ch-hint">trips starting</span></div><div class="mt">${todayHours.length ? VMTL.charts.heatStrip(todayHours, { tick: (l) => l.slice(0, 2) }) : '<div class="empty">No trips scheduled today.</div>'}</div></div>
+    </div>` : '';
+
   view.innerHTML = `
     <div class="page-head"><div><h1>Dashboard</h1><div class="sub">Welcome back, ${VMTL.esc(VMTL.user.name)}.</div></div><div class="btn-row"><a class="btn" href="/schedule.html">Calendar</a>${VMTL.can('vehicles.manage') || VMTL.can('analytics.view') ? '<a class="btn btn-primary" href="/tracking.html">Live fleet map</a>' : ''}<button class="btn" id="refreshDashboard">Refresh</button></div></div>
     <div class="grid cols-4 mb">
@@ -45,12 +62,17 @@ window.VMTL_PAGE = async function () {
       <div class="card"><div class="card-head"><h3>Today's schedule</h3></div><div class="card-body" style="padding:0">${scheduleRows ? `<table class="data"><thead><tr><th>Trip</th><th>Vehicle</th><th>Driver</th><th>When</th><th>Status</th></tr></thead><tbody>${scheduleRows}</tbody></table>` : '<div class="empty">No trips scheduled today.</div>'}</div></div>
       <div class="card pad"><div class="card-head" style="padding:0 0 12px"><h3>Maintenance alerts</h3><span class="pill">${alerts.total || 0}</span></div>${alerts.total ? `${alertRow('Insurance expiring', alerts.insurance_expiring, (x) => `${VMTL.esc(x.vehicle_number)} (${x.days_left}d)`, 'amber')}${alertRow('Roadworthy expiring', alerts.roadworthy_expiring, (x) => `${VMTL.esc(x.vehicle_number)} (${x.days_left}d)`, 'amber')}${alertRow('Service due', alerts.service_due, (x) => `${VMTL.esc(x.vehicle_number)}`, 'red')}${alertRow('Licence expiring', alerts.licence_expiring, (x) => `${VMTL.esc(x.name)} (${x.days_left}d)`, 'amber')}` : '<div class="empty">All clear — no alerts.</div>'}</div>
     </div>
+    ${insight}
     ${feed()}
     ${board ? `<h3 class="mt">Fleet board</h3><div class="grid cols-4">${board}</div>` : ''}
   `;
 
   view.querySelector('#refreshDashboard').onclick = () => window.VMTL_PAGE();
   view.querySelectorAll('tr.click[data-href]').forEach((tr) => { tr.onclick = () => { location.href = tr.getAttribute('data-href'); }; });
+  if (VMTL.charts) {
+    VMTL.charts.bind(view);
+    view.addEventListener('chartselect', (e) => { const st = e.detail.item && e.detail.item.raw && e.detail.item.raw.status; if (st) location.href = '/vehicles.html?status=' + encodeURIComponent(st); });
+  }
 };
 
 async function renderClientDashboard() {

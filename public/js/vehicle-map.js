@@ -1,7 +1,13 @@
 'use strict';
-// Shared vehicle artwork for the live fleet map, trip view and marker preview.
+// Shared vehicle map layer for the live fleet map and trip detail. Built on
+// MapLibre GL JS with free, keyless basemaps (OpenFreeMap for light, CARTO
+// dark-matter for dark). Markers use the uploaded vehicle graphic for every
+// vehicle; a status dot carries the colour the fixed graphic can't.
 (() => {
   const V = window.VMTL;
+
+  // ---- vehicle marker artwork ----------------------------------------------
+  // Top-down silhouette, kept for the trip-progress graphic and list rows.
   const motif = type => /motorcycle|scooter|tricycle/.test(type) ? 'motorcycle' : /truck|tractor|excavator|loader|forklift|trailer|recovery|fire_engine/.test(type) ? 'truck' : /bus|van|mpv|ambulance/.test(type) ? 'bus' : /pickup|utility/.test(type) ? 'pickup' : /suv|crossover/.test(type) ? 'suv' : 'car';
   V.vehicleMarkerSvg = (vehicle = {}) => {
     const kind = motif(vehicle.vehicle_type || '');
@@ -15,63 +21,68 @@
     const heading = Number.isFinite(Number(vehicle.heading)) ? Number(vehicle.heading) : 0;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="rotate(${heading} 32 32)">${body}</g></svg>`;
   };
-  V.vehicleMapIcon = vehicle => ({ url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(V.vehicleMarkerSvg(vehicle)), scaledSize: new google.maps.Size(56, 56), anchor: new google.maps.Point(28, 28), labelOrigin: new google.maps.Point(28, 57) });
-  // One palette for the fleet and trip maps, based on the marker-preview render.
-  // Embedded Maps JavaScript styling: https://developers.google.com/maps/documentation/javascript/style-reference
-  V.vehicleMapOptions = () => {
-    const theme = document.documentElement.getAttribute('data-theme');
-    const dark = theme === 'dark' || theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const palette = dark
-      ? { land: '#1c2521', built: '#27312c', park: '#243d2d', road: '#3b4942', edge: '#202b25', text: '#a9b9ac', water: '#203b46' }
-      : { land: '#edf1e8', built: '#e0e2dc', park: '#dbe8d3', road: '#ffffff', edge: '#d8dcd6', text: '#788276', water: '#cbdfe3' };
-    return {
-      mapTypeId: 'roadmap', mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
-      clickableIcons: false, tilt: 0, backgroundColor: palette.land,
-      styles: [
-        { elementType: 'geometry', stylers: [{ color: palette.land }] },
-        { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: palette.text }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: palette.land }, { weight: 3 }] },
-        { featureType: 'landscape.man_made', elementType: 'geometry.fill', stylers: [{ color: palette.built }] },
-        { featureType: 'poi', elementType: 'geometry.fill', stylers: [{ color: palette.built }] },
-        { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-        { featureType: 'poi.park', elementType: 'geometry.fill', stylers: [{ color: palette.park }] },
-        { featureType: 'poi.park', elementType: 'labels.text', stylers: [{ visibility: 'on' }] },
-        { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: palette.road }] },
-        { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: palette.edge }, { weight: 1 }] },
-        { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: palette.text }] },
-        { featureType: 'road', elementType: 'labels.text.stroke', stylers: [{ color: palette.road }, { weight: 3 }] },
-        { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-        { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-        { featureType: 'water', elementType: 'geometry.fill', stylers: [{ color: palette.water }] },
-      ],
-    };
+
+  // Status colour shared by the map marker dot and the list chips.
+  V.vehicleStatusColor = v => v.stale ? '#8993a1' : v.on_trip ? '#009540' : '#1f5fd0';
+
+  // The uploaded vehicle graphic as a MapLibre DOM marker element. Optional label
+  // (the vehicle number) sits under the car, matching the evaluation demo.
+  V.carMarkerEl = (vehicle = {}, { label } = {}) => {
+    const el = document.createElement('div');
+    el.className = 'vm-marker vm-car';
+    el.innerHTML = V.carArtHtml(vehicle) + (label ? `<strong>${V.esc(label)}</strong>` : '');
+    return el;
   };
+  V.carArtHtml = (vehicle = {}) =>
+    `<span class="vm-car-art"><img src="/img/vehicle-car.png" alt="" draggable="false"><i class="vm-dot" style="background:${V.vehicleStatusColor(vehicle)}"></i></span>`;
+
+  // ---- basemap styles (free, keyless) --------------------------------------
+  V.mapStyles = {
+    light: 'https://tiles.openfreemap.org/styles/liberty',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  };
+  V.mapStyleForTheme = () => {
+    const t = document.documentElement.getAttribute('data-theme');
+    const dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return dark ? V.mapStyles.dark : V.mapStyles.light;
+  };
+
+  // Lazily inject MapLibre GL JS + CSS once (keeps non-map pages lean).
+  V.loadMapLibre = () => {
+    if (window.maplibregl) return Promise.resolve();
+    if (window.__vmtlMapLibre) return window.__vmtlMapLibre;
+    window.__vmtlMapLibre = new Promise((resolve, reject) => {
+      if (!document.querySelector('link[data-maplibre]')) {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet'; css.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'; css.dataset.maplibre = '1';
+        document.head.appendChild(css);
+      }
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('The map library could not be loaded. Check your connection.'));
+      document.head.appendChild(s);
+    });
+    return window.__vmtlMapLibre;
+  };
+
+  // Swap the basemap style when the app theme changes. Markers are DOM elements,
+  // so they survive setStyle. Returns a cleanup function.
   V.watchMapTheme = map => {
-    const update = () => map.setOptions(V.vehicleMapOptions());
+    const update = () => { try { map.setStyle(V.mapStyleForTheme()); } catch (_) { /* map gone */ } };
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     media.addEventListener('change', update);
     return () => { observer.disconnect(); media.removeEventListener('change', update); };
   };
-  V.loadMaps = key => {
-    if (window.google?.maps) return Promise.resolve();
-    if (window.__vmtlMapsPromise) return window.__vmtlMapsPromise;
-    window.__vmtlMapsPromise = new Promise((resolve, reject) => {
-      window.__vmtlMapsReady = resolve;
-      window.gm_authFailure = () => reject(new Error('Google Maps rejected the configured key.'));
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async&callback=__vmtlMapsReady`;
-      script.onerror = () => reject(new Error('Google Maps could not load. Check your connection.'));
-      document.head.appendChild(script);
-    });
-    return window.__vmtlMapsPromise;
-  };
+
+  // ---- trip detail live map ------------------------------------------------
   V.mountTripMap = (host, tripId) => {
     let timer, stopped = false, map, marker, stopTheme;
     const panel = host.querySelector('[data-trip-map]'), status = host.querySelector('[data-map-status]'), detail = host.querySelector('[data-map-detail]');
-    const stop = () => { stopped = true; clearTimeout(timer); marker?.setMap(null); stopTheme?.(); };
+    const stop = () => { stopped = true; clearTimeout(timer); if (marker) marker.remove(); if (stopTheme) stopTheme(); if (map) map.remove(); };
     V.onLeave(stop);
     async function poll() {
       if (stopped || !host.isConnected) return stop();
@@ -81,15 +92,20 @@
         const position = result.data;
         status.textContent = result._stale ? 'Offline · last known' : position ? position.stale || result.trip_status !== 'in_progress' ? 'Last known location' : 'Live · updates every 5s' : 'Awaiting GPS';
         if (!position) { panel.innerHTML = '<div class="empty">No GPS fix for this trip yet. The assigned driver must start the trip and allow location sharing.</div>'; detail.textContent = 'A previous trip’s location is never shown here.'; }
-        else if (!result.config.has_key) { panel.innerHTML = '<div class="empty">Configure Google Maps in System → Maps configuration to display the live map.</div>'; detail.textContent = `Last reported ${V.fmtDateTime(position.recorded_at)}`; }
         else {
-          await V.loadMaps(result.config.key);
+          await V.loadMapLibre();
           if (stopped || !host.isConnected) return stop();
-          const point = { lat: Number(position.lat), lng: Number(position.lng) };
-          if (!map) { panel.innerHTML = ''; map = new google.maps.Map(panel, { ...V.vehicleMapOptions(), center: point, zoom: 16 }); stopTheme = V.watchMapTheme(map); }
-          if (!marker) marker = new google.maps.Marker({ map, position: point, title: position.vehicle_number, icon: V.vehicleMapIcon(position) });
-          else { marker.setPosition(point); marker.setIcon(V.vehicleMapIcon(position)); }
-          map.panTo(point);
+          const point = [Number(position.lng), Number(position.lat)];
+          if (!map) {
+            panel.innerHTML = '';
+            map = new maplibregl.Map({ container: panel, style: V.mapStyleForTheme(), center: point, zoom: 15 });
+            map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+            map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+            stopTheme = V.watchMapTheme(map);
+          }
+          if (!marker) marker = new maplibregl.Marker({ element: V.carMarkerEl(position, { label: position.vehicle_number }), anchor: 'center' }).setLngLat(point).addTo(map);
+          else marker.setLngLat(point);
+          map.easeTo({ center: point, duration: 600 });
           detail.textContent = `${position.vehicle_number} · Last reported ${V.fmtDateTime(position.recorded_at)}${position.speed != null ? ` · ${(Number(position.speed) * 3.6).toFixed(1)} km/h` : ''}${position.accuracy != null ? ` · GPS accuracy ±${Math.round(position.accuracy)} m` : ''}`;
         }
       } catch (error) { status.textContent = 'Tracking unavailable'; detail.textContent = error.message; if (!map) panel.innerHTML = '<div class="empty">Live tracking is temporarily unavailable.</div>'; }

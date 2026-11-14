@@ -92,18 +92,19 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
   app.disable('x-powered-by');
   app.use(requestId);
   app.use(require('./middleware/requestLog'));
-  // Google Maps JavaScript API endpoints (Live Map). The Maps JS key is a
-  // referrer-restricted client key, so the script, its tiles/markers and its
-  // XHRs must be allow-listed here while the rest of the CSP stays locked down.
-  const GMAPS = ['https://maps.googleapis.com', 'https://maps.gstatic.com'];
+  // Live map: MapLibre GL JS from a CDN, with keyless OpenStreetMap-based basemaps
+  // — OpenFreeMap (light) and CARTO dark-matter (dark) — serving the style, vector
+  // tiles, glyphs and sprites. No Google Maps, no API key.
+  const MAPLIBRE_CDN = 'https://unpkg.com';
+  const MAP_TILES = ['https://tiles.openfreemap.org', 'https://*.cartocdn.com'];
   app.use(helmet({
     contentSecurityPolicy: { useDefaults: false, directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", ...inlineScriptHashes(), 'https://maps.googleapis.com'],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      imgSrc: ["'self'", 'data:', 'blob:', ...GMAPS, 'https://*.googleapis.com', 'https://*.ggpht.com', 'https://*.google.com'],
+      scriptSrc: ["'self'", ...inlineScriptHashes(), MAPLIBRE_CDN],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', MAPLIBRE_CDN],
+      imgSrc: ["'self'", 'data:', 'blob:', ...MAP_TILES],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      connectSrc: ["'self'", ...GMAPS, 'https://*.googleapis.com'],
+      connectSrc: ["'self'", ...MAP_TILES],
       workerSrc: ["'self'", 'blob:'],
       manifestSrc: ["'self'"],
       objectSrc: ["'none'"],

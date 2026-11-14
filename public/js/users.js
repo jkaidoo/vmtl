@@ -57,7 +57,7 @@ window.VMTL_PAGE = async function () {
       <td data-label="Placement">${u.org_unit ? esc(u.org_unit.name) : '—'}</td>
       <td data-label="Status">${u.active ? VMTL.badge('Active', 'green') : VMTL.badge('Inactive', 'grey')}</td>
       <td data-label="Last sign-in"><span class="dim">${esc(relTime(u.last_login_at))}</span></td>
-      <td data-label=""><div class="btn-row"><button class="btn btn-sm" data-edit='${encodeURIComponent(JSON.stringify(u))}'><span class="btn-ic" style="color:var(--info)">${VMTL.icon('edit')}</span> Edit</button><button class="btn btn-sm" data-del="${u.id}"><span class="btn-ic" style="color:var(--danger)">${VMTL.icon('trash')}</span> Remove</button></div></td></tr>`).join('');
+      <td data-label=""><div class="btn-row"><button class="btn btn-sm" data-edit='${encodeURIComponent(JSON.stringify(u))}' title="Edit" aria-label="Edit"><span class="btn-ic" style="color:var(--info)">${VMTL.icon('edit')}</span></button><button class="btn btn-sm" data-del="${u.id}" title="Remove" aria-label="Remove"><span class="btn-ic" style="color:var(--danger)">${VMTL.icon('trash')}</span></button></div></td></tr>`).join('');
     list.innerHTML = `<table class="data accounts"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     list.querySelectorAll('th[data-k]').forEach((th) => th.onclick = () => {
       const k = th.dataset.k;

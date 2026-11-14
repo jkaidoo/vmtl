@@ -4,13 +4,14 @@
 // on a trip) and the viewer's own location; the side panel lists vehicles sorted
 // by how far they are from the viewer, live-updating every few seconds. Works
 // across multiple departments at once (the API returns the whole visible subtree).
+// Basemap: MapLibre GL JS with free, keyless tiles (no API key required).
 window.VMTL_PAGE = async function () {
   const view = VMTL.view;
   view.innerHTML = VMTL.pageHead('Live map', 'Where your fleet is right now, closest to you first.') +
     `<div class="track-wrap">
        <div class="track-map-col">
          <div id="trackBanner"></div>
-         <div class="track-map-stage"><div id="trackMap" class="track-map"><div class="track-map-empty"><span class="spinner"></span><p>Loading map…</p></div></div><div class="track-map-heading" hidden><strong>Fleet activity</strong><span>Vehicle direction follows GPS heading</span></div><div class="track-map-legend" hidden><span><i class="live"></i>On trip</span><span><i class="idle"></i>Idle</span><span><i class="stale"></i>Last seen</span></div></div>
+         <div class="track-map-stage"><div id="trackMap" class="track-map"><div class="track-map-empty"><span class="spinner"></span><p>Loading map…</p></div></div><div class="track-map-heading" hidden><strong>Fleet activity</strong><span>Latest reported position per vehicle</span></div><div class="track-map-legend" hidden><span><i class="live"></i>On trip</span><span><i class="idle"></i>Idle</span><span><i class="stale"></i>Last seen</span></div></div>
        </div>
        <aside class="track-side">
          <div class="track-side-head">
@@ -25,7 +26,7 @@ window.VMTL_PAGE = async function () {
      </div>`;
 
   const state = {
-    gmap: null, markers: new Map(), you: null, youMarker: null, youCircle: null,
+    map: null, markers: new Map(), you: null, youMarker: null,
     pollTimer: null, geoWatch: null, selected: null, config: null, vehicles: [], destroyed: false,
   };
 
@@ -41,6 +42,8 @@ window.VMTL_PAGE = async function () {
     state.destroyed = true;
     if (state.pollTimer) clearTimeout(state.pollTimer);
     if (state.geoWatch != null && navigator.geolocation) navigator.geolocation.clearWatch(state.geoWatch);
+    if (state.stopTheme) state.stopTheme();
+    if (state.map) state.map.remove();
     if (releaseWake) releaseWake();
     window.removeEventListener('vmtl:sw', onSwRefresh);
   });
@@ -80,48 +83,29 @@ window.VMTL_PAGE = async function () {
     return `${Math.round(sec / 3600)} h ago`;
   }
 
-  // ---- Google Maps loader --------------------------------------------------
-  function loadMaps(key) {
-    if (window.google && window.google.maps) return Promise.resolve();
-    if (window.__vmtlMapsPromise) return window.__vmtlMapsPromise;
-    window.__vmtlMapsKey = key;
-    window.__vmtlMapsPromise = new Promise((resolve, reject) => {
-      window.gm_authFailure = () => reject(new Error('auth'));
-      const cb = '__vmtlMapsReady';
-      window[cb] = () => resolve();
-      const s = document.createElement('script');
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=geometry&loading=async&callback=${cb}`;
-      s.async = true; s.defer = true;
-      s.onerror = () => reject(new Error('load'));
-      document.head.appendChild(s);
-    });
-    return window.__vmtlMapsPromise;
-  }
-
-  function markerIcon(v) {
-    return VMTL.vehicleMapIcon(v);
-  }
-
   // ---- map init ------------------------------------------------------------
   async function initMap() {
-    const center = (state.config && state.config.default_center) || { lat: 6.6745, lng: -1.5716 };
+    const c = (state.config && state.config.default_center) || { lat: 6.6745, lng: -1.5716 };
     try {
-      await loadMaps(state.config.key);
+      await VMTL.loadMapLibre();
     } catch (err) {
-      const why = err && err.message === 'auth'
-        ? 'The Google Maps key was rejected. Check that the Maps JavaScript API is enabled and the key allows this site.'
-        : 'Google Maps could not be loaded. Check the API key and your connection.';
-      document.getElementById('trackMap').innerHTML = `<div class="track-map-empty"><p>${VMTL.esc(why)}</p></div>`;
+      const why = (err && err.message) || 'The map could not be loaded. Check your connection.';
+      const el = document.getElementById('trackMap'); if (el) el.innerHTML = `<div class="track-map-empty"><p>${VMTL.esc(why)}</p></div>`;
       showBanner(VMTL.esc(why), 'warn');
       return false;
     }
     if (state.destroyed) return false;
-    const g = window.google;
-    state.gmap = new g.maps.Map(document.getElementById('trackMap'), {
-      ...VMTL.vehicleMapOptions(), center, zoom: (state.config && state.config.default_zoom) || 13,
+    const host = document.getElementById('trackMap');
+    host.innerHTML = '';
+    state.map = new maplibregl.Map({
+      container: host, style: VMTL.mapStyleForTheme(),
+      center: [c.lng, c.lat], zoom: (state.config && state.config.default_zoom) || 13,
     });
-    view.querySelectorAll('.track-map-heading,.track-map-legend').forEach(overlay => overlay.hidden = false);
-    VMTL.onLeave(VMTL.watchMapTheme(state.gmap));
+    state.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    state.map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+    state.map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    view.querySelectorAll('.track-map-heading,.track-map-legend').forEach((overlay) => (overlay.hidden = false));
+    state.stopTheme = VMTL.watchMapTheme(state.map);
     return true;
   }
 
@@ -142,14 +126,19 @@ window.VMTL_PAGE = async function () {
       return;
     }
     list.innerHTML = items.map((v) => {
+      // Live = on an in-progress trip with a fresh fix. Anything else is a
+      // last-known position, labelled with when it was actually taken so a stale
+      // or off-trip vehicle never reads as if it were moving right now.
+      const live = v.on_trip && !v.stale;
       const status = v.stale ? 'Last seen' : (v.on_trip ? 'On trip' : 'Idle');
+      const when = live ? fmtAge(v.age_seconds) : `Last known · ${VMTL.fmtDateTime(v.recorded_at)}`;
       const sub = [v.driver_name, v.destination && `→ ${v.destination}`].filter(Boolean).join(' · ') || v.registration_number;
       return `<button class="track-row ${state.selected === v.vehicle_id ? 'sel' : ''}" data-id="${v.vehicle_id}">
-        <span class="track-row-marker" aria-hidden="true">${VMTL.vehicleMarkerSvg(v)}</span>
+        <span class="track-row-marker" aria-hidden="true">${VMTL.carArtHtml(v)}</span>
         <span class="track-row-main">
           <span class="track-row-top"><strong>${VMTL.esc(v.vehicle_number)}</strong><span class="track-dist">${fmtDist(v._dist)}</span></span>
           <span class="track-row-sub">${VMTL.esc(sub)}</span>
-          <span class="track-row-meta"><span class="track-chip ${v.stale ? 'stale' : (v.on_trip ? 'live' : 'idle')}">${status}</span><span class="dim">${VMTL.esc(v.org_unit_name || '')}</span><span class="dim">${fmtAge(v.age_seconds)}</span></span>
+          <span class="track-row-meta"><span class="track-chip ${v.stale ? 'stale' : (v.on_trip ? 'live' : 'idle')}">${status}</span><span class="dim">${VMTL.esc(v.org_unit_name || '')}</span><span class="dim">${VMTL.esc(when)}</span></span>
         </span>
       </button>`;
     }).join('');
@@ -162,8 +151,8 @@ window.VMTL_PAGE = async function () {
     state.selected = id;
     const v = state.vehicles.find((x) => x.vehicle_id === id);
     const entry = state.markers.get(id);
-    if (state.gmap && v) { state.gmap.panTo({ lat: v.lat, lng: v.lng }); if (state.gmap.getZoom() < 14) state.gmap.setZoom(15); }
-    if (entry && entry.info && state.gmap) { state.markers.forEach((e) => e.info && e.info.close()); entry.info.open(state.gmap, entry.marker); }
+    if (state.map && v) state.map.flyTo({ center: [v.lng, v.lat], zoom: Math.max(state.map.getZoom(), 15), speed: 0.8 });
+    if (entry && state.map) { state.markers.forEach((e) => e.popup && e.popup.isOpen() && e.popup.remove()); entry.marker.togglePopup(); }
     renderList();
   }
 
@@ -174,33 +163,36 @@ window.VMTL_PAGE = async function () {
       v.destination && `<div><span class="dim">Destination</span> ${VMTL.esc(v.destination)}</div>`,
       v.org_unit_name && `<div><span class="dim">Unit</span> ${VMTL.esc(v.org_unit_name)}</div>`,
       typeof v.speed === 'number' && v.speed >= 0 && `<div><span class="dim">Speed</span> ${Math.round((v.speed || 0) * 3.6)} km/h</div>`,
-      `<div><span class="dim">Updated</span> ${fmtAge(v.age_seconds)}</div>`,
+      (v.on_trip && !v.stale)
+        ? `<div><span class="dim">Updated</span> ${fmtAge(v.age_seconds)}</div>`
+        : `<div><span class="dim">Last known</span> ${VMTL.esc(VMTL.fmtDateTime(v.recorded_at))}</div>`,
     ].filter(Boolean).join('');
     return `<div class="track-info"><strong>${VMTL.esc(v.vehicle_number)}</strong><div class="track-info-sub">${VMTL.esc([v.make, v.model].filter(Boolean).join(' ') || v.registration_number)}</div>${rows}</div>`;
   }
 
   // ---- markers -------------------------------------------------------------
   function syncMarkers() {
-    if (!state.gmap || !window.google) return;
-    const g = window.google, seen = new Set();
+    if (!state.map || !window.maplibregl) return;
+    const seen = new Set();
     for (const v of state.vehicles) {
       seen.add(v.vehicle_id);
-      const pos = { lat: v.lat, lng: v.lng };
+      const pos = [v.lng, v.lat];
       let entry = state.markers.get(v.vehicle_id);
       if (!entry) {
-        const marker = new g.maps.Marker({ map: state.gmap, position: pos, icon: markerIcon(v), label: { text: v.vehicle_number, color: '#1b1b1b', fontSize: '11px', fontWeight: '600', className: 'track-mk-label' }, title: v.vehicle_number });
-        const info = new g.maps.InfoWindow();
-        marker.addListener('click', () => focusVehicle(v.vehicle_id));
-        entry = { marker, info };
+        const el = VMTL.carMarkerEl(v, { label: v.vehicle_number });
+        const popup = new maplibregl.Popup({ offset: 22, closeButton: false }).setHTML(infoHtml(v));
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(pos).setPopup(popup).addTo(state.map);
+        el.addEventListener('click', () => focusVehicle(v.vehicle_id));
+        entry = { marker, popup, el };
         state.markers.set(v.vehicle_id, entry);
       } else {
-        entry.marker.setPosition(pos);
-        entry.marker.setIcon(markerIcon(v));
+        entry.marker.setLngLat(pos);
+        const dot = entry.el.querySelector('.vm-dot'); if (dot) dot.style.background = VMTL.vehicleStatusColor(v);
+        entry.popup.setHTML(infoHtml(v));
       }
-      entry.info.setContent(infoHtml(v));
     }
     for (const [id, entry] of state.markers) {
-      if (!seen.has(id)) { entry.marker.setMap(null); state.markers.delete(id); }
+      if (!seen.has(id)) { entry.marker.remove(); state.markers.delete(id); }
     }
   }
 
@@ -211,12 +203,12 @@ window.VMTL_PAGE = async function () {
     state.geoWatch = navigator.geolocation.watchPosition((pos) => {
       state.you = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       if (youEl) youEl.textContent = 'Showing distance from your location.';
-      if (state.gmap && window.google) {
-        const g = window.google;
+      if (state.map && window.maplibregl) {
         if (!state.youMarker) {
-          state.youMarker = new g.maps.Marker({ map: state.gmap, position: state.you, zIndex: 999,
-            icon: { path: g.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#1a73e8', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }, title: 'You' });
-        } else state.youMarker.setPosition(state.you);
+          const dot = document.createElement('div');
+          dot.className = 'track-you-dot'; dot.title = 'You';
+          state.youMarker = new maplibregl.Marker({ element: dot, anchor: 'center' }).setLngLat([state.you.lng, state.you.lat]).addTo(state.map);
+        } else state.youMarker.setLngLat([state.you.lng, state.you.lat]);
       }
       renderList();
     }, (err) => {
@@ -250,14 +242,8 @@ window.VMTL_PAGE = async function () {
   }
   if (state.destroyed) return;
 
-  if (!state.config.has_key) {
-    const cta = state.config.can_configure
-      ? '<a class="btn btn-primary" href="/maps-config.html">Set up Google Maps</a><p class="dim" style="margin-top:8px">The live list below works without the map.</p>'
-      : '<p class="dim">Ask your System Administrator to set up Google Maps on the Maps configuration page. The live list below still works.</p>';
-    document.getElementById('trackMap').innerHTML = `<div class="track-map-empty"><p>The map needs a Google Maps API key.</p>${cta}</div>`;
-  } else {
-    await initMap();
-    startGeo();
-  }
+  // MapLibre + OpenFreeMap needs no API key, so the map always loads.
+  await initMap();
+  startGeo();
   poll();
 };
