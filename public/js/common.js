@@ -327,6 +327,8 @@
   // ---- capability helpers ----------------------------------------------
   VMTL.can = (cap) => VMTL.user && (VMTL.user.is_super_admin || VMTL.caps.includes(cap));
   VMTL.isSuper = () => !!(VMTL.user && VMTL.user.is_super_admin);
+  // An App-Owner page this user may open: the owner, or shared on Owner page access.
+  VMTL.ownerPage = (key) => VMTL.isSuper() || !!(VMTL.user && (VMTL.user.owner_pages || []).includes(key));
   VMTL.requesterOnly = () => !!(VMTL.user && VMTL.user.requester_only);
   VMTL.roleSlug = () => (VMTL.user && VMTL.user.role ? VMTL.user.role.slug : null);
 
@@ -373,6 +375,7 @@
     'user-plus': 'M15 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2 M8.5 11a4 4 0 100-8 4 4 0 000 8z M19 8v6 M22 11h-6',
     contacts: 'M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1z M8 11a2 2 0 100-4 2 2 0 000 4z M5.5 16a2.5 2.5 0 015 0 M14 9h4 M14 13h3',
     calendar: 'M4 5h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z M3 10h18 M8 3v4 M16 3v4',
+    compass: 'M12 2a10 10 0 100 20 10 10 0 000-20z M16.2 7.8l-2.1 6.3-6.3 2.1 2.1-6.3z',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(I[name] || 'M12 12h.01').split('M').filter(Boolean).map((p) => `<path d="M${p}"/>`).join('')}</svg>`;
   VMTL.icon = icon;
@@ -408,6 +411,8 @@
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },
     { label: 'System', items: [
+      {key:'app-overview',to:'/app-overview.html',label:'App overview',icon:'compass',superOnly:true},
+      {key:'owner-access',to:'/owner-access.html',label:'Owner page access',icon:'key',superOnly:true},
       {key:'dropdowns',to:'/dropdowns.html',label:'Dropdowns',icon:'sliders',superOnly:true},
       {key:'file-server',to:'/file-server.html',label:'File Server',icon:'database',superOnly:true},
       { key: 'app-health', to: '/app-health.html', label: 'App Health', icon: 'health', systemAdmin: true },
@@ -433,6 +438,8 @@
   ];
 
   function visible(item) {
+    // Owner pages shared with this user (Owner page access) show even for a requester-only role.
+    if (item.superOnly && !VMTL.isSuper()) return VMTL.ownerPage(item.key) && !((VMTL.meta?.nav_hidden || []).includes(item.key) && !VMTL.meta?.nav_layout);
     if (VMTL.requesterOnly()) return item.key === 'dashboard' || item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';
     if (!VMTL.meta?.nav_layout && ((VMTL.meta?.nav_hidden) || []).includes(item.key) && item.key !== 'navigation') return false;
     if (item.superOnly) return VMTL.isSuper();

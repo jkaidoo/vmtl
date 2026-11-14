@@ -33,6 +33,8 @@ const catalogue = [
       { key: 'audit', to: '/audit.html', label: 'Audit Logs', icon: 'audit', cap: 'audit.view' },
     ] },
     { label: 'System', items: [
+      {key:'app-overview',to:'/app-overview.html',label:'App overview',icon:'compass',superOnly:true},
+      {key:'owner-access',to:'/owner-access.html',label:'Owner page access',icon:'key',superOnly:true},
       {key:'dropdowns',to:'/dropdowns.html',label:'Dropdowns',icon:'sliders',superOnly:true},
       {key:'file-server',to:'/file-server.html',label:'File Server',icon:'database',superOnly:true},
       { key: 'app-health', to: '/app-health.html', label: 'App Health', icon: 'health', systemAdmin: true },
@@ -79,10 +81,12 @@ async function defaults(scope = '__all__') {
     }
   }
   const hidden = await settings.get('nav_hidden', []);
+  // Owner pages the App Owner has shared with this role (Owner page access).
+  const shared = unrestricted || scope === '__client__' ? [] : await require('./ownerAccess').pagesForRole(scope);
   const available = item => {
     if (unrestricted) return true;
-    if (requester) return ['dashboard', 'requests', 'how-it-works', 'faqs'].includes(item.key);
-    if (item.superOnly) return false;
+    if (requester) return ['dashboard', 'requests', 'how-it-works', 'faqs'].includes(item.key) || shared.includes(item.key);
+    if (item.superOnly) return shared.includes(item.key);
     if (item.systemAdmin) return caps.includes('system.admin');
     if (item.cap) return caps.includes(item.cap);
     if (item.roles) return item.roles.includes(scope) || (item.anyCaps || []).some(cap => caps.includes(cap));

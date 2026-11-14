@@ -24,14 +24,20 @@ window.VMTL_PAGE = function () {
     { icon: 'approvals', title: 'Review & decide', owns: ['requests.approve'],
       desc: 'An approver reviews each pending request and approves it, rejects it with a reason, or sends it back to the requester for changes.',
       you: 'You approve, reject or request changes on pending requests in your scope.' },
+    { icon: 'drivers', title: 'Keep the fleet register', owns: ['vehicles.manage', 'drivers.manage'],
+      desc: 'Vehicles and drivers are kept up to date — details, photos (shown in the lists) and driver licence photos. The University Transport Officer maintains the register across every organisational unit.',
+      you: 'You add and update vehicles and drivers, with their photos and licence images.' },
     { icon: 'vehicles', title: 'Assign vehicle & driver', owns: ['requests.assign'],
       desc: 'A transport officer assigns an available vehicle and driver to the approved request. Only conflict-free vehicles and drivers for that window are offered — which creates the trip.',
       you: 'You match a free vehicle and driver to approved requests, creating the trip.' },
+    { icon: 'calendar', title: 'Schedule IDL external travel', owns: ['schedule.events'],
+      desc: 'For IDL activities, the Schedule Transport Officer creates an event and pairs available drivers with vehicles from across the university for each journey. The driver is notified, and fuel and other trip costs are tracked per schedule and per event.',
+      you: 'You plan IDL events, pair drivers with vehicles, and track each schedule\'s fuel and extra costs.' },
     { icon: 'trips', title: 'Run the trip', owns: ['trips.operate'],
       desc: 'The driver starts the trip and the live progress graphic ticks through the planned window. Mid-trip destinations can be added, and the driver completes the trip with the closing odometer.',
       you: 'You start, track and complete your assigned trips, and accept or decline added stops.' },
     { icon: 'fuel', title: 'Log fuel & maintenance', owns: ['fuel.log', 'maintenance.manage'],
-      desc: 'Fuel purchases, servicing and odometer readings are recorded against each vehicle, keeping running costs and service schedules up to date.',
+      desc: 'Fuel purchases (station and fuel type chosen from a list), servicing with the provider and a receipt, and odometer readings are recorded against each vehicle, keeping running costs and service schedules up to date.',
       you: 'You record fuel, servicing and odometer readings for the fleet.' },
     { icon: 'analytics', title: 'Review insights', owns: ['analytics.view', 'reports.export'],
       desc: 'Analytics and reports summarise trips, distance, utilisation and fuel economy, and can be exported to CSV, Excel or PDF.',
@@ -39,8 +45,8 @@ window.VMTL_PAGE = function () {
   ];
   if (isSuper) {
     stages.push({ icon: 'shield', title: 'Administer the system', owns: ['*'],
-      desc: 'Behind the scenes, the system administrator manages users, roles and capabilities (RBAC), the organisational-unit hierarchy, directory sign-in, notifications and system settings.',
-      you: 'You oversee the whole system — users, RBAC, org units, directory auth and settings.' });
+      desc: 'Behind the scenes, the system administrator manages users, roles and capabilities (RBAC), the organisational-unit hierarchy, directory sign-in, notifications and system settings. The App Owner also curates the dropdown choices and chooses where uploaded files are stored.',
+      you: 'You oversee the whole system — users, RBAC, org units, directory auth, dropdowns, file storage and settings.' });
   }
 
   const mine = (s) => isSuper || s.owns.some((c) => can(c));

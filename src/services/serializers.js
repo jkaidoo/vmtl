@@ -25,6 +25,8 @@ async function userForClient(userId) {
     org_unit: u.org_unit_id ? { id: u.org_unit_id, name: u.org_unit_name, type: u.org_unit_type, path: u.org_unit_path } : null,
     capabilities: caps,
     requester_only: !u.is_super_admin && roles.isRequesterOnly(caps),
+    // App-Owner pages the owner has shared with this user (all of them for the owner).
+    owner_pages: await require('./ownerAccess').pagesFor({ id: u.id, is_super_admin: !!u.is_super_admin }),
   };
 }
 

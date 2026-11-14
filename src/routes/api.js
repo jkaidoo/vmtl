@@ -28,6 +28,8 @@ require('./api/rbac')(router);
 require('./api/audit')(router);
 require('./api/backups')(router);
 require('./api/admin')(router); // super-admin tier: app-health, system-controls, directory-auth, messaging, database, docs
+require('./api/app-overview')(router); // App Owner: live figures for the Application overview page
+require('./api/owner-access')(router); // App Owner: share owner pages with roles or people
 require('./api/v1')(router); // public read API (Bearer token auth)
 
 module.exports = router;

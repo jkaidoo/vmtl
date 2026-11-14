@@ -27,8 +27,12 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 // Pages a requester-only (Staff) user may open; everything else sends them home.
 const REQUESTER_ALLOWED = new Set(['/dashboard.html', '/requests.html', '/request-create.html', '/request-detail.html', '/trips.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html']);
-// App-Owner-only pages (is_super_admin).
-const APP_OWNER_PAGES = new Set(['/broadcasts.html', '/backup-cleanup.html', '/dropdowns.html', '/file-server.html']);
+// App-Owner-only pages (is_super_admin). Those listed in ownerAccess.DELEGABLE can be
+// shared with chosen roles or people on Owner page access; Backup & cleanup and
+// Owner page access itself never can.
+const APP_OWNER_PAGES = new Set(['/broadcasts.html', '/backup-cleanup.html', '/dropdowns.html', '/file-server.html', '/app-overview.html', '/owner-access.html']);
+const ownerAccess = require('./services/ownerAccess');
+const DELEGABLE_OWNER_PAGES = new Map(Object.entries(ownerAccess.DELEGABLE).map(([key, page]) => [page.path, key]));
 // System section pages — the App Owner or a System Administrator (system.admin).
 const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
@@ -158,7 +162,12 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
     if (PUBLIC_PAGES.has(req.path)) return next();
     if (!req.session || !req.session.user) return res.redirect('/login.html');
     const user = req.session.user;
-    if (APP_OWNER_PAGES.has(req.path) && !user.is_super_admin) return res.redirect(roles.homePage(await caps(req)));
+    if (APP_OWNER_PAGES.has(req.path) && !user.is_super_admin) {
+      const key = DELEGABLE_OWNER_PAGES.get(req.path);
+      if (!key || !(await ownerAccess.can(user, key))) return res.redirect(roles.homePage(await caps(req)));
+      // Shared with this user by the App Owner: serve it even to a requester-only role.
+      if (assets.pages.has(name)) return assets.sendPage(res, name);
+    }
     if (SYSTEM_PAGES.has(req.path) && !user.is_super_admin) {
       const held = await roleRepository.capsForUser(user.id);
       if (!held.includes('system.admin')) return res.redirect(roles.homePage(held));

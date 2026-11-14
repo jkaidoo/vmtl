@@ -76,6 +76,15 @@ lesser administrators cannot edit, delete, or assign its role, and no one may de
 Page access is guarded server-side in `src/app.js` (App-Owner pages, System pages, requester-only pages),
 not only in the UI.
 
+**Owner page access — `src/services/ownerAccess.js`:** the App Owner may share App overview, Dropdowns,
+File Server and Broadcasts with chosen roles and/or named people. Each shared page's HTML guard and every
+API route behind it check the grant (`requirePage`), resolved fresh from the database on each request
+against the user's current role and active status, so revoking takes effect immediately. A delegate gets
+exactly the owner's power on that page and nothing else. Backup & cleanup (full snapshots containing
+password hashes and secrets, restore, permanent deletion) and the Owner page access settings themselves
+can never be shared, so no delegate can widen their own access; only the App Owner can read or change
+grants, and every change is audited with before/after values.
+
 **Limits:** OWN/TEAM/ALL capability catalogue entries do not by themselves prove complete scope
 enforcement in every handler. UI hiding never substitutes for protecting the data API.
 
@@ -144,7 +153,15 @@ payloads above the configured size cap are rejected, and a per-user daily upload
 Files are written under a random UUID key with `flag:'wx'` (no overwrite, no path traversal from user
 input); the display filename is reduced with `path.basename` and truncated.
 
+Reads go through `GET /api/fleet-files/...` only (never a public or bucket URL). Each read re-checks
+organisational scope against the owning record; driver licence photos additionally require
+`drivers.manage` or the driver's own account, and maintenance receipts require `maintenance.manage`.
+Responses carry the stored signature type, `X-Content-Type-Options: nosniff`, `Cache-Control: private,
+no-store` and an encoded `inline` filename. PDFs are accepted only as maintenance receipts.
+
 **Limits:** signature checks are not antivirus scanning; there is no quarantine or content-disarm service.
+Files kept on a folder, S3 or Supabase file server are not included in database backups and need the
+storage provider's own backup.
 
 ### 9. Public endpoints and the read API
 
@@ -162,7 +179,12 @@ compare rather than constant-time (low risk given the token entropy).
 
 **Implemented:** integration secrets are write-only through the settings APIs (blank preserves the stored
 value; responses expose only `has_*` flags). The VAPID private key and directory bind passwords stay
-server-side. Connection profiles are encrypted with AES-256-GCM (`src/services/dbProfiles.js`). Logs and
+server-side. Connection profiles are encrypted with AES-256-GCM (`src/services/dbProfiles.js`). File-server
+credentials (S3 secret key, Supabase service key) are encrypted with AES-256-GCM using a key derived
+(scrypt) from `DATABASE_PROFILE_ENCRYPTION_KEY`, or `SESSION_SECRET` if unset; saving remote credentials is
+refused when neither is set. Each remotely stored file keeps an encrypted copy of the storage settings it
+was written with, so it stays readable after the File Server is changed — changing the key makes those
+files unreadable, so keep it stable and back it up separately. Logs and
 operational exports are redacted by key name (`src/util/redact.js`:
 `password|secret|token|authorization|cookie|api_key|credential|private_key`), and the request log never
 records bodies.
@@ -207,3 +229,12 @@ or comment is not evidence of working enforcement.
 - Added self-service password change (`POST /api/auth/me/password`) with current-password verification,
   complexity enforcement, reuse rejection and an audit event.
 - Corrected the in-app Security Assessment text so it no longer implies full snapshots are redacted.
+- Restricted driver licence photo reads to `drivers.manage` holders and the driver themselves.
+- Driver login provisioning now requires `users.manage` on the server as well as in the UI.
+- IDL scheduling (`src/routes/api/event-schedules.js`) enforces organisational scope on every
+  endpoint, so a role granted `schedule.events` without `fleet.global` cannot see or book fleet outside
+  its own units. Cancelled schedules refuse new expenses and fuel.
+- Dropdown keys for workflow statuses and vehicle types are protected (relabel only), and dropdown
+  input is type-checked and rejects delimiter characters.
+- Added Owner page access: App overview, Dropdowns, File Server and Broadcasts can be shared with roles
+  or named people (server-enforced per page); Backup & cleanup and the access settings stay App Owner only.

@@ -14,13 +14,15 @@ const audit=require('../../services/audit');
 
 module.exports=router=>{
 
- const owner=(req,res,next)=>{if(!req.session.user.is_super_admin) throw forbidden(); next();};
+ // App-Owner pages, shareable with chosen roles or people on Owner page access.
+ const {requirePage}=require('../../services/ownerAccess');
+ const dropdownsPage=requirePage('dropdowns'), fileServerPage=requirePage('file-server');
 
  router.get('/file-upload-config',requireAuth,async(req,res)=>{const c=await files.config();res.json({enabled:c.enabled,maxMB:c.maxMB,images:c.images});});
 
- router.get('/dropdowns',requireAuth,owner,async(req,res)=>res.json({data:await require('../../services/dropdowns').options()}));
+ router.get('/dropdowns',requireAuth,dropdownsPage,async(req,res)=>res.json({data:await require('../../services/dropdowns').options()}));
 
- router.put('/dropdowns/:key',requireAuth,owner,async(req,res)=>{
+ router.put('/dropdowns/:key',requireAuth,dropdownsPage,async(req,res)=>{
 
   const data=await require('../../services/dropdowns').save(req.params.key,req.body.options);
 
@@ -60,15 +62,15 @@ module.exports=router=>{
 
  });
 
- router.get('/file-server',requireAuth,owner,async(req,res)=>res.json({config:require('../../services/fileStorageConfig').publicConfig(await files.config()),usage:await db.get('SELECT COUNT(*) AS files,COALESCE(SUM(size_bytes),0) AS bytes FROM fleet_files'),largest:await db.all('SELECT id,file_name,size_bytes,entity_type,kind,created_at FROM fleet_files ORDER BY size_bytes DESC LIMIT 15')}));
+ router.get('/file-server',requireAuth,fileServerPage,async(req,res)=>res.json({config:require('../../services/fileStorageConfig').publicConfig(await files.config()),usage:await db.get('SELECT COUNT(*) AS files,COALESCE(SUM(size_bytes),0) AS bytes FROM fleet_files'),largest:await db.all('SELECT id,file_name,size_bytes,entity_type,kind,created_at FROM fleet_files ORDER BY size_bytes DESC LIMIT 15')}));
 
  const storage=require('../../services/fileStorageConfig');
 
  const test=c=>storage.test(c);
 
- router.post('/file-server/test',requireAuth,owner,async(req,res)=>res.json(await test(await storage.merge(req.body))));
+ router.post('/file-server/test',requireAuth,fileServerPage,async(req,res)=>res.json(await test(await storage.merge(req.body))));
 
- router.put('/file-server',requireAuth,owner,async(req,res)=>{
+ router.put('/file-server',requireAuth,fileServerPage,async(req,res)=>{
 
   const c=await storage.merge(req.body);
 
@@ -86,7 +88,7 @@ module.exports=router=>{
 
  });
 
- router.post('/file-server/move',requireAuth,owner,async(req,res)=>{
+ router.post('/file-server/move',requireAuth,fileServerPage,async(req,res)=>{
 
   const c=await files.config(); if(c.provider==='database') throw badRequest('Save a file server first.'); await test(c);
 
