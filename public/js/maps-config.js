@@ -51,7 +51,8 @@ window.VMTL_PAGE = async function () {
       await VMTL.loadMapLibre();
       const box = view.querySelector('#mcPreview'); if (!box) return;
       box.innerHTML = '';
-      map = new maplibregl.Map({ container: box, style: VMTL.mapStyleForTheme(), center: [num(lngEl), num(latEl)], zoom: num(zoomEl) || 13 });
+      map = new maplibregl.Map({ container: box, style: VMTL.mapStyleForTheme(), center: [num(lngEl), num(latEl)], zoom: num(zoomEl) || 13, attributionControl: false });
+      VMTL.compactAttribution(map);
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
       VMTL.onLeave(VMTL.watchMapTheme(map));
       marker = new maplibregl.Marker({ color: '#009540', draggable: true }).setLngLat([num(lngEl), num(latEl)]).addTo(map);

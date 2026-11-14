@@ -78,6 +78,16 @@
     return () => { observer.disconnect(); media.removeEventListener('change', update); };
   };
 
+  // Compact attribution: a single "i" button that stays collapsed by default and
+  // expands only when clicked. MapLibre's compact control starts open, so we strip
+  // the "show" class on each style load (initial + theme swaps), not on pan/click.
+  V.compactAttribution = map => {
+    map.addControl(new maplibregl.AttributionControl({ compact: true }));
+    const collapse = () => { const el = map.getContainer().querySelector('.maplibregl-ctrl-attrib'); if (el) el.classList.remove('maplibregl-compact-show'); };
+    collapse();
+    map.on('styledata', e => { if (!e || e.dataType === 'style') collapse(); });
+  };
+
   // ---- trip detail live map ------------------------------------------------
   V.mountTripMap = (host, tripId) => {
     let timer, stopped = false, map, marker, stopTheme;
@@ -98,7 +108,8 @@
           const point = [Number(position.lng), Number(position.lat)];
           if (!map) {
             panel.innerHTML = '';
-            map = new maplibregl.Map({ container: panel, style: V.mapStyleForTheme(), center: point, zoom: 15 });
+            map = new maplibregl.Map({ container: panel, style: V.mapStyleForTheme(), center: point, zoom: 15, attributionControl: false });
+            V.compactAttribution(map);
             map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
             map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
             stopTheme = V.watchMapTheme(map);

@@ -100,7 +100,9 @@ window.VMTL_PAGE = async function () {
     state.map = new maplibregl.Map({
       container: host, style: VMTL.mapStyleForTheme(),
       center: [c.lng, c.lat], zoom: (state.config && state.config.default_zoom) || 13,
+      attributionControl: false,
     });
+    VMTL.compactAttribution(state.map);
     state.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     state.map.addControl(new maplibregl.FullscreenControl(), 'top-right');
     state.map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
