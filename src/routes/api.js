@@ -24,6 +24,7 @@ require('./api/departments')(router);
 require('./api/analytics')(router); // analytics + reports
 require('./api/rbac')(router);
 require('./api/audit')(router);
+require('./api/backups')(router);
 require('./api/admin')(router); // super-admin tier: app-health, system-controls, directory-auth, messaging, database, docs
 require('./api/v1')(router); // public read API (Bearer token auth)
 

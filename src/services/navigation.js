@@ -40,6 +40,7 @@ const catalogue = [
       { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', systemAdmin: true },
       { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', systemAdmin: true },
       { key: 'broadcasts', to: '/broadcasts.html', label: 'Broadcasts', icon: 'megaphone', superOnly: true },
+      { key: 'backup-cleanup', to: '/backup-cleanup.html', label: 'Backup & cleanup', icon: 'database', superOnly: true },
       { key: 'database', to: '/database-connections.html', label: 'Database connections', icon: 'database', systemAdmin: true },
       { key: 'unified-api', to: '/unified-api.html', label: 'Unified API', icon: 'code', systemAdmin: true },
       { key: 'report-config', to: '/report-configuration.html', label: 'Report configuration', icon: 'reports', systemAdmin: true },

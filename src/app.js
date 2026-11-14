@@ -27,8 +27,8 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 // Pages a requester-only (Staff) user may open; everything else sends them home.
 const REQUESTER_ALLOWED = new Set(['/dashboard.html', '/requests.html', '/request-create.html', '/request-detail.html', '/trips.html', '/goodwill.html', '/availability.html', '/faqs.html', '/how-it-works.html']);
-// App-Owner-only pages (is_super_admin): Broadcasts.
-const APP_OWNER_PAGES = new Set(['/broadcasts.html']);
+// App-Owner-only pages (is_super_admin).
+const APP_OWNER_PAGES = new Set(['/broadcasts.html', '/backup-cleanup.html']);
 // System section pages — the App Owner or a System Administrator (system.admin).
 const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).

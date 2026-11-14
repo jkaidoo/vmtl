@@ -154,7 +154,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 
 /* ---- Cards -------------------------------------------------------------- */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.card, .alert-accent { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
 .card.pad { padding: 18px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .card-head h3 { margin: 0; }
@@ -172,13 +172,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .kpi .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
 .kpi .sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
-/* Notice rows — walkin style: a clean surface row with a thin inset accent,
-   not a heavy bar + tinted pill. */
-.alert-accent { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 13px; box-shadow: inset 3px 0 0 var(--border-strong); }
-.alert-accent.amber { box-shadow: inset 3px 0 0 var(--warning); }
-.alert-accent.red { box-shadow: inset 3px 0 0 var(--danger); }
-.alert-accent.green { box-shadow: inset 3px 0 0 var(--success); }
-.alert-accent.blue { box-shadow: inset 3px 0 0 var(--info); }
+/* Notices use the standard card surface. */
+.alert-accent { padding: 10px 13px; }
 
 /* Audit log (walkin): action chip, record id, filter + pager bar. */
 .audit-chip { display: inline-block; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
@@ -518,7 +513,7 @@ table.data tbody tr.click:hover { background: var(--surface-2); }
 .cal-dayhead.is-today .cal-dnum{background:var(--primary);color:var(--primary-contrast);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px}
 .cal-dayhead.is-today .cal-dow{color:var(--primary)}
 .cal-track{position:relative;background-image:linear-gradient(var(--border) 1px,transparent 1px);background-position:0 0}
-.cal-ev{position:absolute;border-radius:7px;padding:4px 7px;overflow:hidden;cursor:default;box-shadow:0 1px 2px rgba(0,0,0,.06);transition:filter .12s}
+.cal-ev{position:absolute;border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:4px 7px;overflow:hidden;cursor:default;box-shadow:0 1px 2px rgba(0,0,0,.06);transition:filter .12s}
 .cal-ev:hover{filter:brightness(.97);z-index:2}
 .cal-ev-t{font-size:11.5px;font-weight:600;color:var(--text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-ev-s{font-size:10px;color:var(--text-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -544,7 +539,7 @@ table.data tbody tr.click:hover { background: var(--surface-2); }
 .agd-dow{display:block;font-size:10px;letter-spacing:.05em;color:var(--text-2);margin-top:2px}
 .agd-date.is-today .agd-num{color:var(--primary)}
 .agd-events{display:flex;flex-direction:column;gap:8px;min-width:0}
-.agd-ev{display:flex;justify-content:space-between;gap:10px;border-radius:9px;padding:10px 12px}
+.agd-ev{border:1px solid var(--border);background:var(--surface);display:flex;justify-content:space-between;gap:10px;border-radius:9px;padding:10px 12px}
 .agd-ev-t{font-size:13.5px;font-weight:600;color:var(--text)}
 .agd-ev-sub{font-size:11.5px;color:var(--text-2);margin-top:2px}
 .agd-ev-time{font-size:11.5px;color:var(--text);text-align:right;white-space:nowrap}
@@ -580,7 +575,7 @@ a.kpi:focus-visible,.fleet-link:focus-visible { outline:3px solid var(--primary)
 .month-day.outside{background:var(--surface-2);color:var(--text-3)}
 .month-number{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;font-size:13px}
 .month-day.today .month-number{background:var(--primary);color:var(--primary-contrast)}
-.month-event{border-left:3px solid var(--event-color);padding:3px 5px;border-radius:3px;background:var(--surface-2);font-size:11px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.month-event{border:1px solid var(--border);padding:3px 5px;border-radius:3px;background:var(--surface-2);font-size:11px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .cal-top #calendarMode{width:auto}.cal-top .wi-date-control{width:175px}
 @media(max-width:640px){.month-day{min-height:95px;padding:3px}.month-event{font-size:9px;padding:2px}.month-weekday{padding:10px 2px}.cal-top>.row{flex-wrap:wrap}}
 

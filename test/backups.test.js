@@ -1,0 +1,57 @@
+'use strict';
+process.env.VMTL_DB = ':memory:';
+if (process.env.VMTL_TEST_BACKUP_PG === '1') { process.env.DB_RUNTIME = 'postgres'; process.env.PGLITE_DIR = 'memory://'; delete process.env.DATABASE_URL; }
+else delete process.env.DB_RUNTIME;
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const db = require('../src/db/runtime');
+const backups = require('../src/services/backups');
+const { hashPassword } = require('../src/util/password');
+
+test('backup round trip, verification, owner authorization and selected cleanup', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vmtl-backups-'));
+  process.env.VMTL_BACKUP_DIR = dir;
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  if (db.isPostgres()) { await db.ensureSchema(); t.after(() => require('../src/db/postgres').close()); }
+  await db.run("INSERT INTO users(id,name,email,password_hash,is_super_admin) VALUES(1,'Owner','owner@test',?,1)", [hashPassword('fixture-password')]);
+  await db.run("INSERT INTO vehicle_requests(id,request_number,requester_id,travel_date,requested_start_time,expected_end_time,destination,purpose) VALUES(1,'REQ-1',1,'2026-11-14','09:00','10:00','Campus','Test'),(2,'REQ-2',1,'2026-11-14','11:00','12:00','Town','Keep')");
+  await db.run("INSERT INTO sync_ops(op_id,result) VALUES('fixture-op','{}')");
+  const saved = await backups.create('Round trip');
+  assert.equal((await backups.list())[0].label, 'Round trip');
+  await db.run("UPDATE vehicle_requests SET destination='Changed' WHERE id=1");
+  await backups.restore(saved.name);
+  assert.equal((await db.get('SELECT destination FROM vehicle_requests WHERE id=1')).destination, 'Campus');
+  assert.equal((await db.get('SELECT op_id FROM sync_ops')).op_id, 'fixture-op');
+  assert.equal((await backups.list()).length, 2);
+  await assert.rejects(backups.read('../outside.json'), /Invalid backup/);
+  const express = require('express');
+  const { asyncSafe } = require('../src/middleware/asyncSafe');
+  const app = express(); app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: req.headers['x-owner'] === '1' ? { id: 1, name: 'Owner', is_super_admin: true } : { id: 2 } }; next(); });
+  const router = asyncSafe(express.Router()); require('../src/routes/api/backups')(router); app.use('/api', router); app.use(require('../src/middleware/errorHandler'));
+  const server = app.listen(0); t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}/api/admin/backups`;
+  const send = (url, body, owner = '1') => fetch(base + url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-owner': owner }, body: JSON.stringify(body) });
+  for (const url of ['', '/cleanup/entries', `/${saved.name}/download`]) assert.equal((await fetch(base + url)).status, 403);
+  assert.equal((await send('/cleanup/delete', { entries: [1], reason: 'Test cleanup', password: 'wrong' })).status, 403);
+  assert.equal((await send('/cleanup/delete', { entries: ['bad'], reason: 'Test cleanup', password: 'fixture-password' })).status, 400);
+  const out = await send('/cleanup/delete', { entries: [1], reason: 'Test cleanup', password: 'fixture-password' });
+  assert.equal(out.status, 200); assert.equal((await out.json()).data.deleted, 1);
+  assert.equal(await db.get('SELECT id FROM vehicle_requests WHERE id=1'), undefined);
+  assert.ok(await db.get('SELECT id FROM vehicle_requests WHERE id=2'));
+  assert.ok(await db.get("SELECT id FROM audit_logs WHERE action='CLEANUP_DELETED'"));
+  const safety = (await backups.list()).find(b => b.label === 'Before cleanup');
+  assert.ok((await backups.read(safety.name)).snapshot.tables.vehicle_requests.some(r => r.id === 1));
+  const originalDirectory = process.env.VMTL_BACKUP_DIR;
+  process.env.VMTL_BACKUP_DIR = path.join(backups.file(saved.name), 'not-a-directory');
+  assert.equal((await send('/cleanup/delete', { entries: [2], reason: 'Backup must succeed', password: 'fixture-password' })).status, 500);
+  process.env.VMTL_BACKUP_DIR = originalDirectory;
+  assert.ok(await db.get('SELECT id FROM vehicle_requests WHERE id=2'));
+  const damaged = JSON.parse(await fs.readFile(backups.file(saved.name), 'utf8')); damaged.snapshot.tables.users = [];
+  await fs.writeFile(backups.file(saved.name), JSON.stringify(damaged));
+  await assert.rejects(backups.restore(saved.name), /verification failed/);
+  assert.ok(await db.get('SELECT id FROM vehicle_requests WHERE id=2'));
+});

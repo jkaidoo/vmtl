@@ -92,7 +92,7 @@
     try { res = await fetch(`/api${path}`, init); }
     catch (netErr) {
       if (OFFLINE.isSafeWrite(path, method)) return queueIt();
-      if (method === 'GET') { const cached = await OFFLINE.cacheGet(path); if (cached !== undefined) return Object.assign({}, cached, { _stale: true }); }
+      if (method === 'GET' && !path.startsWith('/admin/backups')) { const cached = await OFFLINE.cacheGet(path); if (cached !== undefined) return Object.assign({}, cached, { _stale: true }); }
       const e = new Error('You are offline — this isn’t available yet.'); e.offline = true; throw e;
     }
     if (res.status === 204) return null;
@@ -101,7 +101,7 @@
       if (res.status === 401 && !path.startsWith('/login') && location.pathname !== '/login.html') { location.href = '/login.html'; }
       const err = new Error((data && data.error) || `Request failed (${res.status})`); err.status = res.status; err.errors = data && data.errors; throw err;
     }
-    if (method === 'GET' && data !== null) OFFLINE.cachePut(path, data); // last-known-good read
+    if (method === 'GET' && !path.startsWith('/admin/backups') && data !== null) OFFLINE.cachePut(path, data); // last-known-good read
     return data;
   }
   VMTL.api = async (path, options = {}) => {
@@ -415,6 +415,7 @@
       { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', systemAdmin: true },
       { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', systemAdmin: true },
       { key: 'broadcasts', to: '/broadcasts.html', label: 'Broadcasts', icon: 'megaphone', superOnly: true },
+      { key: 'backup-cleanup', to: '/backup-cleanup.html', label: 'Backup & cleanup', icon: 'database', superOnly: true },
       { key: 'database', to: '/database-connections.html', label: 'Database connections', icon: 'database', systemAdmin: true },
       { key: 'unified-api', to: '/unified-api.html', label: 'Unified API', icon: 'code', systemAdmin: true },
       { key: 'report-config', to: '/report-configuration.html', label: 'Report configuration', icon: 'reports', systemAdmin: true },

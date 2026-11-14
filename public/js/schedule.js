@@ -114,8 +114,8 @@ window.VMTL_PAGE = async function () {
       const blocks = evs.map((e) => {
         const top = ((e.startMin - minH * 60) / spanMin) * bodyH;
         const h = Math.max(20, ((e.endMin - e.startMin) / spanMin) * bodyH - 2);
-        const w = 100 / e.lanes; const left = e.lane * w; const s = st(e.status);
-        return `<a href="/trips.html?id=${e.id}" class="cal-ev" title="${esc(e.trip_number)} · ${esc(e.destination || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}" style="top:${top}px;height:${h}px;left:calc(${left}% + 2px);width:calc(${w}% - 4px);background:${s.t};border-left:3px solid ${s.c}">
+        const w = 100 / e.lanes; const left = e.lane * w;
+        return `<a href="/trips.html?id=${e.id}" class="cal-ev" title="${esc(e.trip_number)} · ${esc(e.destination || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}" style="top:${top}px;height:${h}px;left:calc(${left}% + 2px);width:calc(${w}% - 4px)">
           <div class="cal-ev-t">${esc(e.destination || e.trip_number)}</div><div class="cal-ev-s">${VMTL.fmtTime(e.scheduled_start)} · ${esc(e.vehicle_number || '')}</div></a>`;
       }).join('');
       const isToday = sameDay(d, today);
@@ -139,7 +139,7 @@ window.VMTL_PAGE = async function () {
       const isToday = sameDay(d, today);
       return `<div class="agd-day">
         <div class="agd-date${isToday ? ' is-today' : ''}"><span class="agd-num">${String(d.getDate()).padStart(2, '0')}</span><span class="agd-dow">${DAY_FULL[(d.getDay() + 6) % 7].toUpperCase()}</span></div>
-        <div class="agd-events">${evs.length ? evs.map((e) => { const s = st(e.status); return `<a href="/trips.html?id=${e.id}" class="agd-ev" style="background:${s.t};border-left:3px solid ${s.c}"><div class="agd-ev-main"><div class="agd-ev-t">${esc(e.destination || e.trip_number)}</div><div class="agd-ev-sub">${esc(e.vehicle_number || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}</div></div><div class="agd-ev-time">${VMTL.fmtTime(e.scheduled_start)}<br><span>${VMTL.fmtTime(e.scheduled_end)}</span></div></a>`; }).join('') : '<div class="agd-empty">No trips</div>'}</div>
+        <div class="agd-events">${evs.length ? evs.map((e) => { return `<a href="/trips.html?id=${e.id}" class="agd-ev"><div class="agd-ev-main"><div class="agd-ev-t">${esc(e.destination || e.trip_number)}</div><div class="agd-ev-sub">${esc(e.vehicle_number || '')}${e.driver_name ? ` · ${esc(e.driver_name)}` : ''}</div></div><div class="agd-ev-time">${VMTL.fmtTime(e.scheduled_start)}<br><span>${VMTL.fmtTime(e.scheduled_end)}</span></div></a>`; }).join('') : '<div class="agd-empty">No trips</div>'}</div>
       </div>`;
     }).join('');
     view.querySelector('#calBody').innerHTML = `<div class="agd">${rows}</div>`;

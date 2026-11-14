@@ -87,7 +87,7 @@ window.VMTL_PAGE = async function () {
     let rows = [];
     try { rows = (await VMTL.api('/users/ou-changes')).data; } catch (_) { host.innerHTML = ''; return; }
     if (!rows.length) { host.innerHTML = ''; return; }
-    host.innerHTML = `<div class="card pad mb" style="border-left:3px solid var(--warning)">
+    host.innerHTML = `<div class="card pad mb">
       <h3 style="margin:0 0 8px">${VMTL.icon('bell')} Pending unit changes <span class="badge amber">${rows.length}</span></h3>
       <div class="dim" style="font-size:12.5px;margin-bottom:10px">The Unified API now reports a different organisational unit for these people. Apply the move, or keep them where they are. Unactioned changes are applied automatically after the grace period.</div>
       ${rows.map((r) => `<div class="between" style="gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border)">
