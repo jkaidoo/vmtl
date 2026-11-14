@@ -11,9 +11,9 @@ async function capsOf(user) {
 }
 async function userHasCap(user, cap) { return (await capsOf(user)).includes(cap); }
 
-function requireAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
-  return res.status(401).json({ error: 'Not authenticated' });
+async function requireAuth(req, res, next) {
+  if (!req.session?.user) return res.status(401).json({ error: 'Not authenticated' });
+  try { await require('../services/ouAdmin').prepare(req); return next(); } catch (error) { return next(error); }
 }
 
 function requireCap(cap) {

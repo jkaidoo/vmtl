@@ -42,10 +42,11 @@ function withReturningId(sql) {
   if (/^\s*insert\s/i.test(s) && !/\breturning\b/i.test(s)) return `${s.replace(/;\s*$/, '')} RETURNING id`;
   return s;
 }
-// Run the PostgreSQL schema migrations (no-op on SQLite, which self-creates).
+// Apply engine migrations and install new default roles once.
 async function ensureSchema() {
-  if (!isPostgres()) return [];
-  return require('./postgresSchema').runMigrations();
+  const applied = isPostgres() ? await require('./postgresSchema').runMigrations() : [];
+  await require('../services/ouAdmin').ensureRole();
+  return applied;
 }
 async function get(sql, params = []) {
   if (!isPostgres()) return sqlite.prepare(sql).get(...(Array.isArray(params) ? params : [params]));

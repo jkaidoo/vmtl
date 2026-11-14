@@ -6,6 +6,7 @@ const { CAP } = require('./capabilities');
 const LABELS = {
   university_transport_officer: 'University Transport Officer',
   schedule_transport_officer: 'Schedule Transport Officer',
+  it_admin: 'IT Admin',
   staff: 'Staff',
   approver: 'Approver',
   transport_admin: 'Transport / Admin Officer',

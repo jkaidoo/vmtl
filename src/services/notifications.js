@@ -6,11 +6,21 @@
 const crypto = require('crypto');
 const db = require('./db_ref');
 const log = require('../util/log');
+async function inRecipientScope(userId, data) {
+  const admin = await require('./ouAdmin').identity({ id: userId }); if (!admin) return true;
+  const scope = admin.org_unit_id ? await require('./orgScope').subtreeIds(admin.org_unit_id) : [];
+  for (const [key, table] of [['request_id', 'vehicle_requests'], ['vehicle_id', 'vehicles'], ['driver_id', 'drivers']]) if (data?.[key]) {
+    const row = await db.get(`SELECT org_unit_id FROM ${table} WHERE id=?`, [data[key]]); if (!row || !scope.includes(row.org_unit_id)) return false;
+  }
+  if (data?.trip_id && !await db.get(`SELECT t.id FROM trips t WHERE t.id=? AND ${require('./ouAdmin').tripClause({ ouScope: scope })}`, [data.trip_id])) return false;
+  return true;
+}
 
 // Record one in-app notification for a user.
 async function toUser(userId, type, data) {
   if (!userId) return;
   try {
+    if (!await inRecipientScope(userId, data)) return;
     await db.run(
       `INSERT INTO notifications (id, user_id, type, data, created_at, updated_at) VALUES (?, ?, ?, ?, ${db.now()}, ${db.now()})`,
       [crypto.randomUUID(), userId, type, JSON.stringify(data || {})]
@@ -33,16 +43,23 @@ async function toRoles(roleSlugs, type, data) {
 }
 
 // Approvers + administrators — the standard "new request" audience.
-async function toApprovers(type, data) { return toRoles(['approver', 'administrator'], type, data); }
+async function toApprovers(type, data) { return toRoles(['approver', 'administrator', 'it_admin'], type, data); }
 
 async function listForUser(userId, { unreadOnly = false, limit = 50 } = {}) {
   const rows = await db.all(
     `SELECT id, type, data, read_at, created_at FROM notifications WHERE user_id = ? ${unreadOnly ? 'AND read_at IS NULL' : ''} ORDER BY created_at DESC LIMIT ?`,
     [userId, limit]
   );
-  return rows.map((r) => ({ id: r.id, type: r.type, data: JSON.parse(r.data || '{}'), read_at: r.read_at, created_at: r.created_at }));
+  const items = [];
+  for (const row of rows) { const data = JSON.parse(row.data || '{}'); if (await inRecipientScope(userId, data)) items.push({ id: row.id, type: row.type, data, read_at: row.read_at, created_at: row.created_at }); }
+  return items;
 }
 async function unreadCount(userId) {
+  if (await require('./ouAdmin').identity({ id: userId })) {
+    const rows = await db.all('SELECT data FROM notifications WHERE user_id=? AND read_at IS NULL', [userId]);
+    let count = 0; for (const row of rows) if (await inRecipientScope(userId, JSON.parse(row.data || '{}'))) count++;
+    return count;
+  }
   const row = await db.get('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL', [userId]);
   return row ? row.n : 0;
 }

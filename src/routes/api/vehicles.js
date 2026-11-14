@@ -105,7 +105,7 @@ module.exports = function register(router) {
   router.get('/vehicles/:id/trips', requireAuth, async (req, res) => {
     const vehicle=await findVehicle(req.params.id);
     if(!await inScope(req.session.user,vehicle.org_unit_id)) throw forbidden('Vehicle is outside your scope.');
-    const rows = await db.all("SELECT id FROM trips WHERE vehicle_id = ? AND deleted_at IS NULL ORDER BY scheduled_start DESC LIMIT 50", [req.params.id]);
+    const rows = await db.all(`SELECT id FROM trips WHERE vehicle_id = ? AND deleted_at IS NULL AND ${require('../../services/ouAdmin').tripClause(req, 'trips')} ORDER BY scheduled_start DESC LIMIT 50`, [req.params.id]);
     const data = []; for (const r of rows) data.push(await loaders.loadTrip(r.id, { withRequest: true, withStops: false }));
     res.json({ data });
   });

@@ -12,7 +12,7 @@ const r3 = (n) => Math.round(n * 1000) / 1000;
 const period = (d) => String(d).slice(0, 7);
 
 function tripWhere(filters, { withStatus = true } = {}) {
-  const where = ['t.deleted_at IS NULL']; const params = [];
+  const where = ['t.deleted_at IS NULL', require('./ouAdmin').tripClause({ ouScope: filters.ou_scope })]; const params = [];
   if (filters.date_from) { where.push('substr(t.scheduled_start,1,10) >= substr(?,1,10)'); params.push(filters.date_from); }
   if (filters.date_to) { where.push('substr(t.scheduled_start,1,10) <= substr(?,1,10)'); params.push(filters.date_to); }
   if (filters.vehicle_id) { where.push('t.vehicle_id = ?'); params.push(Number(filters.vehicle_id)); }

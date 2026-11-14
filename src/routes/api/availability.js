@@ -10,11 +10,11 @@ const { validate } = require('../../util/validate');
 const BLOCKING = "('scheduled','in_progress')";
 const nowIso = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-async function bookingsFor(column, id, now) {
+async function bookingsFor(column, id, now, req) {
   const rows = await db.all(
     `SELECT t.trip_number, t.status, t.scheduled_start, t.scheduled_end, r.destination
        FROM trips t LEFT JOIN vehicle_requests r ON r.id = t.vehicle_request_id
-      WHERE t.${column} = ? AND t.status IN ${BLOCKING} AND t.scheduled_end > ?
+      WHERE ${require('../../services/ouAdmin').tripClause(req)} AND t.${column} = ? AND t.status IN ${BLOCKING} AND t.scheduled_end > ?
       ORDER BY t.scheduled_start LIMIT 6`, [id, now]);
   return rows;
 }
@@ -23,8 +23,8 @@ module.exports = function register(router) {
   router.get('/availability/overview', requireAuth, async (req, res) => {
     const now = nowIso();
     const vehicles = [];
-    for (const v of await db.all("SELECT * FROM vehicles WHERE active = 1 ORDER BY vehicle_number")) {
-      const bookings = await bookingsFor('vehicle_id', v.id, now);
+    for (const v of await db.all(`SELECT * FROM vehicles WHERE active = 1 AND ${require('../../services/ouAdmin').clause(req, 'org_unit_id')} ORDER BY vehicle_number`)) {
+      const bookings = await bookingsFor('vehicle_id', v.id, now, req);
       const current = bookings.find((b) => b.status === 'in_progress');
       vehicles.push({
         id: v.id, label: v.vehicle_number, detail: `${v.make || ''} ${v.model || ''}`.trim(), capacity: v.capacity,
@@ -35,8 +35,8 @@ module.exports = function register(router) {
       });
     }
     const drivers = [];
-    for (const d of await db.all("SELECT * FROM drivers WHERE active = 1 ORDER BY name")) {
-      const bookings = await bookingsFor('driver_id', d.id, now);
+    for (const d of await db.all(`SELECT * FROM drivers WHERE active = 1 AND ${require('../../services/ouAdmin').clause(req, 'org_unit_id')} ORDER BY name`)) {
+      const bookings = await bookingsFor('driver_id', d.id, now, req);
       const current = bookings.find((b) => b.status === 'in_progress');
       drivers.push({
         id: d.id, label: d.name, detail: d.phone,
@@ -61,7 +61,7 @@ module.exports = function register(router) {
     const conflicts = (await db.all(
       `SELECT t.scheduled_start, t.scheduled_end, t.status, v.vehicle_number, d.name AS driver_name, r.destination
          FROM trips t LEFT JOIN vehicles v ON v.id = t.vehicle_id LEFT JOIN drivers d ON d.id = t.driver_id LEFT JOIN vehicle_requests r ON r.id = t.vehicle_request_id
-        WHERE t.status IN ${BLOCKING} AND t.scheduled_start < ? AND t.scheduled_end > ? ORDER BY t.scheduled_start`, [data.end, data.start]))
+        WHERE ${require('../../services/ouAdmin').tripClause(req)} AND t.status IN ${BLOCKING} AND t.scheduled_start < ? AND t.scheduled_end > ? ORDER BY t.scheduled_start`, [data.end, data.start]))
       .map((t) => ({ vehicle: t.vehicle_number, driver: t.driver_name, destination: t.destination, start: t.scheduled_start, end: t.scheduled_end, status: t.status }));
     res.json({ data: { available_vehicles: vehicles.length, available_drivers: drivers.length, is_bookable: vehicles.length > 0 && drivers.length > 0, conflicts } });
   });

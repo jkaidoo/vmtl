@@ -20,7 +20,10 @@ async function capsForUser(userId) {
   // request a vehicle. Org-unit scoping limits them to their own department.
   if (!user.role_id) return [capabilities.CAP.REQUESTS_CREATE];
   const rows = await db.all('SELECT capability FROM role_capabilities WHERE role_id = ?', [user.role_id]);
-  return rows.map((r) => r.capability);
+  const held = rows.map((r) => r.capability);
+  const slug = await roleSlugForUser(user.id);
+  if (slug === 'it_admin' || (held.includes('ou.admin') && !held.includes('system.admin'))) return [...new Set([...held.filter(c => !require('./ouAdmin').GLOBAL.includes(c)), 'ou.admin'])];
+  return held;
 }
 
 async function capsForRole(roleId) {

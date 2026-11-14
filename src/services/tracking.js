@@ -64,6 +64,8 @@ async function visibleVehicles(user) {
     where.push(`v.org_unit_id IN (${scope.map(() => '?').join(',')})`);
     params.push(...scope);
   }
+  const scopedAdmin = await require('./ouAdmin').identity(user);
+  if (scopedAdmin) where.push(`(t.id IS NULL OR (${require('./ouAdmin').tripClause({ ouScope: scope })}))`);
   const rows = await db.all(
     `SELECT v.id AS vehicle_id, v.vehicle_number, v.registration_number, v.make, v.model,
             v.vehicle_type, v.status AS vehicle_status, v.org_unit_id,

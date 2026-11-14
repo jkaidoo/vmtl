@@ -12,6 +12,7 @@ const { forbidden } = require('../../middleware/errorHandler');
 const FILTER_KEYS = ['date_from', 'date_to', 'vehicle_id', 'driver_id', 'org_unit_id', 'requester_id', 'destination', 'status'];
 async function filtersFor(req) {
   const f = {};
+  if (req.ouScope) f.ou_scope = req.ouScope;
   for (const k of FILTER_KEYS) if (req.query[k] != null && req.query[k] !== '') f[k] = req.query[k];
   const scope = await orgScope.visibleOrgUnitIds(req.session.user);
   if (scope !== null) f.org_unit_ids = scope.length ? scope : [0];

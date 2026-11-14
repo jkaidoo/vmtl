@@ -32,7 +32,7 @@ module.exports = function register(router) {
   // ---- List --------------------------------------------------------------
   router.get('/vehicle-requests', requireAuth, async (req, res) => {
     const user = req.session.user;
-    const where = ['r.deleted_at IS NULL']; const params = [];
+    const where = ['r.deleted_at IS NULL', require('../../services/ouAdmin').clause(req, 'r.org_unit_id')]; const params = [];
     if (!(await has(req, CAP.REQUESTS_VIEW_ALL))) { where.push('r.requester_id = ?'); params.push(user.id); }
     if (req.query.status) {
       const statuses = String(req.query.status).split(',').map((s) => s.trim()).filter(Boolean);
@@ -149,7 +149,7 @@ module.exports = function register(router) {
     if (!(await has(req, CAP.REQUESTS_ASSIGN))) throw forbidden('You may not assign vehicles.');
     const request = await findRequest(req.params.id);
     const requester = await db.get('SELECT id, is_super_admin, org_unit_id FROM users WHERE id = ?', [request.requester_id]);
-    const scope = await orgScope.servingOrgUnitIds(requester);
+    const scope = req.ouScope || await orgScope.servingOrgUnitIds(requester);
     const vehicles = await availability.availableVehicles(request.requested_start_time, request.expected_end_time, request.passenger_count, scope);
     const drivers = await availability.availableDrivers(request.requested_start_time, request.expected_end_time, scope);
     res.json({ vehicles: vehicles.map(present.vehicle), drivers: drivers.map(present.driver) });
@@ -224,7 +224,8 @@ module.exports = function register(router) {
     const user = req.session.user;
     const enums = require('../../services/enums');
     const own = request.requester_id === user.id;
-    if (!own && !user.is_super_admin) throw forbidden('You may not edit this request.');
+    const scopedAdmin = !!req.ouScope && await has(req, CAP.REQUESTS_APPROVE);
+    if (!own && !user.is_super_admin && !scopedAdmin) throw forbidden('You may not edit this request.');
     if (!enums.requestStatus.isEditableByRequester(request.status) && !user.is_super_admin) throw conflict('This request can no longer be edited.');
 
     const data = validate(req.body, {
@@ -240,8 +241,8 @@ module.exports = function register(router) {
       const start = data.requested_start_time || request.requested_start_time;
       const end = data.expected_end_time || request.expected_end_time;
       const passengers = data.passenger_count || request.passenger_count;
-      if ((await availability.availableVehicles(start, end, passengers)).length === 0) throw conflict('This time window is fully booked — no suitable vehicle is free then. Please choose another window.');
-      if ((await availability.availableDrivers(start, end)).length === 0) throw conflict('This time window is fully booked — no driver is free then. Please choose another window.');
+      if ((await availability.availableVehicles(start, end, passengers, req.ouScope || null)).length === 0) throw conflict('This time window is fully booked — no suitable vehicle is free then. Please choose another window.');
+      if ((await availability.availableDrivers(start, end, req.ouScope || null)).length === 0) throw conflict('This time window is fully booked — no driver is free then. Please choose another window.');
     }
 
     const fields = []; const params = [];

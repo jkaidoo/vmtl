@@ -26,7 +26,7 @@ module.exports = function register(router) {
 
   router.get('/org-units/tree', requireAuth, async (req, res) => {
     if (!(await has(req, CAP.DEPARTMENTS_MANAGE))) throw forbidden('You may not manage organisation units.');
-    const rows = await db.all('SELECT * FROM org_units ORDER BY path');
+    const rows = await db.all(`SELECT * FROM org_units WHERE ${require('../../services/ouAdmin').clause(req, 'id')} ORDER BY path`);
     const data = [];
     for (const u of rows) {
       const counts = await db.get('SELECT (SELECT COUNT(*) FROM vehicles WHERE org_unit_id = o.id AND deleted_at IS NULL) AS v, (SELECT COUNT(*) FROM drivers WHERE org_unit_id = o.id AND deleted_at IS NULL) AS d, (SELECT COUNT(*) FROM users WHERE org_unit_id = o.id AND deleted_at IS NULL) AS u FROM org_units o WHERE o.id = ?', [u.id]);

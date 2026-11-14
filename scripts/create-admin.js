@@ -18,7 +18,8 @@ const capabilities = require('../src/services/capabilities');
 const { hashPassword } = require('../src/util/password');
 
 const ROLE_META = {
-  staff: ['Staff', 'Can create and track their own vehicle requests.'],
+  it_admin: ['IT Admin', 'Administers only the assigned OU and its descendants.'],
+    staff: ['Staff', 'Can create and track their own vehicle requests.'],
   approver: ['Approver', 'Reviews and approves or rejects vehicle requests.'],
   transport_admin: ['Transport / Admin Officer', 'Assigns vehicles and drivers, runs trips.'],
   supervisor: ['Supervisor', 'Manages users and operations within their organisational unit and its sub-units.'],

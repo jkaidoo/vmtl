@@ -42,7 +42,13 @@ async function inUserScope(actor, targetOrgUnitId) {
   return scope.includes(targetOrgUnitId);
 }
 
-async function guardAssignment(req, data) {
+async function guardAssignment(req, data, existingOrgUnitId = null, existingRoleId = null) {
+  const roleId = Object.hasOwn(req.body, 'role_id') ? data.role_id : existingRoleId;
+  const role = roleId ? await db.get('SELECT slug FROM roles WHERE id=?', [roleId]) : null;
+  if (role?.slug === 'it_admin' || (roleId && (await require('../../services/roleRepository').capsForRole(roleId)).includes('ou.admin') && !(await require('../../services/roleRepository').capsForRole(roleId)).includes('system.admin'))) {
+    const ou = Object.hasOwn(req.body, 'org_unit_id') ? data.org_unit_id : existingOrgUnitId;
+    if (!ou || !await db.get('SELECT id FROM org_units WHERE id=? AND active=1 AND deleted_at IS NULL', [ou])) throw badRequest('An IT Admin must be assigned to an active organisational unit.', { org_unit_id: ['Choose an organisational unit for IT Admin.'] });
+  }
   if (data.role_id != null && (!Number.isSafeInteger(data.role_id) || data.role_id < 1 || !await db.get('SELECT id FROM roles WHERE id=?', [data.role_id]))) throw badRequest('Choose a valid role.', { role_id: ['Choose an existing role.'] });
   if (await seesAll(req)) return;
   if (data.role_id) {
@@ -73,7 +79,7 @@ module.exports = function register(router) {
     if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
     const scope = await orgScope.visibleOrgUnitIds(req.session.user);
     const where = ['u.deleted_at IS NULL']; const params = [];
-    if (scope !== null) { where.push(`(u.org_unit_id IN (${scope.length ? scope.map(() => '?').join(',') : 'NULL'}) OR u.org_unit_id IS NULL)`); params.push(...scope); }
+    if (scope !== null) { where.push(`(u.org_unit_id IN (${scope.length ? scope.map(() => '?').join(',') : 'NULL'}) ${req.ouScope ? '' : 'OR u.org_unit_id IS NULL'})`); params.push(...scope); }
     if (req.query.role_id) { where.push('u.role_id = ?'); params.push(Number(req.query.role_id)); }
     if (req.query.department_id) { where.push('u.department_id = ?'); params.push(Number(req.query.department_id)); }
     if (req.query.directory === 'true' || req.query.directory === '1') where.push('u.directory_provider IS NOT NULL');
@@ -95,7 +101,7 @@ module.exports = function register(router) {
     if (!(await has(req, CAP.USERS_MANAGE))) throw forbidden('You may not manage users.');
     const scope = await orgScope.visibleOrgUnitIds(req.session.user);
     const where = ['u.deleted_at IS NULL', 'u.pending_org_unit_id IS NOT NULL']; const params = [];
-    if (scope !== null) { where.push(`(u.org_unit_id IN (${scope.length ? scope.map(() => '?').join(',') : 'NULL'}) OR u.org_unit_id IS NULL)`); params.push(...scope); }
+    if (scope !== null) { where.push(`(u.org_unit_id IN (${scope.length ? scope.map(() => '?').join(',') : 'NULL'}) ${req.ouScope ? '' : 'OR u.org_unit_id IS NULL'})`); params.push(...scope); }
     const rows = await db.all(`SELECT u.id, u.name, u.email, u.role_id, u.org_unit_id, u.pending_org_unit_id, u.pending_org_since,
         cur.name AS current_ou, pend.name AS pending_ou
       FROM users u LEFT JOIN org_units cur ON cur.id = u.org_unit_id LEFT JOIN org_units pend ON pend.id = u.pending_org_unit_id
@@ -174,7 +180,7 @@ module.exports = function register(router) {
     });
     const email = data.email.trim().toLowerCase();
     if (await db.get('SELECT id FROM users WHERE lower(email) = ? AND id != ?', [email, target.id])) throw badRequest('The given data was invalid.', { email: ['That email is already in use.'] });
-    await guardAssignment(req, data);
+    await guardAssignment(req, data, target.org_unit_id, target.role_id);
     const sets = ['name = ?', 'email = ?', 'role_id = ?', 'department_id = ?', 'org_unit_id = ?', 'phone = ?'];
     const params = [data.name, email, data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null];
     if (req.body.active !== undefined) { sets.push('active = ?'); params.push(data.active ? 1 : 0); }
@@ -197,7 +203,7 @@ module.exports = function register(router) {
     if (target.is_super_admin && !req.session.user.is_super_admin) throw forbidden('You cannot edit the System Administrator.');
     if (!(await inUserScope(req.session.user, target.org_unit_id))) throw forbidden('That user is outside your scope.');
     const data = validate(req.body, { role_id: { type: 'integer' }, org_unit_id: { type: 'integer' }, active: { type: 'boolean' } });
-    await guardAssignment(req, data);
+    await guardAssignment(req, data, target.org_unit_id, target.role_id);
     const sets = []; const params = [];
     if ('role_id' in req.body) { sets.push('role_id = ?'); params.push(data.role_id || null); }
     if ('org_unit_id' in req.body) { sets.push('org_unit_id = ?'); params.push(data.org_unit_id || null); if (!data.org_unit_id || Number(data.org_unit_id) === Number(target.pending_org_unit_id)) { sets.push('pending_org_unit_id = NULL', 'pending_org_since = NULL'); } }

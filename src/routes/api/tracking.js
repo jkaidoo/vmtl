@@ -4,12 +4,12 @@
 //                              their in-progress trip's vehicle; ignored otherwise).
 //   GET  /tracking/vehicles  — scoped live positions for the map.
 //   GET  /tracking/config    — Google Maps key + viewer's start position.
-//   PUT  /tracking/config    — set the Google Maps key (System Administrator).
+//   PUT  /tracking/config    — set the Google Maps key (App Owner, or whoever Maps configuration is shared with).
 const tracking = require('../../services/tracking');
 const settings = require('../../services/settings');
 const { CAP } = require('../../services/capabilities');
 const { requireAuth, requireAnyCap, requireSystemAdmin } = require('../../middleware/auth');
-// System pages: System Administrators always, plus roles/people the App Owner shares them with (Owner page access).
+// Owner and System pages: App Owner only, plus the roles/people the App Owner shares each page with (Owner page access).
 const { requirePage: sharedPage, requireChannelPage: sharedChannel } = require('../../services/ownerAccess');
 
 const MAP_KEY = 'google_maps_api_key';
@@ -43,9 +43,6 @@ module.exports = function register(router) {
   });
 
   // Readable by live-map viewers and by anyone who may open Maps configuration (incl. shared access).
-  const mapsPage = sharedPage('maps-config');
-  const canViewOrConfigure = (req, res, next) => canView(req, res, (err) => (err ? next(err) : next()))
-    && undefined;
   router.get('/tracking/config', requireAuth, async (req, res, next) => {
     if (await require('../../services/ownerAccess').can(req.session.user, 'maps-config')) return next();
     return canView(req, res, next);

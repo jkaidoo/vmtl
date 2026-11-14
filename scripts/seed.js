@@ -38,6 +38,7 @@ async function upsert(table, uniqueCol, uniqueVal, fields) {
 
 async function seedRoles() {
   const roles = {
+    it_admin: ['IT Admin', 'Administers only the assigned OU and its descendants.'],
     staff: ['Staff', 'Can create and track their own vehicle requests.'],
     approver: ['Approver', 'Reviews and approves or rejects vehicle requests.'],
     transport_admin: ['Transport / Admin Officer', 'Assigns vehicles and drivers, runs trips.'],

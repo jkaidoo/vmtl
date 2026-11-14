@@ -7,7 +7,7 @@ const audit = require('../../services/audit');
 const management = require('../../services/roleManagement');
 const { conflict } = require('../../middleware/errorHandler');
 const { requireAuth, requireSystemAdmin } = require('../../middleware/auth');
-// System pages: System Administrators always, plus roles/people the App Owner shares them with (Owner page access).
+// Owner and System pages: App Owner only, plus the roles/people the App Owner shares each page with (Owner page access).
 const { requirePage: sharedPage, requireChannelPage: sharedChannel } = require('../../services/ownerAccess');
 
 async function snapshot() {

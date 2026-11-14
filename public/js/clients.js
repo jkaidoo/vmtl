@@ -59,7 +59,7 @@ window.VMTL_PAGE = async function () {
       <div class="modal-body"><div class="dim" style="font-size:12.5px;margin-bottom:10px">Choose a role for <strong>${esc(c.name)}</strong> (${esc(c.email)}). They will appear in Users and leave Clients. Their sign-in, existing requests and account history are retained.</div>
         <form id="promoteClient"><div class="form-grid">
           <div class="field col-2"><label for="aRole">Role</label><select id="aRole" required><option value="" selected disabled>Choose a role</option>${roleOpts(null)}</select></div>
-          <div class="field col-2"><label>Organisational unit</label><select id="aOrg"><option value="">— keep current${c.org_unit && c.org_unit.name ? ` (${esc(c.org_unit.name)})` : ''} —</option>${VMTL.orgUnitOptions(c.org_unit_id)}</select></div>
+          <div class="field col-2"><label>Organisational unit</label><div class="dim" style="font-size:12px">Required for IT Admin; access stays within this OU and its descendants.</div><select id="aOrg"><option value="">— keep current${c.org_unit && c.org_unit.name ? ` (${esc(c.org_unit.name)})` : ''} —</option>${VMTL.orgUnitOptions(c.org_unit_id)}</select></div>
         </div></form></div>
       <div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="aSave">Move to Users</button></div>`);
     m.el.querySelector('#promoteClient').onsubmit = e => { e.preventDefault(); m.el.querySelector('#aSave').click(); };

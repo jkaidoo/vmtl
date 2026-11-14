@@ -86,7 +86,7 @@ function renderActions(host, r) {
     btns.push(['Request changes', 'btn', async () => { const c = await promptText('Request changes', 'What should change?', true); if (!c) return; await act(`/vehicle-requests/${r.id}/request-changes`, { reason: c }, reload); }]);
   }
   if (VMTL.can('requests.assign') && r.status === 'approved') btns.push(['Assign vehicle + driver', 'btn-primary', () => assignModal(r, reload)]);
-  if (own && (r.status === 'changes_requested' || r.status === 'pending')) btns.push(['Edit', 'btn', () => location.href = `/request-create.html?edit=${r.id}`]);
+  if ((own || (VMTL.can('ou.admin') && VMTL.can('requests.approve'))) && (r.status === 'changes_requested' || r.status === 'pending')) btns.push(['Edit', 'btn', () => location.href = `/request-create.html?edit=${r.id}`]);
   if (r.is_cancellable && (own || VMTL.can('requests.approve') || VMTL.can('requests.assign'))) btns.push(['Cancel', 'btn-ghost', async () => { if (await VMTL.confirm('Cancel this request?', { danger: true, confirmLabel: 'Cancel request' })) await act(`/vehicle-requests/${r.id}/cancel`, {}, reload); }]);
   if (r.trip && r.trip.status === 'in_progress' && (own || VMTL.can('trips.operate'))) btns.push(['Add destination', 'btn', () => addStopModal(r.trip, reload)]);
   host.innerHTML = '';

@@ -56,6 +56,7 @@ async function grants() { return normalise(await settings.get(KEY, {})); }
 async function pagesFor(user) {
   if (!user) return [];
   if (user.is_super_admin) return Object.keys(DELEGABLE);
+  if (await require('./ouAdmin').identity(user)) return [];
   const all = await grants();
   const row = await db.get('SELECT r.slug FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.active = 1', [user.id]);
   if (!row) return [];
@@ -89,7 +90,13 @@ async function requireChannelPage(req, res, next) {
 }
 
 // Pages shared with a role, for the navigation editor's per-role defaults.
-async function pagesForRole(slug) { const all = await grants(); return Object.keys(DELEGABLE).filter((key) => all[key].roles.includes(slug)); }
+async function pagesForRole(slug) {
+  if (slug === 'it_admin') return [];
+  const role = await db.get('SELECT id FROM roles WHERE slug=?', [slug]);
+  const caps = role ? await require('./roleRepository').capsForRole(role.id) : [];
+  if (caps.includes('ou.admin') && !caps.includes('system.admin')) return [];
+  const all = await grants(); return Object.keys(DELEGABLE).filter((key) => all[key].roles.includes(slug));
+}
 
 // Owner view: every shareable page with its grants, people resolved to names, and
 // their current grants.

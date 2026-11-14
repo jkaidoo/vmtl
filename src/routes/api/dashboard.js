@@ -15,6 +15,7 @@ const MANAGES = ['administrator', 'supervisor', 'transport_admin', 'schedule_tra
 
 module.exports = function register(router) {
   router.get('/dashboard', requireAuth, async (req, res) => {
+    if (req.ouScope) return res.json({ data: await require('../../services/ouAdmin').dashboard(req) });
     const user = req.session.user;
     const caps = user.is_super_admin ? require('../../services/capabilities').all() : await roleRepository.capsForUser(user.id);
     if (roles.isRequesterOnly(caps)) throw forbidden('The dashboard is not available for your role.');

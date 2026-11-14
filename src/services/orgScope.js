@@ -31,6 +31,8 @@ async function pathIds(orgUnitId) {
 // records with no org unit (a user with no unit).
 async function visibleOrgUnitIds(user) {
   if (!user) return [];
+  const scoped = await require('./ouAdmin').identity(user);
+  if (scoped) return scoped.org_unit_id ? subtreeIds(scoped.org_unit_id) : [];
   if ((await require('./roleRepository').capsForUser(user.id)).includes('fleet.global')) return null;
   if (user.is_super_admin) return null;
   if (!user.org_unit_id) return [];
@@ -41,6 +43,8 @@ async function visibleOrgUnitIds(user) {
 // a user with no unit — avoids lockout).
 async function servingOrgUnitIds(user) {
   if (!user) return null;
+  const scoped = await require('./ouAdmin').identity(user);
+  if (scoped) return scoped.org_unit_id ? subtreeIds(scoped.org_unit_id) : [];
   if ((await require('./roleRepository').capsForUser(user.id)).includes('fleet.global')) return null;
   if (user.is_super_admin) return null;
   if (!user.org_unit_id) return null;

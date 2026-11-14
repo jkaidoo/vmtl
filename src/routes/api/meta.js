@@ -21,8 +21,16 @@ module.exports = function register(router) {
       parent_id: u.parent_id, depth: u.path ? Math.max(0, (u.path.match(/\//g) || []).length - 2) : 0,
     }));
 
-    const roles = await db.all('SELECT id, slug, name FROM roles ORDER BY id');
-    const departments = await db.all('SELECT id, name, code FROM departments WHERE active = 1 ORDER BY name');
+    let roles = await db.all('SELECT id, slug, name FROM roles ORDER BY id');
+    if (req.ouAdmin) {
+      const allowed = [];
+      for (const role of roles) {
+        const caps = await require('../../services/roleRepository').capsForRole(role.id);
+        if (!caps.some(c => require('../../services/ouAdmin').GLOBAL.includes(c) || !req.ouAdmin.caps.includes(c)) && (!caps.includes('users.manage') || caps.includes('ou.admin'))) allowed.push(role);
+      }
+      roles = allowed;
+    }
+    const departments = req.ouAdmin ? [] : await db.all('SELECT id, name, code FROM departments WHERE active = 1 ORDER BY name');
 
     let directoryEnabled = false; try { directoryEnabled = await directoryAuth.isEnabled(); } catch (_) { /* default off */ }
     const navHidden = (await settings.get('nav_hidden', [])) || [];

@@ -138,7 +138,7 @@ function userModal(u, done) {
     <div class="field"><label>Phone</label><input name="phone" value="${VMTL.esc(e.phone || '')}"></div>
     <div class="field"><label>Role</label><select name="role_id" required>${roles}</select></div>
     <div class="field"><label>Department</label><select name="department_id"><option value="">—</option>${depts}</select></div>
-    <div class="field"><label>Org unit</label><select name="org_unit_id"><option value="">—</option>${VMTL.orgUnitOptions(e.org_unit_id)}</select></div>
+    <div class="field"><label>Org unit</label><select name="org_unit_id"><option value="">—</option>${VMTL.orgUnitOptions(e.org_unit_id)}</select><div class="dim" style="font-size:12px">IT Admin requires an OU and manages only that unit and its descendants.</div></div>
     <div class="field" style="display:flex;align-items:flex-end"><label class="checkbox"><input type="checkbox" name="active" ${e.active === false ? '' : 'checked'}> Active</label></div>
     <div class="field" style="display:flex;align-items:flex-end"><label class="checkbox"><input type="checkbox" name="can_drive" ${e.can_drive ? 'checked' : ''}> Can also drive (add to the driver pool)</label></div>
   </div></form></div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="save">Save</button></div>`, { large: true });

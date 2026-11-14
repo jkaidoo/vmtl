@@ -38,7 +38,7 @@ async function canOperate(req, trip) {
 module.exports = function register(router) {
   router.get('/trips', requireAuth, async (req, res) => {
     const user = req.session.user;
-    const where = ['t.deleted_at IS NULL']; const params = [];
+    const where = ['t.deleted_at IS NULL', require('../../services/ouAdmin').tripClause(req)]; const params = [];
     if (!user.is_super_admin && !(await has(req, CAP.TRIPS_OPERATE)) && !(await has(req, CAP.REQUESTS_VIEW_ALL))) {
       where.push('(r.requester_id = ? OR dr.user_id = ?)'); params.push(user.id, user.id);
     }
@@ -75,7 +75,7 @@ module.exports = function register(router) {
     const vehicles = await db.all(`SELECT v.id, v.vehicle_number, v.make, v.model, v.status FROM vehicles v WHERE ${vWhere.join(' AND ')} ORDER BY v.vehicle_number`, vParams);
     const trips = await db.all(`SELECT t.id, t.trip_number, t.vehicle_id, t.status, t.scheduled_start, t.scheduled_end, r.destination, dr.name AS driver_name
         FROM trips t LEFT JOIN vehicle_requests r ON r.id = t.vehicle_request_id LEFT JOIN drivers dr ON dr.id = t.driver_id
-        WHERE t.deleted_at IS NULL AND substr(t.scheduled_start,1,10) <= substr(?,1,10) AND substr(t.scheduled_end,1,10) >= substr(?,1,10)
+        WHERE t.deleted_at IS NULL AND ${require('../../services/ouAdmin').tripClause(req)} AND substr(t.scheduled_start,1,10) <= substr(?,1,10) AND substr(t.scheduled_end,1,10) >= substr(?,1,10)
         ORDER BY t.scheduled_start`, [to, from]);
     const byV = new Map(vehicles.map((v) => [v.id, { ...v, trips: [] }]));
     for (const t of trips) { const g = byV.get(t.vehicle_id); if (g) g.trips.push(t); }
@@ -88,7 +88,7 @@ module.exports = function register(router) {
       `SELECT t.id, t.trip_number, t.status, t.scheduled_start, t.scheduled_end, t.actual_start, t.actual_end,
               v.vehicle_number, v.vehicle_type, r.destination
          FROM trips t LEFT JOIN vehicles v ON v.id = t.vehicle_id LEFT JOIN vehicle_requests r ON r.id = t.vehicle_request_id
-        WHERE t.status = 'in_progress' ORDER BY t.actual_start LIMIT 40`);
+        WHERE t.status = 'in_progress' AND ${require('../../services/ouAdmin').tripClause(req)} ORDER BY t.actual_start LIMIT 40`);
     res.json({ data: rows.map((t) => ({
       id: t.id, trip_number: t.trip_number, status: t.status,
       scheduled_start: t.scheduled_start, scheduled_end: t.scheduled_end, actual_start: t.actual_start, actual_end: t.actual_end,

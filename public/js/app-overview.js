@@ -73,7 +73,7 @@ window.VMTL_PAGE = async function () {
     ['access', 'audit', 'Audit trail', 'An append-only record of who did what, when and from where.', '/audit.html'],
     ['access', 'key', 'Sign-in protection', 'Password policy, lockout after repeated failures, idle sign-out and alerts on suspicious sign-ins.', '/system-controls.html'],
     ['owner', 'compass', 'App overview', 'This page: live figures and a tour of the whole application.', '/app-overview.html'],
-    ['owner', 'key', 'Owner page access', 'Share App overview, Dropdowns, File Server or Broadcasts with chosen roles or specific people — checked on every request.', '/owner-access.html'],
+    ['owner', 'key', 'Owner page access', 'Share any System page with chosen roles or specific people — checked on every request, page and API alike.', '/owner-access.html'],
     ['owner', 'sliders', 'Dropdowns', `${c.dropdown_lists} business choice lists editable without code; workflow keys stay protected.`, '/dropdowns.html'],
     ['owner', 'database', 'File Server', 'Keep uploads in the database, a server folder, S3 or Supabase, with tested connections and upload limits.', '/file-server.html'],
     ['owner', 'layout', 'Navigation menu', 'Rename, reorder, group and hide menu items, per role.', '/navigation-settings.html'],

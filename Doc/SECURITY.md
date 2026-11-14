@@ -76,14 +76,17 @@ lesser administrators cannot edit, delete, or assign its role, and no one may de
 Page access is guarded server-side in `src/app.js` (App-Owner pages, System pages, requester-only pages),
 not only in the UI.
 
-**Owner page access — `src/services/ownerAccess.js`:** the App Owner may share App overview, Dropdowns,
-File Server and Broadcasts with chosen roles and/or named people. Each shared page's HTML guard and every
-API route behind it check the grant (`requirePage`), resolved fresh from the database on each request
-against the user's current role and active status, so revoking takes effect immediately. A delegate gets
-exactly the owner's power on that page and nothing else. Backup & cleanup (full snapshots containing
-password hashes and secrets, restore, permanent deletion) and the Owner page access settings themselves
-can never be shared, so no delegate can widen their own access; only the App Owner can read or change
-grants, and every change is audited with before/after values.
+**Owner page access — `src/services/ownerAccess.js`:** every App-Owner and System page is App Owner
+only until the owner shares it with chosen roles and/or named people; holding `system.admin` alone no
+longer opens them. Each page's HTML guard (`src/app.js`) and every API route behind it check the grant
+(`requirePage`), resolved fresh from the database on each request against the user's current role and
+active status, so revoking takes effect immediately. A delegate gets exactly the owner's power on that
+page and nothing else. Every change is audited with before/after values.
+
+**Limits:** sharing is the owner's judgement. Sharing Owner page access lets the delegate change access
+for every page, including their own; sharing Backup & cleanup exposes full snapshots (password hashes and
+secrets) and restore/permanent deletion; sharing RBAC lets the delegate grant any capability. Each of
+these is flagged on the Owner page access screen. The legacy `/messaging.html` page is not shareable.
 
 **Limits:** OWN/TEAM/ALL capability catalogue entries do not by themselves prove complete scope
 enforcement in every handler. UI hiding never substitutes for protecting the data API.
@@ -236,5 +239,5 @@ or comment is not evidence of working enforcement.
   its own units. Cancelled schedules refuse new expenses and fuel.
 - Dropdown keys for workflow statuses and vehicle types are protected (relabel only), and dropdown
   input is type-checked and rejects delimiter characters.
-- Added Owner page access: App overview, Dropdowns, File Server and Broadcasts can be shared with roles
-  or named people (server-enforced per page); Backup & cleanup and the access settings stay App Owner only.
+- Added Owner page access: every App-Owner and System page is App Owner only unless shared with roles or
+  named people, enforced per page on both the HTML guard and the APIs.

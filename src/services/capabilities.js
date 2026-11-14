@@ -3,6 +3,7 @@
 // Capabilities are grouped for the RBAC UI and mapped to default roles at seed time.
 
 const CAP = {
+  OU_ADMIN: 'ou.admin',
   FLEET_GLOBAL: 'fleet.global',
   SCHEDULE_EVENTS: 'schedule.events',
   // Request lifecycle
@@ -34,6 +35,7 @@ const CAP = {
 
 // key -> { label, group, description } (order defines RBAC-screen order).
 const CATALOG = {
+  [CAP.OU_ADMIN]: { label: 'OU administration', group: 'Administration', description: 'Manage only the assigned organisational unit and descendants. Global controls remain restricted.' },
   [CAP.FLEET_GLOBAL]: {label:'University-wide fleet',group:'Fleet',description:'View and manage fleet across organisational units.'},
   [CAP.SCHEDULE_EVENTS]: {label:'Schedule IDL events',group:'Fleet',description:'Pair drivers and vehicles and record event expenses.'},
   [CAP.REQUESTS_CREATE]: { label: 'Create requests', group: 'Requests', description: 'Submit vehicle requests.' },
@@ -69,6 +71,7 @@ function defaultsByRole() {
     // System Administrator — every capability (incl. the System tier). The App
     // Owner (is_super_admin) additionally holds the App-Owner-only parts (Broadcasts).
     administrator: all(),
+    it_admin: all().filter(cap => ![CAP.SYSTEM_ADMIN, CAP.FLEET_GLOBAL, CAP.ROLES_MANAGE, CAP.SCHEDULE_EVENTS].includes(cap)),
     university_transport_officer: [CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.FLEET_GLOBAL],
     schedule_transport_officer: [...transport, CAP.FLEET_GLOBAL, CAP.SCHEDULE_EVENTS],
     // Supervisor — oversight of their org unit: view requests, analytics and the
