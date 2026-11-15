@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Confirm availability · KNUST UITS</title>
+  <link rel="icon" href="/knust-logo.png">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <style>
+    body{margin:0;background:var(--bg,#f6f7f9);color:var(--text,#1a1a1a);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    .ac-wrap{max-width:480px;margin:0 auto;padding:28px 18px}
+    .ac-card{background:var(--surface,#fff);border:1px solid var(--border,#e5e5e5);border-radius:16px;padding:22px;box-shadow:0 6px 24px rgba(0,0,0,.05)}
+    .ac-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .ac-head img{height:40px}
+    h1{font-size:18px;margin:0}
+    .sub{color:var(--text-2,#666);font-size:13px}
+    .ac-event{background:var(--bg,#f2f4f6);border-radius:10px;padding:12px 14px;margin:14px 0}
+    .ac-event b{font-size:16px}
+    .ac-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+    .ac-btns button{padding:14px;border-radius:10px;border:2px solid transparent;font-size:15px;font-weight:600;cursor:pointer}
+    .yes{background:#e6f6ed;color:#009540;border-color:#009540}
+    .no{background:#fdecec;color:#d12b2b;border-color:#d12b2b}
+    textarea{width:100%;box-sizing:border-box;margin-top:12px;border:1px solid var(--border,#ddd);border-radius:8px;padding:10px;font-family:inherit;min-height:56px}
+    .ac-done{text-align:center;padding:8px 0}
+    .ac-done .mark{font-size:40px}
+  </style>
+</head>
+<body>
+  <div class="ac-wrap"><div class="ac-card" id="card"><div class="sub">Loading…</div></div></div>
+  <script src="/js/ts-availability-confirm.js"></script>
+</body>
+</html>

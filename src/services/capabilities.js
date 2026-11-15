@@ -6,6 +6,12 @@ const CAP = {
   OU_ADMIN: 'ou.admin',
   FLEET_GLOBAL: 'fleet.global',
   SCHEDULE_EVENTS: 'schedule.events',
+  // Transport Scheduling (walkin-style roster builder) — its own section.
+  SCHEDULE_VIEW: 'schedule.view',
+  SCHEDULE_MANAGE: 'schedule.manage',
+  SCHEDULE_PUBLISH: 'schedule.publish',
+  SCHEDULE_NOTIFY: 'schedule.notify',
+  SCHEDULE_CONFIG: 'schedule.config',
   // Request lifecycle
   REQUESTS_CREATE: 'requests.create',
   REQUESTS_VIEW_ALL: 'requests.view_all',
@@ -41,6 +47,11 @@ const CATALOG = {
   [CAP.OU_ADMIN]: { label: 'OU administration', group: 'Administration', description: 'Manage only the assigned organisational unit and descendants. Global controls remain restricted.' },
   [CAP.FLEET_GLOBAL]: {label:'University-wide fleet',group:'Fleet',description:'View and manage fleet across organisational units.'},
   [CAP.SCHEDULE_EVENTS]: {label:'Schedule IDL events',group:'Fleet',description:'Pair drivers and vehicles and record event expenses.'},
+  [CAP.SCHEDULE_VIEW]: {label:'View transport schedules',group:'Transport Scheduling',description:'Open the Transport Schedule section, events and rosters (read-only).'},
+  [CAP.SCHEDULE_MANAGE]: {label:'Build & edit schedules',group:'Transport Scheduling',description:'Create events, set centre requirements, build rosters, assign drivers and track availability.'},
+  [CAP.SCHEDULE_PUBLISH]: {label:'Review & publish schedules',group:'Transport Scheduling',description:'Submit for review, approve & publish the public schedule, and manage revisions.'},
+  [CAP.SCHEDULE_NOTIFY]: {label:'Notify drivers',group:'Transport Scheduling',description:'Send roster SMS / email messages and availability links to drivers.'},
+  [CAP.SCHEDULE_CONFIG]: {label:'Manage schedule reference data',group:'Transport Scheduling',description:'Maintain event types, centres and driver groups used by the scheduler.'},
   [CAP.REQUESTS_CREATE]: { label: 'Create requests', group: 'Requests', description: 'Submit vehicle requests.' },
   [CAP.REQUESTS_VIEW_ALL]: { label: 'View all requests', group: 'Requests', description: 'See every request, not just their own.' },
   [CAP.REQUESTS_APPROVE]: { label: 'Approve / reject requests', group: 'Requests', description: 'Decide on pending requests.' },
@@ -78,9 +89,11 @@ function defaultsByRole() {
     // System Administrator — every capability (incl. the System tier). The App
     // Owner (is_super_admin) additionally holds the App-Owner-only parts (Broadcasts).
     administrator: all(),
-    it_admin: all().filter(cap => ![CAP.SYSTEM_ADMIN, CAP.FLEET_GLOBAL, CAP.ROLES_MANAGE, CAP.SCHEDULE_EVENTS].includes(cap)),
+    it_admin: all().filter(cap => ![CAP.SYSTEM_ADMIN, CAP.FLEET_GLOBAL, CAP.ROLES_MANAGE, CAP.SCHEDULE_EVENTS,
+      CAP.SCHEDULE_VIEW, CAP.SCHEDULE_MANAGE, CAP.SCHEDULE_PUBLISH, CAP.SCHEDULE_NOTIFY, CAP.SCHEDULE_CONFIG].includes(cap)),
     university_transport_officer: [CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.FLEET_GLOBAL, CAP.INCIDENTS_MANAGE, CAP.DUTY_MANAGE, CAP.PARTS_MANAGE],
-    schedule_transport_officer: [...transport, CAP.FLEET_GLOBAL, CAP.SCHEDULE_EVENTS],
+    schedule_transport_officer: [...transport, CAP.FLEET_GLOBAL, CAP.SCHEDULE_EVENTS,
+      CAP.SCHEDULE_VIEW, CAP.SCHEDULE_MANAGE, CAP.SCHEDULE_PUBLISH, CAP.SCHEDULE_NOTIFY, CAP.SCHEDULE_CONFIG],
     // Supervisor — oversight of their org unit: view requests, analytics and the
     // audit log, but no editing.
     supervisor: [CAP.REQUESTS_VIEW_ALL, CAP.ANALYTICS_VIEW, CAP.AUDIT_VIEW],

@@ -17,15 +17,16 @@ const FIELDS = {
   feature_sms_notifications: ['boolean', 'features', 'SMS notifications', false],
   feature_push_notifications: ['boolean', 'features', 'Push notifications', true],
   feature_driver_duty: ['boolean', 'modules', 'Driver duty & roster', false],
+  feature_transport_schedule: ['boolean', 'modules', 'Transport Scheduling', false],
 };
 // Optional feature modules: name → setting key. Off by default; the matching
 // navigation item, page and API routes stay hidden until the toggle is on.
-const MODULE_KEYS = { driverDuty: 'feature_driver_duty' };
+const MODULE_KEYS = { driverDuty: 'feature_driver_duty', transportSchedule: 'feature_transport_schedule' };
 const MAP = {
   notifications: { emailSubject: 'notif_email_subject_prefix', smsPrefix: 'notif_sms_sender_prefix', emailEnabled: 'notif_allow_email', smsEnabled: 'notif_allow_sms' },
   retention: { auditDays: 'retain_audit_days', notificationDays: 'retain_notification_days' },
   maintenance: { enabled: 'maintenance_mode', message: 'maintenance_message' },
-  flags: { emailNotifications: 'feature_email_notifications', smsNotifications: 'feature_sms_notifications', pushNotifications: 'feature_push_notifications', driverDuty: 'feature_driver_duty' },
+  flags: { emailNotifications: 'feature_email_notifications', smsNotifications: 'feature_sms_notifications', pushNotifications: 'feature_push_notifications', driverDuty: 'feature_driver_duty', transportSchedule: 'feature_transport_schedule' },
 };
 const bad = message => Object.assign(new Error(message), { status: 400 });
 const on = value => value === true || value === 1 || value === '1' || value === 'true';

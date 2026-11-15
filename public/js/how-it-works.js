@@ -32,9 +32,9 @@ window.VMTL_PAGE = function () {
     { icon: 'vehicles', title: 'Assign vehicle & driver', owns: ['requests.assign'],
       desc: 'A transport officer assigns an available vehicle and driver to the approved request. Only conflict-free vehicles and drivers for that window are offered — which creates the trip.',
       you: 'You match a free vehicle and driver to approved requests, creating the trip.' },
-    { icon: 'calendar', title: 'Schedule IDL external travel', owns: ['schedule.events'],
-      desc: 'For IDL activities, the Schedule Transport Officer creates an event and pairs available drivers with vehicles from across the university for each journey. The driver is notified, and fuel and other trip costs are tracked per schedule and per event.',
-      you: 'You plan IDL events, pair drivers with vehicles, and track each schedule\'s fuel and extra costs.' },
+    { icon: 'route', title: 'Build the transport schedule', owns: ['schedule.view', 'schedule.manage', 'schedule.publish', 'schedule.notify'], feature: 'transportSchedule',
+      desc: 'The Schedule Transport Officer builds driver rosters for events: define the centres each event covers and how many drivers each needs, pull in a pool of drivers, then assign them to centres (naming a team lead where needed). Overlaps, caps and approved leave are checked as you go. Drivers confirm availability by a link, the roster is reviewed and published to a shareable page, and SMS/email messages and PDF/Excel reports go out per event.',
+      you: 'You build driver rosters, track availability, publish schedules, and message drivers.' },
     { icon: 'trips', title: 'Run the trip', owns: ['trips.operate'],
       desc: 'The driver starts the trip and the live progress graphic ticks through the planned window. The device shares its location, building a route history you can replay afterwards and checking it against any geofences. Mid-trip destinations can be added, and the driver completes the trip with the closing odometer.',
       you: 'You start, track and complete your assigned trips, and accept or decline added stops.' },
@@ -50,7 +50,9 @@ window.VMTL_PAGE = function () {
     { icon: 'analytics', title: 'Review insights', owns: ['analytics.view', 'reports.export'],
       desc: 'Analytics, costs (by department and vehicle, with cost-per-km), emissions (CO₂ and fuel efficiency) and driver performance (requester ratings) summarise the fleet for your scope, and reports export to CSV, Excel or PDF.',
       you: 'You review analytics, costs, emissions, performance and exports for your organisational unit.' },
-  ].filter((s) => !s.feature || VMTL.feature(s.feature));
+  // Feature-module stages are hidden once their toggle is off — except for the
+  // App Owner, who always sees the full set (every feature, on or off).
+  ].filter((s) => !s.feature || VMTL.feature(s.feature) || isSuper);
   if (isSuper) {
     stages.push({ icon: 'shield', title: 'Administer the system', owns: ['*'],
       desc: 'Behind the scenes, the system administrator manages users, roles and capabilities (RBAC), the organisational-unit hierarchy, directory sign-in, notifications and system settings. The App Owner also curates the dropdown choices and chooses where uploaded files are stored.',

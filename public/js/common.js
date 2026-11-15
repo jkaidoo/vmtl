@@ -432,7 +432,6 @@
     { label: 'Fleet', items: [
       { key: 'vehicles', anyCaps: ['vehicles.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
       { key: 'tracking', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/tracking.html', label: 'Live map', icon: 'map', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'], mobile: true },
-      {key:'event-schedules',to:'/event-schedules.html',label:'IDL event scheduling',icon:'calendar',cap:'schedule.events'},
       { key: 'schedule', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
       { key: 'drivers', anyCaps: ['drivers.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
       { key: 'maintenance', anyCaps: ['maintenance.manage', 'system.admin'], to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
@@ -441,6 +440,12 @@
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
       { key: 'duty', anyCaps: ['duty.manage', 'system.admin'], to: '/duty.html', label: 'Driver duty', icon: 'clock', roles: ['transport_admin', 'supervisor', 'administrator'], feature: 'driverDuty' },
       { key: 'parts', anyCaps: ['parts.manage', 'system.admin'], to: '/parts.html', label: 'Parts & tyres', icon: 'disc', roles: ['transport_admin', 'supervisor', 'administrator'] },
+    ] },
+    { label: 'Transport Scheduling', items: [
+      { key: 'transport-schedule', anyCaps: ['schedule.view', 'schedule.manage', 'schedule.publish', 'system.admin'], to: '/transport-schedule.html', label: 'Transport Schedule', icon: 'route', feature: 'transportSchedule' },
+      { key: 'ts-notifications', anyCaps: ['schedule.notify', 'system.admin'], to: '/ts-notifications.html', label: 'Roster messages', icon: 'message', feature: 'transportSchedule' },
+      { key: 'ts-reports', anyCaps: ['schedule.view', 'schedule.manage', 'system.admin'], to: '/ts-reports.html', label: 'Schedule reports', icon: 'reports', feature: 'transportSchedule' },
+      { key: 'ts-config', cap: 'schedule.config', to: '/ts-config.html', label: 'Reference data', icon: 'sliders', feature: 'transportSchedule' },
     ] },
     { label: 'Insights', items: [
       { key: 'analytics', to: '/analytics.html', label: 'Analytics', icon: 'analytics', cap: 'analytics.view' },

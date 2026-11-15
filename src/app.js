@@ -36,7 +36,7 @@ const SHAREABLE_PAGES = new Map(Object.entries(ownerAccess.DELEGABLE).map(([key,
 // (the legacy /messaging.html is not shareable and stays App Owner only).
 const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/geofences.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
-const PUBLIC_PAGES = new Set(['/login.html', '/404.html', '/500.html', '/offline.html']);
+const PUBLIC_PAGES = new Set(['/login.html', '/404.html', '/500.html', '/offline.html', '/ts-schedule-public.html', '/ts-availability-confirm.html']);
 
 const dbHealth = { ok: true, at: 0, error: null };
 async function checkDatabase() {
