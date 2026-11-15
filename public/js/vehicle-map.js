@@ -88,6 +88,76 @@
     map.on('styledata', e => { if (!e || e.dataType === 'style') collapse(); });
   };
 
+  // ---- geometry helpers ----------------------------------------------------
+  // A circle approximated as a GeoJSON polygon (for geofence rendering).
+  V.circleGeoJSON = (lat, lng, radiusM, steps = 64) => {
+    const coords = [];
+    const R = 6371000, latR = lat * Math.PI / 180;
+    for (let i = 0; i <= steps; i++) {
+      const theta = (i / steps) * 2 * Math.PI;
+      const dLat = (radiusM * Math.cos(theta)) / R * 180 / Math.PI;
+      const dLng = (radiusM * Math.sin(theta)) / (R * Math.cos(latR)) * 180 / Math.PI;
+      coords.push([lng + dLng, lat + dLat]);
+    }
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } };
+  };
+
+  // ---- trip route playback -------------------------------------------------
+  // Draws a completed/in-progress trip's breadcrumb trail and animates a marker
+  // along it. `host` must contain [data-route-map], [data-route-status] and the
+  // playback controls [data-route-play], [data-route-slider].
+  V.mountTripRoute = async (host, tripId) => {
+    const panel = host.querySelector('[data-route-map]'), status = host.querySelector('[data-route-status]');
+    const playBtn = host.querySelector('[data-route-play]'), slider = host.querySelector('[data-route-slider]');
+    let map, stopTheme, raf, playing = false;
+    const stop = () => { playing = false; if (raf) cancelAnimationFrame(raf); if (stopTheme) stopTheme(); if (map) map.remove(); };
+    V.onLeave(stop);
+    let route;
+    try { route = (await V.api(`/trips/${tripId}/route`)).data; }
+    catch (e) { status.textContent = e.message; return; }
+    const pts = route.points || [];
+    if (pts.length < 2) { status.textContent = pts.length ? 'Only one GPS point was recorded for this trip.' : 'No route was recorded for this trip. The driver must run the trip with location sharing on.'; panel.innerHTML = '<div class="empty">No route history.</div>'; return; }
+    await V.loadMapLibre();
+    const line = pts.map((p) => [Number(p.longitude), Number(p.latitude)]);
+    const bounds = line.reduce((b, c) => [[Math.min(b[0][0], c[0]), Math.min(b[0][1], c[1])], [Math.max(b[1][0], c[0]), Math.max(b[1][1], c[1])]], [[180, 90], [-180, -90]]);
+    panel.innerHTML = '';
+    map = new maplibregl.Map({ container: panel, style: V.mapStyleForTheme(), bounds, fitBoundsOptions: { padding: 40 }, attributionControl: false });
+    V.compactAttribution(map); map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    stopTheme = V.watchMapTheme(map);
+    const marker = new maplibregl.Marker({ color: '#1f5fd0' }).setLngLat(line[0]);
+    const addLayers = () => {
+      if (map.getSource('route')) return;
+      map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: line } } });
+      map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#1f5fd0', 'line-width': 4, 'line-opacity': 0.85 } });
+      // Geofence crossing markers.
+      (route.geofence_events || []).forEach((e) => {
+        if (e.latitude == null) return;
+        const breach = (e.kind === 'exclusion' && e.event_type === 'enter') || (e.kind === 'inclusion' && e.event_type === 'exit');
+        new maplibregl.Marker({ color: breach ? '#c0392b' : '#d99400' }).setLngLat([Number(e.longitude), Number(e.latitude)])
+          .setPopup(new maplibregl.Popup({ offset: 12 }).setText(`${e.name}: ${e.event_type}`)).addTo(map);
+      });
+      marker.addTo(map);
+    };
+    map.on('load', addLayers);
+    slider.max = String(pts.length - 1); slider.value = '0';
+    const at = (i) => {
+      marker.setLngLat(line[i]);
+      const p = pts[i];
+      status.textContent = `Point ${i + 1} / ${pts.length} · ${V.fmtDateTime(p.recorded_at)}${p.speed != null ? ` · ${(Number(p.speed) * 3.6).toFixed(0)} km/h` : ''}`;
+    };
+    slider.oninput = () => { playing = false; playBtn.textContent = '▶'; at(Number(slider.value)); };
+    at(0);
+    const tick = () => {
+      if (!playing) return;
+      let i = Number(slider.value);
+      if (i >= pts.length - 1) { playing = false; playBtn.textContent = '▶'; return; }
+      i += 1; slider.value = String(i); at(i);
+      raf = setTimeout(() => requestAnimationFrame(tick), 280);
+    };
+    playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '❚❚' : '▶'; if (playing) { if (Number(slider.value) >= pts.length - 1) { slider.value = '0'; } tick(); } };
+    status.textContent = `${pts.length} GPS points · ${V.fmtDateTime(pts[0].recorded_at)} → ${V.fmtDateTime(pts[pts.length - 1].recorded_at)}`;
+  };
+
   // ---- trip detail live map ------------------------------------------------
   V.mountTripMap = (host, tripId) => {
     let timer, stopped = false, map, marker, stopTheme;

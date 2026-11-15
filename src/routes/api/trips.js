@@ -117,6 +117,19 @@ module.exports = function register(router) {
     res.json({ data: await loaders.loadTrip(trip.id, { withRequest: true }) });
   });
 
+  // GPS breadcrumb trail for route history / playback.
+  router.get('/trips/:id/route', requireAuth, async (req, res) => {
+    const trip = await findTrip(req.params.id);
+    if (!(await canView(req, trip))) throw forbidden('You may not view this trip.');
+    const points = await require('../../services/tracking').tripRoute(trip.id);
+    const events = await db.all(
+      `SELECT ge.event_type, ge.latitude, ge.longitude, ge.occurred_at, g.name, g.kind
+         FROM geofence_events ge JOIN geofences g ON g.id = ge.geofence_id
+        WHERE ge.trip_id = ? ORDER BY ge.id`, [trip.id]);
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: { trip_number: trip.trip_number, status: trip.status, points, geofence_events: events } });
+  });
+
   router.post('/trips/:id/start', requireAuth, async (req, res) => {
     const trip = await findTrip(req.params.id);
     if (!(await canOperate(req, trip))) throw forbidden('You may not operate this trip.');

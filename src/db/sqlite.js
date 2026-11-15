@@ -422,5 +422,190 @@ CREATE TABLE IF NOT EXISTS schedule_expenses (
 );
 `);
 ensureColumn('fleet_files','storage_profile','TEXT');
+
+// --- Fleet operations extensions (incidents, route history, work orders, ------
+// --- ratings, driver duty, parts & tyres) ------------------------------------
+db.exec(`
+-- Incident & accident reports -------------------------------------------------
+CREATE TABLE IF NOT EXISTS incidents (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  incident_number TEXT UNIQUE NOT NULL,
+  vehicle_id      INTEGER REFERENCES vehicles(id) ON DELETE SET NULL,
+  driver_id       INTEGER REFERENCES drivers(id) ON DELETE SET NULL,
+  trip_id         INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  org_unit_id     INTEGER REFERENCES org_units(id) ON DELETE SET NULL,
+  incident_type   TEXT NOT NULL,
+  severity        TEXT NOT NULL DEFAULT 'minor',
+  status          TEXT NOT NULL DEFAULT 'reported',
+  occurred_at     TEXT NOT NULL,
+  location_text   TEXT,
+  latitude        REAL,
+  longitude       REAL,
+  description     TEXT NOT NULL,
+  injuries        INTEGER NOT NULL DEFAULT 0,
+  injury_details  TEXT,
+  third_party     TEXT,
+  estimated_cost  REAL,
+  claim_reference TEXT,
+  resolution      TEXT,
+  reported_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  closed_at       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_vehicle ON incidents(vehicle_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_org ON incidents(org_unit_id);
+
+-- Trip GPS breadcrumb trail (route history / playback) ------------------------
+CREATE TABLE IF NOT EXISTS trip_positions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id     INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  vehicle_id  INTEGER REFERENCES vehicles(id) ON DELETE SET NULL,
+  latitude    REAL NOT NULL,
+  longitude   REAL NOT NULL,
+  heading     REAL,
+  speed       REAL,
+  accuracy    REAL,
+  recorded_at TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_trip_positions_trip ON trip_positions(trip_id, recorded_at);
+
+-- Geofences + breach events ---------------------------------------------------
+CREATE TABLE IF NOT EXISTS geofences (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'inclusion',  -- inclusion | exclusion
+  latitude    REAL NOT NULL,
+  longitude   REAL NOT NULL,
+  radius_m    INTEGER NOT NULL,
+  org_unit_id INTEGER REFERENCES org_units(id) ON DELETE SET NULL,
+  active      INTEGER NOT NULL DEFAULT 1,
+  notes       TEXT,
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS geofence_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  geofence_id INTEGER NOT NULL REFERENCES geofences(id) ON DELETE CASCADE,
+  trip_id     INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  vehicle_id  INTEGER REFERENCES vehicles(id) ON DELETE SET NULL,
+  event_type  TEXT NOT NULL,                      -- enter | exit
+  latitude    REAL,
+  longitude   REAL,
+  occurred_at TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_geofence_events_fence ON geofence_events(geofence_id, occurred_at);
+
+-- Preventive-maintenance work orders ------------------------------------------
+CREATE TABLE IF NOT EXISTS work_orders (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_order_number     TEXT UNIQUE NOT NULL,
+  vehicle_id            INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+  org_unit_id           INTEGER REFERENCES org_units(id) ON DELETE SET NULL,
+  title                 TEXT NOT NULL,
+  maintenance_type      TEXT,
+  priority              TEXT NOT NULL DEFAULT 'normal',
+  status                TEXT NOT NULL DEFAULT 'open',
+  description           TEXT,
+  service_provider      TEXT,
+  scheduled_date        TEXT,
+  due_date              TEXT,
+  completed_date        TEXT,
+  odometer              INTEGER,
+  labour_cost           REAL,
+  parts_cost            REAL,
+  total_cost            REAL,
+  maintenance_record_id INTEGER REFERENCES maintenance_records(id) ON DELETE SET NULL,
+  assigned_to           TEXT,
+  remarks               TEXT,
+  created_by            INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at            TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_work_orders_vehicle ON work_orders(vehicle_id, status);
+CREATE INDEX IF NOT EXISTS idx_work_orders_status ON work_orders(status, due_date);
+
+-- Requester trip feedback / ratings -------------------------------------------
+CREATE TABLE IF NOT EXISTS trip_ratings (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id           INTEGER NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+  request_id        INTEGER REFERENCES vehicle_requests(id) ON DELETE SET NULL,
+  rated_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  driver_id         INTEGER REFERENCES drivers(id) ON DELETE SET NULL,
+  rating            INTEGER NOT NULL,             -- overall 1..5
+  punctuality       INTEGER,                      -- 1..5
+  vehicle_condition INTEGER,                      -- 1..5
+  comment           TEXT,
+  flagged           INTEGER NOT NULL DEFAULT 0,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_trip_ratings_driver ON trip_ratings(driver_id);
+
+-- Driver duty & roster --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS driver_duties (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  driver_id   INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  org_unit_id INTEGER REFERENCES org_units(id) ON DELETE SET NULL,
+  duty_type   TEXT NOT NULL DEFAULT 'shift',
+  status      TEXT NOT NULL DEFAULT 'scheduled',
+  start_at    TEXT NOT NULL,
+  end_at      TEXT NOT NULL,
+  notes       TEXT,
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_driver_duties_driver ON driver_duties(driver_id, start_at);
+
+-- Tyre & spare-parts inventory ------------------------------------------------
+CREATE TABLE IF NOT EXISTS parts_inventory (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_number   TEXT,
+  name          TEXT NOT NULL,
+  category      TEXT NOT NULL DEFAULT 'part',     -- tyre | part | fluid | battery | other
+  org_unit_id   INTEGER REFERENCES org_units(id) ON DELETE SET NULL,
+  unit          TEXT,
+  quantity      REAL NOT NULL DEFAULT 0,
+  reorder_level REAL,
+  unit_cost     REAL,
+  location      TEXT,
+  size          TEXT,                             -- tyre size, e.g. 265/65R17
+  brand         TEXT,
+  notes         TEXT,
+  active        INTEGER NOT NULL DEFAULT 1,
+  created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_parts_category ON parts_inventory(category, active);
+
+-- Stock movements / fitments to a vehicle -------------------------------------
+CREATE TABLE IF NOT EXISTS part_movements (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id       INTEGER NOT NULL REFERENCES parts_inventory(id) ON DELETE CASCADE,
+  vehicle_id    INTEGER REFERENCES vehicles(id) ON DELETE SET NULL,
+  work_order_id INTEGER REFERENCES work_orders(id) ON DELETE SET NULL,
+  movement_type TEXT NOT NULL,                    -- receipt | fitment | adjustment
+  quantity      REAL NOT NULL,                    -- +in / -out
+  odometer      INTEGER,
+  position      TEXT,                             -- e.g. front-left (tyres)
+  unit_cost     REAL,
+  note          TEXT,
+  recorded_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_part_movements_part ON part_movements(part_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_part_movements_vehicle ON part_movements(vehicle_id);
+`);
 module.exports = db;
 module.exports.ensureColumn = ensureColumn;

@@ -711,3 +711,25 @@ a.cal-ev,a.agd-ev{color:inherit;text-decoration:none}a.cal-ev:hover,a.agd-ev:hov
   .ch-fill { opacity:1; animation:none; }
   .ch-bar-fill { animation:none; }
 }
+
+/* --- Fleet extensions: shared neutral utilities (incidents, work orders, -----
+   duty, parts, ratings, cost/emissions, booking). No card accents. --------- */
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 20px; margin: 4px 0 14px; }
+.detail-grid > div { min-width: 0; }
+.detail-grid .dim { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+@media (max-width: 560px) { .detail-grid { grid-template-columns: 1fr; } }
+.readout { white-space: pre-wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 14px; }
+.thumb-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.thumb-lg { width: 108px; height: 108px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border); }
+.rating-stars { color: var(--amber, #d99400); letter-spacing: 2px; font-size: 15px; }
+.rating-stars .off { color: var(--text-3); }
+.stars-input { display: inline-flex; gap: 4px; }
+.stars-input button { background: none; border: 0; cursor: pointer; font-size: 26px; line-height: 1; color: var(--text-3); padding: 0; }
+.stars-input button.on { color: var(--amber, #d99400); }
+.qty-pill { font-variant-numeric: tabular-nums; font-weight: 700; }
+.qty-pill.low { color: var(--danger, #c0392b); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 6px; }
+.cal-cell { border: 1px solid var(--border); border-radius: var(--radius); min-height: 86px; padding: 6px; background: var(--surface); font-size: 12px; }
+.cal-cell.other { opacity: .5; }
+.cal-cell .d { font-weight: 700; color: var(--text-2); }
+.cal-dot { display: inline-block; width: 100%; margin-top: 3px; padding: 1px 5px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

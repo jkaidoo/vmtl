@@ -357,6 +357,8 @@
   VMTL.ownerPage = (key) => VMTL.isSuper() || !!(VMTL.user && (VMTL.user.owner_pages || []).includes(key));
   VMTL.requesterOnly = () => !!(VMTL.user && VMTL.user.requester_only);
   VMTL.roleSlug = () => (VMTL.user && VMTL.user.role ? VMTL.user.role.slug : null);
+  // Optional feature modules (e.g. driver duty), toggled in System controls.
+  VMTL.feature = (name) => !!(VMTL.meta && VMTL.meta.features && VMTL.meta.features[name]);
 
   // ---- icons (minimal inline set) --------------------------------------
   const I = {
@@ -402,6 +404,15 @@
     contacts: 'M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1z M8 11a2 2 0 100-4 2 2 0 000 4z M5.5 16a2.5 2.5 0 015 0 M14 9h4 M14 13h3',
     calendar: 'M4 5h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z M3 10h18 M8 3v4 M16 3v4',
     compass: 'M12 2a10 10 0 100 20 10 10 0 000-20z M16.2 7.8l-2.1 6.3-6.3 2.1 2.1-6.3z',
+    clipboard: 'M9 4h6a1 1 0 011 1v1h-8V5a1 1 0 011-1z M8 6H6a1 1 0 00-1 1v13a1 1 0 001 1h12a1 1 0 001-1V7a1 1 0 00-1-1h-2 M9 11h6 M9 15h4',
+    alert: 'M12 2L1 21h22z M12 9v5 M12 17h.01',
+    clock: 'M12 2a10 10 0 100 20 10 10 0 000-20z M12 7v5l3 2',
+    disc: 'M12 2a10 10 0 100 20 10 10 0 000-20z M12 8a4 4 0 100 8 4 4 0 000-8z M12 11.5a.5.5 0 100 1 .5.5 0 000-1z',
+    target: 'M12 2a10 10 0 100 20 10 10 0 000-20z M12 7a5 5 0 100 10 5 5 0 000-10z M12 11a1 1 0 100 2 1 1 0 000-2z',
+    route: 'M6 19a2 2 0 100-4 2 2 0 000 4z M18 9a2 2 0 100-4 2 2 0 000 4z M8 17h6a3 3 0 003-3V9 M6 15V9a3 3 0 013-3h3',
+    star: 'M12 2l2.9 6.3 6.6.6-5 4.3 1.5 6.5L12 16.8 5.5 19.7 7 13.2 2 8.9l6.6-.6z',
+    leaf: 'M4 20s-1-8 6-13c5-3.5 10-2 10-2s1.5 5-2 10C13 22 4 20 4 20z M4 20c4-4 7-7 9-9',
+    coins: 'M8 11a6 3 0 100-6 6 3 0 000 6z M2 8v5c0 1.7 2.7 3 6 3 M14 13a6 3 0 100-6 6 3 0 000 6z M8 16v1c0 1.7 2.7 3 6 3s6-1.3 6-3v-5',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(I[name] || 'M12 12h.01').split('M').filter(Boolean).map((p) => `<path d="M${p}"/>`).join('')}</svg>`;
   VMTL.icon = icon;
@@ -416,6 +427,7 @@
       { key: 'goodwill', to: '/goodwill.html', label: 'Goodwill', icon: 'gift', cap: 'requests.create_goodwill' },
       { key: 'external', to: '/external-travel.html', label: 'External Travel', icon: 'plane', cap: 'requests.create_external' },
       { key: 'trips', anyCaps:['trips.operate','requests.assign','requests.view_all'], roles:['driver','transport_admin','approver','administrator','supervisor'], to: '/trips.html', label: 'Trips', icon: 'trips', mobile: true },
+      { key: 'booking', to: '/booking.html', label: 'Booking calendar', icon: 'calendar', cap: 'requests.create' },
     ] },
     { label: 'Fleet', items: [
       { key: 'vehicles', anyCaps: ['vehicles.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
@@ -424,10 +436,18 @@
       { key: 'schedule', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
       { key: 'drivers', anyCaps: ['drivers.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
       { key: 'maintenance', anyCaps: ['maintenance.manage', 'system.admin'], to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'work-orders', anyCaps: ['maintenance.manage', 'system.admin'], to: '/work-orders.html', label: 'Work orders', icon: 'clipboard', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'incidents', anyCaps: ['incidents.manage', 'system.admin'], to: '/incidents.html', label: 'Incidents', icon: 'alert', roles: ['transport_admin', 'supervisor', 'administrator'] },
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
+      { key: 'duty', anyCaps: ['duty.manage', 'system.admin'], to: '/duty.html', label: 'Driver duty', icon: 'clock', roles: ['transport_admin', 'supervisor', 'administrator'], feature: 'driverDuty' },
+      { key: 'parts', anyCaps: ['parts.manage', 'system.admin'], to: '/parts.html', label: 'Parts & tyres', icon: 'disc', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'geofences', anyCaps: ['system.admin', 'requests.assign'], to: '/geofences.html', label: 'Geofences', icon: 'target', roles: ['transport_admin', 'administrator'] },
     ] },
     { label: 'Insights', items: [
       { key: 'analytics', to: '/analytics.html', label: 'Analytics', icon: 'analytics', cap: 'analytics.view' },
+      { key: 'costs', to: '/costs.html', label: 'Costs', icon: 'coins', cap: 'analytics.view' },
+      { key: 'emissions', to: '/emissions.html', label: 'Emissions', icon: 'leaf', cap: 'analytics.view' },
+      { key: 'performance', to: '/performance.html', label: 'Performance', icon: 'star', cap: 'analytics.view' },
       { key: 'reports', to: '/reports.html', label: 'Reports', icon: 'reports', cap: 'reports.export' },
     ] },
     { label: 'Administration', items: [
@@ -464,6 +484,8 @@
   ];
 
   function visible(item) {
+    // Optional feature modules stay hidden for everyone until their toggle is on.
+    if (item.feature && !VMTL.feature(item.feature)) return false;
     // Owner pages shared with this user (Owner page access) show even for a requester-only role.
     if (item.superOnly && !VMTL.isSuper()) return VMTL.ownerPage(item.key) && !((VMTL.meta?.nav_hidden || []).includes(item.key) && !VMTL.meta?.nav_layout);
     if (VMTL.requesterOnly()) return item.key === 'dashboard' || item.key === 'requests' || item.key === 'faqs' || item.key === 'how-it-works';

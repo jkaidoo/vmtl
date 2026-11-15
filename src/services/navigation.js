@@ -12,6 +12,7 @@ const catalogue = [
       { key: 'goodwill', to: '/goodwill.html', label: 'Goodwill', icon: 'gift', cap: 'requests.create_goodwill' },
       { key: 'external', to: '/external-travel.html', label: 'External Travel', icon: 'plane', cap: 'requests.create_external' },
       { key: 'trips', anyCaps:['trips.operate','requests.assign','requests.view_all'], roles:['driver','transport_admin','approver','administrator','supervisor'], to: '/trips.html', label: 'Trips', icon: 'trips', mobile: true },
+      { key: 'booking', to: '/booking.html', label: 'Booking calendar', icon: 'calendar', cap: 'requests.create' },
     ] },
     { label: 'Fleet', items: [
       { key: 'vehicles', anyCaps: ['vehicles.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/vehicles.html', label: 'Vehicles', icon: 'vehicles', roles: OPS, mobile: true },
@@ -20,10 +21,18 @@ const catalogue = [
       { key: 'schedule', anyCaps: ['trips.operate', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/schedule.html', label: 'Schedule', icon: 'calendar', roles: ['approver', 'transport_admin', 'supervisor', 'administrator'] },
       { key: 'drivers', anyCaps: ['drivers.manage', 'requests.assign', 'requests.view_all', 'system.admin'], to: '/drivers.html', label: 'Drivers', icon: 'drivers', roles: OPS },
       { key: 'maintenance', anyCaps: ['maintenance.manage', 'system.admin'], to: '/maintenance.html', label: 'Maintenance', icon: 'wrench', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'work-orders', anyCaps: ['maintenance.manage', 'system.admin'], to: '/work-orders.html', label: 'Work orders', icon: 'clipboard', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'incidents', anyCaps: ['incidents.manage', 'system.admin'], to: '/incidents.html', label: 'Incidents', icon: 'alert', roles: ['transport_admin', 'supervisor', 'administrator'] },
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
+      { key: 'duty', anyCaps: ['duty.manage', 'system.admin'], to: '/duty.html', label: 'Driver duty', icon: 'clock', roles: ['transport_admin', 'supervisor', 'administrator'], feature: 'driverDuty' },
+      { key: 'parts', anyCaps: ['parts.manage', 'system.admin'], to: '/parts.html', label: 'Parts & tyres', icon: 'disc', roles: ['transport_admin', 'supervisor', 'administrator'] },
+      { key: 'geofences', anyCaps: ['system.admin', 'requests.assign'], to: '/geofences.html', label: 'Geofences', icon: 'target', roles: ['transport_admin', 'administrator'] },
     ] },
     { label: 'Insights', items: [
       { key: 'analytics', to: '/analytics.html', label: 'Analytics', icon: 'analytics', cap: 'analytics.view' },
+      { key: 'costs', to: '/costs.html', label: 'Costs', icon: 'coins', cap: 'analytics.view' },
+      { key: 'emissions', to: '/emissions.html', label: 'Emissions', icon: 'leaf', cap: 'analytics.view' },
+      { key: 'performance', to: '/performance.html', label: 'Performance', icon: 'star', cap: 'analytics.view' },
       { key: 'reports', to: '/reports.html', label: 'Reports', icon: 'reports', cap: 'reports.export' },
     ] },
     { label: 'Administration', items: [
@@ -81,9 +90,12 @@ async function defaults(scope = '__all__') {
     }
   }
   const hidden = await settings.get('nav_hidden', []);
+  const modules = await require('./systemControls').modules();
   // Owner pages the App Owner has shared with this role (Owner page access).
   const shared = unrestricted || scope === '__client__' ? [] : await require('./ownerAccess').pagesForRole(scope);
   const available = item => {
+    // Feature-module items (e.g. driver duty) stay hidden until their toggle is on.
+    if (item.feature && !modules[item.feature]) return false;
     if (unrestricted) return true;
     if (requester) return ['dashboard', 'requests', 'how-it-works', 'faqs'].includes(item.key) || shared.includes(item.key);
     if (item.superOnly) return shared.includes(item.key);

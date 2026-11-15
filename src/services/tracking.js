@@ -62,7 +62,71 @@ async function recordDriverFix(user, fix) {
        recorded_by = EXCLUDED.recorded_by, recorded_at = EXCLUDED.recorded_at`,
     [trip.vehicle_id, lat, lng, num(fix.heading), num(fix.speed), num(fix.accuracy), trip.trip_id, user.id]
   );
-  return { tracked: true, vehicle_id: trip.vehicle_id, trip_id: trip.trip_id };
+  // Append to the trip breadcrumb trail (route history), throttled so a chatty
+  // device does not flood the table: keep a point only when the last one is
+  // older than ~12s or more than ~25m away.
+  try {
+    const last = await db.get('SELECT latitude, longitude, recorded_at FROM trip_positions WHERE trip_id = ? ORDER BY id DESC LIMIT 1', [trip.trip_id]);
+    const farEnough = !last || haversineM(lat, lng, last.latitude, last.longitude) >= 25;
+    const oldEnough = !last || (Date.now() - toEpoch(last.recorded_at)) >= 12000;
+    if (farEnough || oldEnough) {
+      await db.run(
+        `INSERT INTO trip_positions (trip_id, vehicle_id, latitude, longitude, heading, speed, accuracy, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ${db.now()})`,
+        [trip.trip_id, trip.vehicle_id, lat, lng, num(fix.heading), num(fix.speed), num(fix.accuracy)]);
+    }
+  } catch (_) { /* breadcrumb is best-effort */ }
+  let geofence = null;
+  try { geofence = await evaluateGeofences(trip, lat, lng); } catch (_) { /* non-fatal */ }
+  return { tracked: true, vehicle_id: trip.vehicle_id, trip_id: trip.trip_id, ...(geofence ? { geofence } : {}) };
+}
+
+// Great-circle distance between two lat/lng points, in metres.
+function haversineM(lat1, lng1, lat2, lng2) {
+  if ([lat1, lng1, lat2, lng2].some((n) => n == null || !Number.isFinite(Number(n)))) return Infinity;
+  const R = 6371000, toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// On each fix, compare the vehicle against every active geofence in its org
+// scope. A state change (inside ⇄ outside) is recorded; a breach (entering an
+// exclusion zone, or leaving an inclusion zone) also notifies fleet oversight.
+async function evaluateGeofences(trip, lat, lng) {
+  const vehicle = await db.get('SELECT id, vehicle_number, org_unit_id FROM vehicles WHERE id = ?', [trip.vehicle_id]);
+  const fences = await db.all(
+    'SELECT * FROM geofences WHERE active = 1 AND deleted_at IS NULL AND (org_unit_id IS NULL OR org_unit_id = ?)',
+    [vehicle ? vehicle.org_unit_id : null]);
+  const breaches = [];
+  for (const fence of fences) {
+    const inside = haversineM(lat, lng, fence.latitude, fence.longitude) <= fence.radius_m;
+    const last = await db.get('SELECT event_type FROM geofence_events WHERE geofence_id = ? AND trip_id = ? ORDER BY id DESC LIMIT 1', [fence.id, trip.trip_id]);
+    const wasInside = last ? last.event_type === 'enter' : false;
+    if (inside === wasInside) continue;
+    const eventType = inside ? 'enter' : 'exit';
+    await db.run(
+      `INSERT INTO geofence_events (geofence_id, trip_id, vehicle_id, event_type, latitude, longitude, occurred_at)
+       VALUES (?, ?, ?, ?, ?, ?, ${db.now()})`,
+      [fence.id, trip.trip_id, trip.vehicle_id, eventType, lat, lng]);
+    const breach = (fence.kind === 'exclusion' && inside) || (fence.kind === 'inclusion' && !inside);
+    if (breach) {
+      breaches.push({ geofence: fence.name, kind: fence.kind, event: eventType });
+      try {
+        await require('./notifications').toRoles(['administrator', 'it_admin'], 'geofence_breach', {
+          title: 'Geofence breach',
+          body: `${vehicle ? vehicle.vehicle_number : 'A vehicle'} ${eventType === 'enter' ? 'entered' : 'left'} ${fence.name} (${fence.kind}) on trip ${trip.trip_number}`,
+          url: '/geofences.html',
+        });
+      } catch (_) { /* non-fatal */ }
+    }
+  }
+  return breaches.length ? breaches : null;
+}
+
+// Ordered breadcrumb trail for a trip (route history / playback).
+async function tripRoute(tripId) {
+  return db.all('SELECT latitude, longitude, heading, speed, accuracy, recorded_at FROM trip_positions WHERE trip_id = ? ORDER BY id', [tripId]);
 }
 
 // Every vehicle the user may see that has a known position, newest-first by fix,
@@ -125,4 +189,4 @@ async function visibleVehicles(user) {
   });
 }
 
-module.exports = { recordDriverFix, visibleVehicles, activeTripForUser, issueBeacon, STALE_AFTER_SECONDS };
+module.exports = { recordDriverFix, visibleVehicles, activeTripForUser, issueBeacon, tripRoute, evaluateGeofences, haversineM, STALE_AFTER_SECONDS };

@@ -35,6 +35,7 @@ module.exports = function register(router) {
     let directoryEnabled = false; try { directoryEnabled = await directoryAuth.isEnabled(); } catch (_) { /* default off */ }
     const navHidden = (await settings.get('nav_hidden', [])) || [];
     const navLayout = await require('../../services/navigation').effective(req.session.user);
-    res.json({ roles, departments, org_units: orgUnitDtos, enums: await require('../../services/dropdowns').options(), directory_enabled: directoryEnabled, nav_hidden: navHidden, nav_layout: navLayout });
+    const features = await require('../../services/systemControls').modules();
+    res.json({ roles, departments, org_units: orgUnitDtos, enums: await require('../../services/dropdowns').options(), directory_enabled: directoryEnabled, nav_hidden: navHidden, nav_layout: navLayout, features });
   });
 };

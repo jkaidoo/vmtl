@@ -131,6 +131,48 @@ function maintenance(m) {
   };
 }
 
+function workOrder(w) {
+  if (!w) return null;
+  return {
+    id: w.id, work_order_number: w.work_order_number,
+    vehicle_id: w.vehicle_id, vehicle: w.vehicle_number ? { id: w.vehicle_id, vehicle_number: w.vehicle_number } : null,
+    org_unit_id: w.org_unit_id, org_unit: orgUnitMini(w),
+    title: w.title, maintenance_type: w.maintenance_type,
+    maintenance_type_label: w.maintenance_type ? label(enums.maintenanceType.labels, w.maintenance_type) : null,
+    priority: w.priority, priority_label: label(enums.workOrderPriority.labels, w.priority), priority_color: enums.workOrderPriority.colors[w.priority] || 'grey',
+    status: w.status, status_label: label(enums.workOrderStatus.labels, w.status), status_color: enums.workOrderStatus.colors[w.status] || 'grey',
+    is_closed: enums.workOrderStatus.isClosed(w.status),
+    description: w.description, service_provider: w.service_provider,
+    scheduled_date: dateOnly(w.scheduled_date), due_date: dateOnly(w.due_date), completed_date: dateOnly(w.completed_date),
+    is_overdue: !enums.workOrderStatus.isClosed(w.status) && w.due_date && String(w.due_date).slice(0, 10) < new Date().toISOString().slice(0, 10),
+    odometer: w.odometer, labour_cost: w.labour_cost, parts_cost: w.parts_cost, total_cost: w.total_cost,
+    maintenance_record_id: w.maintenance_record_id, assigned_to: w.assigned_to, remarks: w.remarks,
+    created_by: w.created_by_name ? { id: w.created_by, name: w.created_by_name } : undefined, created_at: w.created_at,
+  };
+}
+
+function incident(x) {
+  if (!x) return null;
+  return {
+    id: x.id, incident_number: x.incident_number,
+    vehicle_id: x.vehicle_id, vehicle: x.vehicle_number ? { id: x.vehicle_id, vehicle_number: x.vehicle_number } : null,
+    driver_id: x.driver_id, driver: x.driver_name ? { id: x.driver_id, name: x.driver_name } : null,
+    trip_id: x.trip_id, trip_number: x.trip_number || null,
+    org_unit_id: x.org_unit_id, org_unit: orgUnitMini(x),
+    incident_type: x.incident_type, incident_type_label: label(enums.incidentType.labels, x.incident_type),
+    severity: x.severity, severity_label: label(enums.incidentSeverity.labels, x.severity), severity_color: enums.incidentSeverity.colors[x.severity] || 'grey',
+    status: x.status, status_label: label(enums.incidentStatus.labels, x.status), status_color: enums.incidentStatus.colors[x.status] || 'grey',
+    is_open: enums.incidentStatus.isOpen(x.status),
+    occurred_at: x.occurred_at, location_text: x.location_text,
+    latitude: x.latitude, longitude: x.longitude, description: x.description,
+    injuries: x.injuries, injury_details: x.injury_details, third_party: x.third_party,
+    estimated_cost: x.estimated_cost, claim_reference: x.claim_reference, resolution: x.resolution,
+    photo_count: x.photo_count != null ? Number(x.photo_count) : undefined,
+    reported_by: x.reported_by_name ? { id: x.reported_by, name: x.reported_by_name } : undefined,
+    closed_at: x.closed_at, created_at: x.created_at,
+  };
+}
+
 function user(u) {
   if (!u) return null;
   return {
@@ -158,4 +200,4 @@ function orgUnit(u) {
   };
 }
 
-module.exports = { vehicle, driver, approval, request, trip, fuelLog, maintenance, user, orgUnit };
+module.exports = { vehicle, driver, approval, request, trip, fuelLog, maintenance, workOrder, incident, user, orgUnit };

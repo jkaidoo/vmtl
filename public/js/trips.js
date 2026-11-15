@@ -58,6 +58,13 @@ async function renderDetail(id) {
   const mapCard = VMTL.el('<section class="card pad mt"><div class="between"><h3>Live map activity</h3><span class="pill" data-map-status>Connecting…</span></div><div class="trip-live-map mt" data-trip-map></div><p class="dim" data-map-detail role="status">Waiting for the driver location.</p></section>');
   view.appendChild(mapCard);
   VMTL.mountTripMap(mapCard, id);
+  // Route history / playback for trips that have (or had) a live breadcrumb.
+  if (['in_progress', 'completed'].includes(t.status)) {
+    const routeCard = VMTL.el('<section class="card pad mt"><div class="between"><h3>Route history</h3><span class="pill" data-route-status>Loading…</span></div><div class="trip-live-map mt" data-route-map style="height:340px"></div><div class="btn-row mt" style="align-items:center;gap:10px"><button class="btn btn-sm" type="button" data-route-play>▶</button><input type="range" data-route-slider min="0" max="0" value="0" style="flex:1"></div></section>');
+    view.appendChild(routeCard);
+    VMTL.mountTripRoute(routeCard, id);
+  }
+  if (t.status === 'completed') mountRating(view, id);
   const tp = VMTL.tripProgress(t, t.vehicle ? t.vehicle.vehicle_type_motif : 'car'); if (tp) view.querySelector('#tp').appendChild(tp);
   renderActions(view.querySelector('#actions'), t, reload);
   // wire stop decisions
@@ -113,4 +120,47 @@ function correctModal(t, done) {
 function stopModal(t, done) {
   const m = VMTL.openModal('<div class="modal-head"><h3>Add a destination</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body"><div class="field"><label>Destination</label><input id="d"></div><div class="field"><label>Note (optional)</label><input id="n"></div></div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="ok">Add</button></div>');
   m.el.querySelector('#ok').onclick = async () => { const destination = m.el.querySelector('#d').value.trim(); if (!destination) return; try { await VMTL.api(`/trips/${t.id}/stops`, { method: 'POST', body: { destination, note: m.el.querySelector('#n').value.trim() } }); m.close(); VMTL.toast('Added.', 'success'); done(); } catch (e) { VMTL.showErrors(e); } };
+}
+
+// Requester trip feedback. Shown on completed trips: the requester rates the
+// trip (overall + optional punctuality / vehicle condition + a comment), or any
+// viewer sees the submitted rating read-only.
+async function mountRating(view, id) {
+  let info;
+  try { info = await VMTL.api(`/trips/${id}/rating`); } catch (_) { return; }
+  const r = info.data;
+  if (!r && !info.can_rate) return;
+  const card = VMTL.el('<section class="card pad mt"><h3>Trip feedback</h3><div id="rateBody" class="mt"></div></section>');
+  view.appendChild(card);
+  const body = card.querySelector('#rateBody');
+  const showStars = (n) => `<span class="rating-stars">${[1,2,3,4,5].map((i) => `<span class="${i <= n ? '' : 'off'}">★</span>`).join('')}</span>`;
+  const renderRead = () => { body.innerHTML = `<div class="between"><div>${showStars(r.rating)} <strong>${r.rating}/5</strong></div>${r.flagged ? VMTL.badge('Flagged', 'red') : ''}</div>
+    <div class="dim mt" style="font-size:13px">${r.punctuality ? `Punctuality ${r.punctuality}/5 · ` : ''}${r.vehicle_condition ? `Vehicle ${r.vehicle_condition}/5` : ''}</div>
+    ${r.comment ? `<div class="readout mt">${VMTL.esc(r.comment)}</div>` : ''}
+    <div class="dim mt" style="font-size:12px">By ${VMTL.esc(r.rated_by ? r.rated_by.name : '—')} · ${VMTL.fmtDateTime(r.created_at)}</div>
+    ${info.can_rate ? '<button class="btn btn-sm mt" id="redo">Update rating</button>' : ''}`;
+    if (info.can_rate) body.querySelector('#redo').onclick = renderForm; };
+  function renderForm() {
+    let chosen = r ? r.rating : 0;
+    body.innerHTML = `<div class="stars-input" id="stars">${[1,2,3,4,5].map((i) => `<button type="button" data-v="${i}">★</button>`).join('')}</div>
+      <div class="form-grid mt">
+        <div class="field"><label>Punctuality</label><select id="punc"><option value="">—</option>${[5,4,3,2,1].map((i) => `<option value="${i}" ${r && r.punctuality === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
+        <div class="field"><label>Vehicle condition</label><select id="cond"><option value="">—</option>${[5,4,3,2,1].map((i) => `<option value="${i}" ${r && r.vehicle_condition === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Comment (optional)</label><textarea id="cmt" maxlength="2000">${r ? VMTL.esc(r.comment || '') : ''}</textarea></div>
+      <button class="btn btn-primary mt" id="submitRate">Submit feedback</button>`;
+    const paint = () => body.querySelectorAll('#stars button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) <= chosen));
+    body.querySelectorAll('#stars button').forEach((b) => { b.onclick = () => { chosen = Number(b.dataset.v); paint(); }; });
+    paint();
+    body.querySelector('#submitRate').onclick = async () => {
+      if (!chosen) return VMTL.toast('Choose a star rating.', 'err');
+      const payload = { rating: chosen };
+      const p = body.querySelector('#punc').value; const c = body.querySelector('#cond').value; const cm = body.querySelector('#cmt').value.trim();
+      if (p) payload.punctuality = Number(p); if (c) payload.vehicle_condition = Number(c); if (cm) payload.comment = cm;
+      try { await VMTL.api(`/trips/${id}/rating`, { method: 'POST', body: payload }); VMTL.toast('Thank you for your feedback.', 'success');
+        const fresh = await VMTL.api(`/trips/${id}/rating`); Object.assign(info, fresh); if (fresh.data) { Object.assign(r || {}, fresh.data); location.reload(); } }
+      catch (e) { VMTL.showErrors(e); }
+    };
+  }
+  if (r) renderRead(); else renderForm();
 }

@@ -30,6 +30,35 @@ const driverStatus = {
 const maintenanceType = {
   labels: { oil_change: 'Oil Change', tyres: 'Tyres', brake_service: 'Brake Service', general_service: 'General Service', engine_repair: 'Engine Repair', electrical_repair: 'Electrical Repair', other: 'Other' },
 };
+const workOrderStatus = {
+  labels: { open: 'Open', scheduled: 'Scheduled', in_progress: 'In Progress', awaiting_parts: 'Awaiting Parts', completed: 'Completed', cancelled: 'Cancelled' },
+  colors: { open: 'amber', scheduled: 'purple', in_progress: 'blue', awaiting_parts: 'amber', completed: 'green', cancelled: 'grey' },
+  isClosed: (s) => ['completed', 'cancelled'].includes(s),
+};
+const workOrderPriority = {
+  labels: { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' },
+  colors: { low: 'grey', normal: 'blue', high: 'amber', urgent: 'red' },
+};
+const incidentType = {
+  labels: { accident: 'Accident / Collision', breakdown: 'Breakdown', damage: 'Damage', theft: 'Theft', vandalism: 'Vandalism', fire: 'Fire', other: 'Other' },
+};
+const incidentSeverity = {
+  labels: { minor: 'Minor', moderate: 'Moderate', major: 'Major', total_loss: 'Total Loss' },
+  colors: { minor: 'blue', moderate: 'amber', major: 'red', total_loss: 'red' },
+};
+const incidentStatus = {
+  labels: { reported: 'Reported', assessing: 'Assessing', claim_filed: 'Claim Filed', resolved: 'Resolved', closed: 'Closed' },
+  colors: { reported: 'amber', assessing: 'blue', claim_filed: 'purple', resolved: 'green', closed: 'grey' },
+  isOpen: (s) => !['resolved', 'closed'].includes(s),
+};
+const dutyStatus = {
+  labels: { scheduled: 'Scheduled', confirmed: 'Confirmed', completed: 'Completed', absent: 'Absent', cancelled: 'Cancelled' },
+  colors: { scheduled: 'purple', confirmed: 'blue', completed: 'green', absent: 'red', cancelled: 'grey' },
+};
+const dutyType = {
+  labels: { shift: 'Shift', standby: 'Standby', leave: 'Leave', training: 'Training' },
+  colors: { shift: 'blue', standby: 'amber', leave: 'grey', training: 'purple' },
+};
 const orgUnitType = {
   labels: { institution: 'Institution', college: 'College', faculty: 'Faculty', directorate: 'Directorate', department: 'Department', unit: 'Unit', office: 'Office' },
 };
@@ -95,6 +124,7 @@ const vehicleType = {
 
 module.exports = {
   requestStatus, tripStatus, vehicleStatus, driverStatus, maintenanceType, orgUnitType, roleType, approvalAction, vehicleType,
+  workOrderStatus, workOrderPriority, incidentType, incidentSeverity, incidentStatus, dutyStatus, dutyType,
   // options() bundle for the /meta endpoint
   options: {
     request_status: optionsFrom(requestStatus.labels, requestStatus.colors),
@@ -105,5 +135,12 @@ module.exports = {
     role_type: optionsFrom(roleType.labels),
     maintenance_type: optionsFrom(maintenanceType.labels),
     org_unit_type: optionsFrom(orgUnitType.labels),
+    work_order_status: optionsFrom(workOrderStatus.labels, workOrderStatus.colors),
+    work_order_priority: optionsFrom(workOrderPriority.labels, workOrderPriority.colors),
+    incident_type: optionsFrom(incidentType.labels),
+    incident_severity: optionsFrom(incidentSeverity.labels, incidentSeverity.colors),
+    incident_status: optionsFrom(incidentStatus.labels, incidentStatus.colors),
+    duty_status: optionsFrom(dutyStatus.labels, dutyStatus.colors),
+    duty_type: optionsFrom(dutyType.labels, dutyType.colors),
   },
 };

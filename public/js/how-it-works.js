@@ -6,8 +6,10 @@
 window.VMTL_PAGE = function () {
   if (VMTL.requesterOnly()) {
     const steps = [
+      ['Pick a day', 'Open the Booking calendar to see how busy the fleet is each day, then choose a quiet one for your trip.'],
       ['Request a ride', 'If your account is awaiting access, kindly contact your IT Manager to assign you to the appropriate group. Once assigned, choose New ride request on your dashboard. Enter your travel date, departure and return times, destination, purpose and passenger count, then submit.'],
-      ['Wait for your ride', 'Open your request from your dashboard to check its status. If changes are requested, update and resubmit it. Once a ride is assigned, check the vehicle, driver and travel details, and be ready at your departure time.']
+      ['Wait for your ride', 'Open your request from your dashboard to check its status. If changes are requested, update and resubmit it. Once a ride is assigned, check the vehicle, driver and travel details, and be ready at your departure time.'],
+      ['Rate the trip', 'After the trip is completed, open it and leave a quick star rating with any comments. Your feedback helps the transport team improve the service.']
     ];
     VMTL.view.innerHTML = VMTL.pageHead('How it works', 'Request a ride and follow its progress.') + `<div class="hiw-flow">${steps.map(([title, desc], i) => `<div class="hiw-step you"><div class="hiw-ic">${VMTL.icon('requests')}</div><div class="hiw-body"><h3>${i + 1}. ${title}</h3><p>${desc}</p></div></div>`).join('')}</div>`;
     return;
@@ -34,15 +36,21 @@ window.VMTL_PAGE = function () {
       desc: 'For IDL activities, the Schedule Transport Officer creates an event and pairs available drivers with vehicles from across the university for each journey. The driver is notified, and fuel and other trip costs are tracked per schedule and per event.',
       you: 'You plan IDL events, pair drivers with vehicles, and track each schedule\'s fuel and extra costs.' },
     { icon: 'trips', title: 'Run the trip', owns: ['trips.operate'],
-      desc: 'The driver starts the trip and the live progress graphic ticks through the planned window. Mid-trip destinations can be added, and the driver completes the trip with the closing odometer.',
+      desc: 'The driver starts the trip and the live progress graphic ticks through the planned window. The device shares its location, building a route history you can replay afterwards and checking it against any geofences. Mid-trip destinations can be added, and the driver completes the trip with the closing odometer.',
       you: 'You start, track and complete your assigned trips, and accept or decline added stops.' },
     { icon: 'fuel', title: 'Log fuel & maintenance', owns: ['fuel.log', 'maintenance.manage'],
       desc: 'Fuel purchases (station and fuel type chosen from a list), servicing with the provider and a receipt, and odometer readings are recorded against each vehicle, keeping running costs and service schedules up to date.',
       you: 'You record fuel, servicing and odometer readings for the fleet.' },
+    { icon: 'clipboard', title: 'Plan upkeep & handle incidents', owns: ['maintenance.manage', 'incidents.manage', 'parts.manage'],
+      desc: 'Preventive-maintenance work orders schedule jobs ahead of time and flow into the service history on completion; incidents (accidents, breakdowns, damage, theft) are reported with photos, a location and an insurance-claim workflow; and a tyre and spare-parts inventory tracks stock and fitments to vehicles.',
+      you: 'You raise work orders, report and follow up incidents, and keep the parts and tyre stock.' },
+    { icon: 'clock', title: 'Roster the drivers', owns: ['duty.manage'], feature: 'driverDuty',
+      desc: 'Driver shifts, standby, leave and training are planned on a weekly roster. Overlapping working duties are blocked, and duty hours are totalled so no one is overworked.',
+      you: 'You plan the driver roster and watch duty hours.' },
     { icon: 'analytics', title: 'Review insights', owns: ['analytics.view', 'reports.export'],
-      desc: 'Analytics and reports summarise trips, distance, utilisation and fuel economy, and can be exported to CSV, Excel or PDF.',
-      you: 'You review analytics and export reports for your organisational unit.' },
-  ];
+      desc: 'Analytics, costs (by department and vehicle, with cost-per-km), emissions (CO₂ and fuel efficiency) and driver performance (requester ratings) summarise the fleet for your scope, and reports export to CSV, Excel or PDF.',
+      you: 'You review analytics, costs, emissions, performance and exports for your organisational unit.' },
+  ].filter((s) => !s.feature || VMTL.feature(s.feature));
   if (isSuper) {
     stages.push({ icon: 'shield', title: 'Administer the system', owns: ['*'],
       desc: 'Behind the scenes, the system administrator manages users, roles and capabilities (RBAC), the organisational-unit hierarchy, directory sign-in, notifications and system settings. The App Owner also curates the dropdown choices and chooses where uploaded files are stored.',

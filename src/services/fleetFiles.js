@@ -6,7 +6,7 @@ const path=require('path');
 const crypto=require('crypto');
 const {has,inScope}=require('./authz');
 const {forbidden,notFound,badRequest}=require('../middleware/errorHandler');
-const types={vehicle:{table:'vehicles',cap:'vehicles.manage',kinds:['photo']},driver:{table:'drivers',cap:'drivers.manage',kinds:['photo','licence']},maintenance:{table:'maintenance_records',cap:'maintenance.manage',kinds:['receipt']}};
+const types={vehicle:{table:'vehicles',cap:'vehicles.manage',kinds:['photo']},driver:{table:'drivers',cap:'drivers.manage',kinds:['photo','licence']},maintenance:{table:'maintenance_records',cap:'maintenance.manage',kinds:['receipt']},incident:{table:'incidents',cap:'incidents.manage',kinds:['photo']},work_order:{table:'work_orders',cap:'maintenance.manage',kinds:['receipt']}};
 const storage=require('./fileStorageConfig');
 async function config(){return storage.current();}
 async function access(req,type,id,write=false,kind=null){

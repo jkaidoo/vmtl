@@ -21,6 +21,9 @@ const CAP = {
   DRIVERS_MANAGE: 'drivers.manage',
   MAINTENANCE_MANAGE: 'maintenance.manage',
   FUEL_LOG: 'fuel.log',
+  INCIDENTS_MANAGE: 'incidents.manage',
+  DUTY_MANAGE: 'duty.manage',
+  PARTS_MANAGE: 'parts.manage',
   // Insights
   ANALYTICS_VIEW: 'analytics.view',
   REPORTS_EXPORT: 'reports.export',
@@ -48,8 +51,11 @@ const CATALOG = {
   [CAP.TRIPS_CORRECT]: { label: 'Correct odometer', group: 'Trips', description: 'Administratively correct trip readings.' },
   [CAP.VEHICLES_MANAGE]: { label: 'Manage vehicles', group: 'Fleet', description: 'Add, edit and retire vehicles.' },
   [CAP.DRIVERS_MANAGE]: { label: 'Manage drivers', group: 'Fleet', description: 'Add, edit and retire drivers.' },
-  [CAP.MAINTENANCE_MANAGE]: { label: 'Manage maintenance', group: 'Fleet', description: 'Record maintenance and service.' },
+  [CAP.MAINTENANCE_MANAGE]: { label: 'Manage maintenance', group: 'Fleet', description: 'Record maintenance, service and work orders.' },
   [CAP.FUEL_LOG]: { label: 'Log fuel purchases', group: 'Fleet', description: 'Record fuel purchases (odometer, litres, price).' },
+  [CAP.INCIDENTS_MANAGE]: { label: 'Manage incidents', group: 'Fleet', description: 'Report and manage accidents, breakdowns, damage and insurance claims.' },
+  [CAP.DUTY_MANAGE]: { label: 'Manage driver duty & roster', group: 'Fleet', description: 'Plan driver shifts, standby, leave and training; watch duty hours.' },
+  [CAP.PARTS_MANAGE]: { label: 'Manage parts & tyres', group: 'Fleet', description: 'Maintain the tyre and spare-parts inventory and fitments.' },
   [CAP.ANALYTICS_VIEW]: { label: 'View analytics', group: 'Insights', description: 'Access fleet analytics.' },
   [CAP.REPORTS_EXPORT]: { label: 'Reports & exports', group: 'Insights', description: 'Run and export reports.' },
   [CAP.USERS_MANAGE]: { label: 'Manage users', group: 'Administration', description: 'Create and manage accounts.' },
@@ -66,13 +72,14 @@ function defaultsByRole() {
   // A Transport / Admin Officer does everything operational, but nothing under
   // the Administration or System sections.
   const transport = [CAP.REQUESTS_CREATE, CAP.REQUESTS_VIEW_ALL, CAP.REQUESTS_ASSIGN, CAP.REQUESTS_CREATE_GOODWILL, CAP.REQUESTS_CREATE_EXTERNAL,
-    CAP.TRIPS_OPERATE, CAP.TRIPS_CORRECT, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.MAINTENANCE_MANAGE, CAP.FUEL_LOG, CAP.ANALYTICS_VIEW, CAP.REPORTS_EXPORT];
+    CAP.TRIPS_OPERATE, CAP.TRIPS_CORRECT, CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.MAINTENANCE_MANAGE, CAP.FUEL_LOG,
+    CAP.INCIDENTS_MANAGE, CAP.DUTY_MANAGE, CAP.PARTS_MANAGE, CAP.ANALYTICS_VIEW, CAP.REPORTS_EXPORT];
   return {
     // System Administrator — every capability (incl. the System tier). The App
     // Owner (is_super_admin) additionally holds the App-Owner-only parts (Broadcasts).
     administrator: all(),
     it_admin: all().filter(cap => ![CAP.SYSTEM_ADMIN, CAP.FLEET_GLOBAL, CAP.ROLES_MANAGE, CAP.SCHEDULE_EVENTS].includes(cap)),
-    university_transport_officer: [CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.FLEET_GLOBAL],
+    university_transport_officer: [CAP.VEHICLES_MANAGE, CAP.DRIVERS_MANAGE, CAP.FLEET_GLOBAL, CAP.INCIDENTS_MANAGE, CAP.DUTY_MANAGE, CAP.PARTS_MANAGE],
     schedule_transport_officer: [...transport, CAP.FLEET_GLOBAL, CAP.SCHEDULE_EVENTS],
     // Supervisor — oversight of their org unit: view requests, analytics and the
     // audit log, but no editing.

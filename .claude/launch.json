@@ -6,6 +6,13 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "port": 8000
+    },
+    {
+      "name": "vmtl-sqlite",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 8100,
+      "env": { "DB_RUNTIME": "", "VMTL_DB": "data/verify.sqlite", "PORT": "8100" }
     }
   ]
 }
