@@ -26,7 +26,6 @@ const catalogue = [
       { key: 'fuel', to: '/fuel.html', label: 'Fuel', icon: 'fuel', cap: 'fuel.log' },
       { key: 'duty', anyCaps: ['duty.manage', 'system.admin'], to: '/duty.html', label: 'Driver duty', icon: 'clock', roles: ['transport_admin', 'supervisor', 'administrator'], feature: 'driverDuty' },
       { key: 'parts', anyCaps: ['parts.manage', 'system.admin'], to: '/parts.html', label: 'Parts & tyres', icon: 'disc', roles: ['transport_admin', 'supervisor', 'administrator'] },
-      { key: 'geofences', anyCaps: ['system.admin', 'requests.assign'], to: '/geofences.html', label: 'Geofences', icon: 'target', roles: ['transport_admin', 'administrator'] },
     ] },
     { label: 'Insights', items: [
       { key: 'analytics', to: '/analytics.html', label: 'Analytics', icon: 'analytics', cap: 'analytics.view' },
@@ -51,6 +50,7 @@ const catalogue = [
       { key: 'system-controls', to: '/system-controls.html', label: 'System controls', icon: 'sliders', superOnly: true },
       { key: 'directory-auth', to: '/directory-auth.html', label: 'Directory authentication', icon: 'key', superOnly: true },
       { key: 'maps-config', to: '/maps-config.html', label: 'Maps configuration', icon: 'map', superOnly: true },
+      { key: 'geofences', to: '/geofences.html', label: 'Geofences', icon: 'target', superOnly: true },
       { key: 'sms', to: '/sms.html', label: 'SMS', icon: 'message', superOnly: true },
       { key: 'email', to: '/email.html', label: 'Email', icon: 'mail', superOnly: true },
       { key: 'broadcasts', to: '/broadcasts.html', label: 'Broadcasts', icon: 'megaphone', superOnly: true },

@@ -34,7 +34,7 @@ const ownerAccess = require('./services/ownerAccess');
 const SHAREABLE_PAGES = new Map(Object.entries(ownerAccess.DELEGABLE).map(([key, page]) => [page.path, key]));
 // System section pages — also App Owner only unless shared on Owner page access
 // (the legacy /messaging.html is not shareable and stays App Owner only).
-const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
+const SYSTEM_PAGES = new Set(['/app-health.html', '/rbac.html', '/system-controls.html', '/directory-auth.html', '/maps-config.html', '/geofences.html', '/messaging.html', '/sms.html', '/email.html', '/unified-api.html', '/report-configuration.html', '/navigation-settings.html', '/database-connections.html', '/documentation.html', '/codebase-guide.html']);
 // Public pages (no sign-in).
 const PUBLIC_PAGES = new Set(['/login.html', '/404.html', '/500.html', '/offline.html']);
 

@@ -4,8 +4,8 @@
 // geofence event and (on a breach) notifies fleet oversight. Managed by fleet
 // operators (requests.assign) or system administrators.
 const db = require('../../db/runtime');
-const { CAP } = require('../../services/capabilities');
-const { has, inScope, resolveOrgUnit } = require('../../services/authz');
+const { inScope, resolveOrgUnit } = require('../../services/authz');
+const ownerAccess = require('../../services/ownerAccess');
 const audit = require('../../services/audit');
 const orgScope = require('../../services/orgScope');
 const { requireAuth } = require('../../middleware/auth');
@@ -23,7 +23,8 @@ const RULES = {
   notes: { type: 'string', maxLength: 1000 },
 };
 
-async function canManage(req) { return req.session.user.is_super_admin || await has(req, CAP.SYSTEM_ADMIN) || await has(req, CAP.REQUESTS_ASSIGN); }
+// System-section page: the App Owner, or whoever it is shared with on Owner page access.
+async function canManage(req) { return ownerAccess.can(req.session.user, 'geofences'); }
 
 module.exports = function register(router) {
   router.get('/geofences', requireAuth, async (req, res) => {

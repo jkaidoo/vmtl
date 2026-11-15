@@ -22,6 +22,7 @@ const DELEGABLE = {
   'system-controls': system('System controls', '/system-controls.html', 'Feature switches, notification channels and operational settings.', 'Changes apply to every user.'),
   'directory-auth': system('Directory authentication', '/directory-auth.html', 'Sign-in directories (LDAP/AD), their order and connection settings.', 'Can change how people sign in and the directory bind credentials.'),
   'maps-config': system('Maps configuration', '/maps-config.html', 'Map key, default centre and zoom for the live map.'),
+  geofences: system('Geofences', '/geofences.html', 'Inclusion and exclusion zones that vehicles on a trip are checked against.'),
   sms: system('SMS', '/sms.html', 'SMS provider connection, message templates and test messages.', 'Can change the SMS provider credentials.'),
   email: system('Email', '/email.html', 'Email connection, message templates and test emails.', 'Can change the email connection credentials.'),
   database: system('Database connections', '/database-connections.html', 'Database connection profiles and copying the data store to PostgreSQL.', 'Can copy the entire database to another server.'),
