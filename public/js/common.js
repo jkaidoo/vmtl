@@ -869,7 +869,7 @@
       const path = new URL(href, location.href).pathname;
       const scriptSrc = [...doc.querySelectorAll('script[src]')]
         .map((s) => s.getAttribute('src'))
-        .find((src) => src && !/\/js\/(common|ui-system|vehicle-map)\.js(\?|$)/.test(src));
+        .find((src) => src && !/\/js\/(common|ui-system|vehicle-map|charts)\.js(\?|$)/.test(src));
       runLeave();
       window.WalkinUI?.startPage();
       if (push) history.pushState({ spa: true }, '', href);
