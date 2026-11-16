@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const db = require('../db/runtime');
+const settings = require('./settings');
 const { ApiError } = require('../middleware/errorHandler');
 const TABLES = [...require('./dbProfiles').TABLES, 'sync_ops', 'vehicle_positions'];
 const OPTIONAL_LEGACY_TABLES = new Set(['fleet_files','transport_events','event_schedules','schedule_expenses']);
@@ -83,4 +84,56 @@ async function exclusive(work) {
   if (busy) throw new ApiError(409, 'Another backup or cleanup operation is running.');
   busy = true; try { return await work(); } finally { busy = false; }
 }
-module.exports = { list, create, read, restore, file, exclusive, remove: name => fs.unlink(file(name)), TABLES };
+async function removeBackup(name) { return fs.unlink(file(name)); }
+// Absolute path of a backup only if the name is safe AND the file exists.
+async function existingPath(name) {
+  try { await fs.access(file(name)); return file(name); } catch (_) { return null; }
+}
+// Keep only the `keep` most-recent backups carrying `label`; delete the rest.
+// Used to cap automatic and OneDrive-origin copies (the "number of saved backups").
+async function pruneByLabel(label, keep) {
+  const rows = (await list()).filter(b => b.label === label && !b.invalid); // list() is newest-first
+  for (const b of rows.slice(Math.max(0, keep | 0))) { try { await removeBackup(b.name); } catch (_) { /* already gone */ } }
+}
+
+// ---- Automatic (timed) local backups ---------------------------------------
+// Settings live in system_settings as plain strings; coerced on read.
+const AUTO_LABEL = 'Automatic backup';
+async function autoConfig() {
+  const enabled = await settings.get('backup_auto_enabled', '0');
+  return {
+    enabled: enabled === '1' || enabled === 1 || enabled === true || enabled === 'true',
+    interval_hours: Math.min(720, Math.max(1, Number(await settings.get('backup_auto_interval_hours', '24')) || 24)),
+    retention: Math.min(100, Math.max(1, Number(await settings.get('backup_auto_retention', '14')) || 14)),
+    last_run: (await settings.get('backup_auto_last_run', '')) || null,
+    label: AUTO_LABEL,
+  };
+}
+async function configureAuto(input = {}) {
+  const enabled = !!input.enabled;
+  const interval = Math.max(1, Math.min(720, Math.round(Number(input.interval_hours)) || 24));
+  const retention = Math.max(1, Math.min(100, Math.round(Number(input.retention)) || 14));
+  await settings.set('backup_auto_enabled', enabled ? '1' : '0');
+  await settings.set('backup_auto_interval_hours', String(interval));
+  await settings.set('backup_auto_retention', String(retention));
+  return { config: await autoConfig() };
+}
+let autoRunning = false;
+// Create a scheduled backup when enabled and the interval has elapsed, then
+// trim to the retention count. Safe to call often (opportunistically or timed).
+async function runAutoIfDue() {
+  const cfg = await autoConfig();
+  if (!cfg.enabled || autoRunning) return null;
+  const last = cfg.last_run ? Date.parse(cfg.last_run) : 0;
+  if (Date.now() - last < cfg.interval_hours * 3600000) return null;
+  autoRunning = true;
+  try {
+    let out;
+    try { out = await exclusive(() => create(AUTO_LABEL)); }
+    catch (err) { if (err && err.status === 409) return null; throw err; } // a manual backup is in progress
+    await settings.set('backup_auto_last_run', new Date().toISOString());
+    await pruneByLabel(AUTO_LABEL, cfg.retention);
+    return out;
+  } finally { autoRunning = false; }
+}
+module.exports = { list, create, read, restore, file, exclusive, remove: removeBackup, existingPath, pruneByLabel, autoConfig, configureAuto, runAutoIfDue, TABLES };

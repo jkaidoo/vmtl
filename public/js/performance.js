@@ -6,7 +6,7 @@ window.VMTL_PAGE = async function () {
   view.innerHTML = VMTL.pageHead('Performance', 'Requester feedback on completed trips, summarised by driver.') +
     `<div class="grid cols-2">
        <div class="card"><h3 class="pad-h">Driver ratings</h3><div id="summary"><div class="loading"><span class="spinner"></span></div></div></div>
-       <div class="card"><div class="toolbar"><strong>Recent feedback</strong><label class="dim" style="font-size:13px;margin-left:auto"><input type="checkbox" id="onlyFlagged"> Flagged only</label></div><div id="recent"><div class="loading"><span class="spinner"></span></div></div></div>
+       <div class="card"><div class="toolbar"><strong>Recent feedback</strong><label class="checkbox dim" style="font-size:13px;margin-left:auto"><input type="checkbox" id="onlyFlagged"> Flagged only</label></div><div id="recent"><div class="loading"><span class="spinner"></span></div></div></div>
      </div>`;
   const stars = (n) => n == null ? '—' : `<span class="rating-stars">${[1,2,3,4,5].map((i) => `<span class="${i <= Math.round(n) ? '' : 'off'}">★</span>`).join('')}</span> ${n}`;
 

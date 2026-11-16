@@ -51,6 +51,15 @@ boot().then(() => {
     const digest = () => require('./src/services/complianceDigest').sendDigest().catch(() => {});
     digest();
     setInterval(digest, 12 * 60 * 60 * 1000).unref();
+    // Timed local backups (retention-capped) and OneDrive uploads: a backstop
+    // checker so scheduled backups fire unattended. The Backup page also nudges
+    // these on load. Each call is a cheap no-op until a schedule is actually due.
+    const dueBackups = () => {
+      require('./src/services/backups').runAutoIfDue().catch(() => {});
+      require('./src/services/oneDriveBackups').run().catch(() => {});
+    };
+    setTimeout(dueBackups, 60 * 1000).unref();
+    setInterval(dueBackups, 15 * 60 * 1000).unref();
   });
 }).catch(() => process.exit(1));
 
