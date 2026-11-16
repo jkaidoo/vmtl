@@ -12,6 +12,17 @@ async function ensureRoles(){
   });
  }
  await ensureScheduleCaps();
+ await ensureUtoScheduleCaps();
+}
+// The University Transport Officer gains the ability to set up Transport Schedule
+// events (and trigger the availability notification). Additively grant the caps
+// once to the existing role; a one-time flag means a later admin removal sticks.
+async function ensureUtoScheduleCaps(){
+ if(await settings.get('uto_schedule_caps_seeded',false)) return;
+ const caps=['schedule.view','schedule.manage'];
+ const role=await db.get("SELECT id FROM roles WHERE slug='university_transport_officer'");
+ if(role) for(const cap of caps) await db.run('INSERT INTO role_capabilities(role_id,capability) VALUES(?,?) ON CONFLICT(role_id,capability) DO NOTHING',[role.id,cap]);
+ await settings.set('uto_schedule_caps_seeded',true);
 }
 // The Transport Scheduling capabilities ship after the schedule_transport_officer
 // role already exists, so the role seeder above skips it. Additively grant the

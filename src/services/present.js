@@ -76,6 +76,7 @@ function request(r, { approvals, trip } = {}) {
     is_cancellable: enums.requestStatus.isCancellable(r.status),
     is_goodwill: bool(r.is_goodwill), goodwill_reason: r.goodwill_reason,
     is_external: bool(r.is_external), external_org: r.external_org,
+    letter_file_id: r.letter_file_id || null,
     expected_duration_days: r.expected_duration_days, start_odometer: r.start_odometer,
     approvals: approvals ? approvals.map(approval) : undefined,
     trip: trip || undefined,

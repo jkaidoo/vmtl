@@ -727,6 +727,7 @@
       trip_cancelled: `Trip ${d.trip_number || ''} was cancelled`,
       ou_change_pending: `${d.name || 'A staff member'}'s unit changed: ${d.from || '—'} → ${d.to || '—'} — review in Clients`,
       ou_auto_moved: `${d.name || 'A staff member'} was automatically moved to ${d.to || 'a new unit'}`,
+      event_availability_check: `Confirm vehicle & driver availability for event "${d.event_name || ''}"`,
       compliance_digest: `Fleet compliance: ${d.total || 0} item(s) need attention${d.summary ? ` — ${d.summary}` : ''}`,
     };
     return map[n.type] || n.type;

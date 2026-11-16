@@ -6,7 +6,8 @@ const path=require('path');
 const crypto=require('crypto');
 const {has,inScope}=require('./authz');
 const {forbidden,notFound,badRequest}=require('../middleware/errorHandler');
-const types={vehicle:{table:'vehicles',cap:'vehicles.manage',kinds:['photo']},driver:{table:'drivers',cap:'drivers.manage',kinds:['photo','licence']},maintenance:{table:'maintenance_records',cap:'maintenance.manage',kinds:['receipt']},incident:{table:'incidents',cap:'incidents.manage',kinds:['photo']},work_order:{table:'work_orders',cap:'maintenance.manage',kinds:['receipt']}};
+const types={vehicle:{table:'vehicles',cap:'vehicles.manage',kinds:['photo']},driver:{table:'drivers',cap:'drivers.manage',kinds:['photo','licence']},maintenance:{table:'maintenance_records',cap:'maintenance.manage',kinds:['receipt']},incident:{table:'incidents',cap:'incidents.manage',kinds:['photo']},work_order:{table:'work_orders',cap:'maintenance.manage',kinds:['receipt']},request:{table:'vehicle_requests',cap:'requests.create_external',kinds:['letter']}};
+const PDF_KINDS=['receipt','letter'];
 const storage=require('./fileStorageConfig');
 async function config(){return storage.current();}
 async function access(req,type,id,write=false,kind=null){
@@ -16,7 +17,8 @@ async function access(req,type,id,write=false,kind=null){
  let org=row.org_unit_id;
  if(type==='maintenance') org=(await db.get('SELECT org_unit_id FROM vehicles WHERE id=?',[row.vehicle_id]))?.org_unit_id;
  if(!await inScope(req.session.user,org)) throw forbidden();
- if(write && !await has(req,meta.cap)) throw forbidden();
+ const ownRequest=type==='request' && Number(row.requester_id)===Number(req.session.user.id);
+ if(write && !ownRequest && !await has(req,meta.cap)) throw forbidden();
  if(type==='maintenance' && !await has(req,meta.cap)) throw forbidden();
  return meta;
 }
@@ -33,7 +35,7 @@ async function upload(req,type,id,kind,body){
  if(typeof body.data!=='string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(body.data)) throw badRequest('Invalid file.');
  const buf=Buffer.from(body.data,'base64'); const mime=sniff(buf);
  if(!buf.length || buf.length>c.maxMB*1024*1024) throw badRequest(`File must be at most ${c.maxMB} MB.`);
- if(!mime || (kind!=='receipt' && mime==='application/pdf')) throw badRequest('Use a JPEG, PNG or WebP image, or a PDF receipt.');
+ if(!mime || (!PDF_KINDS.includes(kind) && mime==='application/pdf')) throw badRequest('Use a JPEG, PNG or WebP image, or a PDF document.');
  const since=new Date(Date.now()-86400000).toISOString().replace('T',' ').slice(0,19);
  const used=await db.get('SELECT COALESCE(SUM(size_bytes),0) AS bytes FROM fleet_files WHERE uploaded_by=? AND created_at>=?',[req.session.user.id,since]);
  if(c.dailyMB && Number(used.bytes)+buf.length>c.dailyMB*1048576) throw badRequest('Daily upload allowance exceeded.');

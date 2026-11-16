@@ -10,6 +10,7 @@ const { requireAuth } = require('../../middleware/auth');
 const { has } = require('../../services/authz');
 const { forbidden, notFound, badRequest, conflict } = require('../../middleware/errorHandler');
 const audit = require('../../services/audit');
+const notifications = require('../../services/notifications');
 const sched = require('../../services/transportSchedule');
 const { moduleEnabled } = require('../../services/systemControls');
 
@@ -147,6 +148,10 @@ module.exports = (router) => {
     const defaults = await db.all('SELECT centre_id, default_drivers_needed FROM ts_event_type_centres WHERE event_type_id=?', [typeId]);
     for (const d of defaults) await db.run('INSERT INTO ts_event_centres(event_id,centre_id,drivers_needed) VALUES(?,?,?)', [r.lastInsertRowid, d.centre_id, d.default_drivers_needed]);
     await ar(req, { action: 'ts.event.create', description: title, entityType: 'ts_event', entityId: r.lastInsertRowid });
+    // Prompt drivers, approvers and transport officers to confirm vehicle and
+    // driver availability for the new event (best-effort; never blocks setup).
+    await notifications.toRoles(['driver', 'approver', 'transport_admin', 'schedule_transport_officer', 'university_transport_officer'],
+      'event_availability_check', { event_id: r.lastInsertRowid, event_name: title });
     ok(res, await db.get('SELECT * FROM ts_events WHERE id=?', [r.lastInsertRowid]));
   });
   router.put('/ts/events/:id', requireAuth, manage, async (req, res) => {

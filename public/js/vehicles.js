@@ -37,6 +37,7 @@ async function renderDetail(id) {
   const actions = [];
   if (canManage()) {
     actions.push(`<button class="btn" id="edit">Edit</button>`);
+    if (VMTL.can('fleet.global')) actions.push(`<button class="btn" id="move">Move to unit</button>`);
     actions.push(`<button class="btn" id="toggle">${v.active ? 'Deactivate' : 'Reactivate'}</button>`);
     actions.push(`<button class="btn btn-ghost" id="del">Remove</button>`);
   }
@@ -45,7 +46,7 @@ async function renderDetail(id) {
     <div class="grid cols-2">
       <div class="card pad"><h3>Details</h3><div class="grid cols-2" style="gap:12px;margin-top:8px">
         ${info('Make / Model', VMTL.esc([v.make, v.model].filter(Boolean).join(' ') || '—'))}${info('Year', v.year || '—')}${info('Colour', VMTL.esc(v.colour || '—'))}${info('Capacity', v.capacity)}
-        ${info('Odometer', VMTL.fmtNumber(v.current_odometer) + ' km')}${info('Org unit', VMTL.esc(v.org_unit ? v.org_unit.name : '—'))}
+        ${info('Odometer', VMTL.fmtNumber(v.current_odometer) + ' km')}${info('Org unit', VMTL.esc(v.org_unit ? v.org_unit.name : 'General university pool'))}
         ${info('Insurance', VMTL.fmtDate(v.insurance_expiry))}${info('Roadworthy', VMTL.fmtDate(v.roadworthy_expiry))}
         ${info('Service interval', v.service_interval_km ? v.service_interval_km + ' km' : '—')}${info('Last service', VMTL.fmtDate(v.last_service_date))}
       </div>${v.notes ? `<p class="dim mt">${VMTL.esc(v.notes)}</p>` : ''}</div>
@@ -54,6 +55,18 @@ async function renderDetail(id) {
     <div class="card mt"><div class="card-head"><h3>Trip history</h3></div><div id="trips"><div class="loading"><span class="spinner"></span></div></div></div>`;
 
   if (view.querySelector('#edit')) view.querySelector('#edit').onclick = () => vehicleModal(v, reload);
+  if (view.querySelector('#move')) view.querySelector('#move').onclick = () => {
+    const m = VMTL.openModal(`<div class="modal-head"><h3>Move vehicle to unit</h3><button class="icon-btn" data-close>✕</button></div>
+      <div class="modal-body"><form id="mvf"><div class="field"><label>Organisational unit</label>
+        <select name="org_unit_id"><option value="">General university pool</option>${VMTL.orgUnitOptions(v.org_unit ? v.org_unit.id : '')}</select></div>
+        <p class="dim" style="font-size:12px">Allocate this vehicle to a unit, or choose “General university pool” to return it to the central pool.</p></form></div>
+      <div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="mvSave">Move</button></div>`);
+    m.el.querySelector('#mvSave').onclick = async () => {
+      const sel = m.el.querySelector('[name=org_unit_id]');
+      try { await VMTL.api(`/vehicles/${v.id}/org-unit`, { method: 'POST', body: { org_unit_id: sel.value ? Number(sel.value) : null } }); m.close(); VMTL.toast('Vehicle moved.', 'success'); reload(); }
+      catch (e) { VMTL.showErrors(e); }
+    };
+  };
   if (view.querySelector('#toggle')) view.querySelector('#toggle').onclick = async () => { try { await VMTL.api(`/vehicles/${v.id}/active`, { method: 'POST', body: { active: !v.active } }); VMTL.toast('Updated.', 'success'); reload(); } catch (e) { VMTL.showErrors(e); } };
   if (view.querySelector('#del')) view.querySelector('#del').onclick = async () => { if (await VMTL.confirm('Remove this vehicle?', { danger: true, confirmLabel: 'Remove' })) { try { await VMTL.api(`/vehicles/${v.id}`, { method: 'DELETE' }); VMTL.toast('Removed.', 'success'); location.href = '/vehicles.html'; } catch (e) { VMTL.showErrors(e); } } };
 

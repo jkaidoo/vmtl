@@ -51,6 +51,10 @@ async function tripForRequest(requestId) {
 async function loadRequest(id, { withApprovals = true, withTrip = true } = {}) {
   const r = await db.get(`${REQUEST_SELECT} WHERE r.id = ?`, [id]);
   if (!r) return null;
+  if (r.is_external) {
+    const letter = await db.get("SELECT id FROM fleet_files WHERE entity_type='request' AND entity_id=? AND kind='letter' ORDER BY id DESC LIMIT 1", [id]);
+    r.letter_file_id = letter ? letter.id : null;
+  }
   const approvals = withApprovals ? await approvalsFor(id) : undefined;
   const trip = withTrip ? await tripForRequest(id) : undefined;
   return present.request(r, { approvals, trip });

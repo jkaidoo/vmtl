@@ -83,6 +83,25 @@ module.exports = function register(router) {
     res.json({ data: present.vehicle(await db.get(`${loaders.VEHICLE_SELECT} WHERE v.id = ?`, [vehicle.id])) });
   });
 
+  // Move a vehicle between the general university pool (no org unit) and a
+  // specific org unit. University-wide only: reassigning across units — and
+  // touching pool vehicles at all — needs fleet.global.
+  router.post('/vehicles/:id/org-unit', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.FLEET_GLOBAL))) throw forbidden('Only university-wide fleet managers may move vehicles between units.');
+    const vehicle = await findVehicle(req.params.id);
+    const raw = req.body.org_unit_id;
+    let target = null; let name = 'the general university pool';
+    if (raw !== null && raw !== undefined && raw !== '') {
+      const { org_unit_id } = validate(req.body, { org_unit_id: { required: true, type: 'integer' } });
+      const ou = await db.get('SELECT id, name FROM org_units WHERE id = ? AND deleted_at IS NULL', [org_unit_id]);
+      if (!ou) throw badRequest('The given data was invalid.', { org_unit_id: ['Unknown organisational unit.'] });
+      target = ou.id; name = ou.name;
+    }
+    await db.run(`UPDATE vehicles SET org_unit_id = ?, updated_at = ${db.now()} WHERE id = ?`, [target, vehicle.id]);
+    await audit.from(req, { action: 'vehicle.reassigned', description: `Vehicle ${vehicle.vehicle_number} moved to ${name}`, entityType: 'vehicle', entityId: vehicle.id });
+    res.json({ data: present.vehicle(await db.get(`${loaders.VEHICLE_SELECT} WHERE v.id = ?`, [vehicle.id])) });
+  });
+
   router.post('/vehicles/:id/active', requireAuth, async (req, res) => {
     const vehicle = await findVehicle(req.params.id);
     if (!(await has(req, CAP.VEHICLES_MANAGE)) || !(await inScope(req.session.user, vehicle.org_unit_id))) throw forbidden('You may not manage this vehicle.');

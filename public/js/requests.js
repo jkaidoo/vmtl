@@ -62,6 +62,7 @@ async function renderDetail(id) {
         ${info('Purpose', VMTL.esc(r.purpose))}
         ${r.contact_number ? info('Contact', VMTL.esc(r.contact_number)) : ''}
         ${r.is_external ? info('External org', VMTL.esc(r.external_org)) : ''}
+        ${r.is_external && r.letter_file_id ? info('Request letter', `<a href="/api/fleet-files/${r.letter_file_id}" target="_blank" rel="noopener">View letter</a>`) : ''}
         ${r.is_external && r.expected_duration_days ? info('Duration (days)', r.expected_duration_days) : ''}
         ${r.goodwill_reason ? info('Goodwill reason', VMTL.esc(r.goodwill_reason)) : ''}
       </div></div>
