@@ -20,6 +20,7 @@ window.VMTL_PAGE = async function () {
 
   let types = [];
   let rows = [];
+  let otherNodes = [];
 
   const load = async () => {
     try {
@@ -64,7 +65,9 @@ window.VMTL_PAGE = async function () {
       directorate: tops.filter((t) => t.type === 'directorate'),
       other: tops.filter((t) => !['college', 'directorate'].includes(t.type)),
     };
-    const section = (label, list) => list.length ? `<div class="oc-section-label">${label}</div><div class="toprow">${list.map(card).join('')}</div>` : '';
+    otherNodes = groups.other;
+    const section = (label, cards) => cards ? `<div class="oc-section-label">${label}</div><div class="toprow">${cards}</div>` : '';
+    const bucketCard = otherNodes.length ? `<button class="gcard" data-id="__standalone__"><span class="badge b-group">Units</span><h3>Central &amp; standalone units</h3><div class="gmeta"><span><b>${otherNodes.length}</b> units</span></div></button>` : '';
 
     chart.innerHTML = `
       <div class="root-wrap">
@@ -75,14 +78,14 @@ window.VMTL_PAGE = async function () {
         </div>
         <div class="trunk"></div>
       </div>
-      ${section('Colleges', groups.college)}
-      ${section('Directorates', groups.directorate)}
-      ${section('Central & standalone units', groups.other)}
+      ${section('Colleges', groups.college.map(card).join(''))}
+      ${section('Directorates', groups.directorate.map(card).join(''))}
+      ${section('Central &amp; standalone units', bucketCard)}
       <div class="oc-detail" id="ocDetail"></div>`;
 
-    chart.querySelectorAll('.gcard').forEach((c) => c.onclick = () => selectTop(Number(c.dataset.id)));
-    const first = (groups.college[0] || groups.directorate[0] || groups.other[0]);
-    if (first) selectTop(first.id);
+    chart.querySelectorAll('.gcard').forEach((c) => c.onclick = () => selectTop(c.dataset.id));
+    const firstId = (groups.college[0] && groups.college[0].id) || (groups.directorate[0] && groups.directorate[0].id) || (otherNodes.length ? '__standalone__' : null);
+    if (firstId != null) selectTop(firstId);
 
     function card(n) {
       const fac = typeCount(n, 'faculty');
@@ -95,17 +98,23 @@ window.VMTL_PAGE = async function () {
     }
   }
 
-  let topIndex = {};
   function selectTop(id) {
-    const roots = buildTree();
-    const flat = [];
-    (function walk(ns) { ns.forEach((n) => { flat.push(n); walk(n.children); }); })(roots);
-    const node = flat.find((n) => n.id === id);
-    document.querySelectorAll('.gcard').forEach((c) => c.classList.toggle('sel', Number(c.dataset.id) === id));
+    const sid = String(id);
+    document.querySelectorAll('.gcard').forEach((c) => c.classList.toggle('sel', c.dataset.id === sid));
     const detail = document.getElementById('ocDetail');
-    if (!node) { detail.innerHTML = ''; return; }
-    const dep = typeCount(node, 'department');
-    detail.innerHTML = `<div class="oc-detail-head"><span class="badge b-${node.type}">${VMTL.esc(node.type_label || node.type)}</span><h3>${VMTL.esc(node.name)}</h3><span class="oc-cnt">${dep} departments</span></div>${treeHtml(node.children, 0)}`;
+    let node; let children; let unit = 'departments';
+    if (sid === '__standalone__') {
+      node = { name: 'Central & standalone units', type: 'group', type_label: 'Units' };
+      children = otherNodes; unit = 'units';
+    } else {
+      const roots = buildTree(); const flat = [];
+      (function walk(ns) { ns.forEach((n) => { flat.push(n); walk(n.children); }); })(roots);
+      node = flat.find((n) => n.id === Number(sid));
+      if (!node) { detail.innerHTML = ''; return; }
+      children = node.children;
+    }
+    const dep = sid === '__standalone__' ? otherNodes.length : typeCount(node, 'department');
+    detail.innerHTML = `<div class="oc-detail-head"><span class="badge b-${node.type}">${VMTL.esc(node.type_label || node.type)}</span><h3>${VMTL.esc(node.name)}</h3><span class="oc-cnt">${dep} ${unit}</span></div>${treeHtml(children, 0)}`;
     wireTree(detail);
     const q = document.getElementById('ocq').value.trim();
     if (q) runSearch(q);
@@ -168,9 +177,20 @@ window.VMTL_PAGE = async function () {
       const roots = buildTree();
       const inst = roots.find((r) => r.type === 'institution');
       const tops = inst ? inst.children : roots;
+      const cols = tops.filter((t) => t.type === 'college');
+      const dirs = tops.filter((t) => t.type === 'directorate');
+      const others = tops.filter((t) => !['college', 'directorate'].includes(t.type));
+      const has = (n) => JSON.stringify(n).toLowerCase().includes(ql);
       const sel = document.querySelector('.gcard.sel');
-      const selHas = sel && JSON.stringify(buildTree().flatMap(function f(n){return [n,...n.children.flatMap(f)];}).find((n)=>n.id===Number(sel.dataset.id))).toLowerCase().includes(ql);
-      if (!selHas) { const hit = tops.find((t) => JSON.stringify(t).toLowerCase().includes(ql)); if (hit) { selectTop(hit.id); return; } }
+      const sid = sel ? sel.dataset.id : null;
+      let selHas = false;
+      if (sid === '__standalone__') selHas = others.some(has);
+      else if (sid) { const n = [...cols, ...dirs].find((x) => x.id === Number(sid)); selHas = !!(n && has(n)); }
+      if (!selHas) {
+        const hit = cols.find(has) || dirs.find(has);
+        if (hit) { selectTop(hit.id); return; }
+        if (others.some(has)) { selectTop('__standalone__'); return; }
+      }
     }
     detail.querySelectorAll('.oc-nm').forEach((nm) => {
       const hit = ql && nm.dataset.name.includes(ql);
@@ -271,7 +291,7 @@ function injectCss() {
   .badge{display:inline-flex;align-items:center;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 7px;border-radius:999px;white-space:nowrap}
   .b-institution,.b-college{color:var(--primary);background:var(--primary-tint,rgba(0,149,64,.1))}
   .b-directorate,.b-faculty{color:var(--info,#1f5fd0);background:var(--info-tint,rgba(31,95,208,.1))}
-  .b-department,.b-unit,.b-office{color:var(--text-2);background:var(--surface-2,var(--bg));border:1px solid var(--border)}
+  .b-department,.b-unit,.b-office,.b-group{color:var(--text-2);background:var(--surface-2,var(--bg));border:1px solid var(--border)}
   .root-wrap{display:flex;flex-direction:column;align-items:center}
   .root-node{background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 72%,#000));color:#fff;border-radius:var(--radius-lg,14px);padding:15px 26px;text-align:center;box-shadow:var(--elev-2,var(--elev-1));max-width:520px}
   .root-node .k{font-size:11px;font-weight:700;letter-spacing:.14em;opacity:.85}
@@ -280,8 +300,8 @@ function injectCss() {
   .root-node .rn-stats b{display:block;font-size:16px;font-weight:800}.root-node .rn-stats span{opacity:.82}
   .trunk{width:2px;height:20px;background:var(--border-strong,var(--border))}
   .oc-section-label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3,var(--text-2));margin:16px 2px 8px}
-  .toprow{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px}
-  .gcard{flex:0 0 auto;width:206px;text-align:left;background:var(--surface);border:1px solid var(--border-strong,var(--border));border-radius:var(--radius);padding:12px;cursor:pointer;transition:.15s}
+  .toprow{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:10px;padding:2px 0 6px}
+  .gcard{text-align:left;background:var(--surface);border:1px solid var(--border-strong,var(--border));border-radius:var(--radius);padding:12px;cursor:pointer;transition:.15s}
   .gcard:hover{border-color:var(--primary);box-shadow:var(--elev-1);transform:translateY(-1px)}
   .gcard.sel{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-tint,rgba(0,149,64,.12)),var(--elev-1)}
   .gcard h3{margin:8px 0 0;font-size:13px;line-height:1.3}
