@@ -151,6 +151,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .bottom-nav svg { width: 20px; height: 20px; }
   .content { padding: 20px 16px 96px; }
   .usermenu-trigger .who { display: none; }
+  /* Keep the sticky top bar from forcing horizontal scroll on narrow phones:
+     tighten padding and let the title's cluster shrink so the title truncates
+     rather than push the page wider than the viewport. */
+  .topbar { padding: 0 14px; gap: 10px; }
+  .topbar > * { min-width: 0; }
+  .topbar .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* ---- Cards -------------------------------------------------------------- */
