@@ -6,6 +6,7 @@ const { CAP } = require('../../services/capabilities');
 const { has } = require('../../services/authz');
 const orgScope = require('../../services/orgScope');
 const orgUnitsSvc = require('../../services/orgUnits');
+const orgImport = require('../../services/orgImport');
 const present = require('../../services/present');
 const enums = require('../../services/enums');
 const audit = require('../../services/audit');
@@ -33,6 +34,20 @@ module.exports = function register(router) {
       data.push({ ...present.orgUnit(u), vehicles_count: counts.v, drivers_count: counts.d, users_count: counts.u, active: !!u.active });
     }
     res.json({ data, types: enums.options.org_unit_type });
+  });
+
+  // Preview what "Import Departments" would create vs. keep (read-only).
+  router.get('/org-units/import/preview', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.DEPARTMENTS_MANAGE))) throw forbidden('You may not manage organisation units.');
+    res.json({ data: await orgImport.plan() });
+  });
+
+  // Seed/reconcile the full KNUST tree from the bundled register. Idempotent.
+  router.post('/org-units/import', requireAuth, async (req, res) => {
+    if (!(await has(req, CAP.DEPARTMENTS_MANAGE))) throw forbidden('You may not manage organisation units.');
+    const summary = await orgImport.run();
+    await audit.from(req, { action: 'org_unit.imported', description: `Imported KNUST org structure (${summary.created} new, ${summary.departments} departments)`, entityType: 'org_unit', entityId: summary.institution_id });
+    res.json({ data: summary });
   });
 
   router.post('/org-units', requireAuth, async (req, res) => {

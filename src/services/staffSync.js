@@ -60,17 +60,20 @@ async function rootInstitutionId() {
   return r ? r.id : null;
 }
 
-// Resolve (creating as needed) the org unit for a staff profile's college/department.
+// Resolve (creating as needed) the org unit for a staff profile's college/
+// department. Uses the shared resolvers so a staff record carrying only a
+// college + department still lands on the department the "Import Departments"
+// seed placed under a faculty, rather than creating a duplicate.
 async function orgUnitForProfile(fields) {
   const college = textField(fields.college);
   const faculty = textField(fields.faculty);                    // present on some records
   const department = textField(fields.department);
   if (!college && !faculty && !department) return null;
-  let parent = await rootInstitutionId();
-  if (college) parent = await ensureUnit(college, 'college', parent);
-  if (faculty) parent = await ensureUnit(faculty, 'faculty', parent);
-  if (department) return ensureUnit(department, 'department', parent);
-  return parent;
+  const inst = await orgUnits.ensureInstitution();
+  const bucket = college ? await orgUnits.resolveBucket(college, inst) : null;
+  const fac = faculty ? await orgUnits.resolveFaculty(faculty, bucket || inst) : null;
+  if (department) return orgUnits.resolveDepartment(department, { ancestorId: bucket || inst, parentId: fac || bucket || inst });
+  return fac || bucket || inst;
 }
 
 // Pick the Unified API search result that best matches the login identity.

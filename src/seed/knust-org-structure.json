@@ -1,0 +1,424 @@
+{
+  "institution": "Kwame Nkrumah University of Science and Technology",
+  "institution_code": "KNUST",
+  "source": "col_fac_dep.xlsx (UITS college/faculty/department register)",
+  "note": "Every leaf is an org_unit of type department, matching the Unified API DEPARTMENT register per staff. Colleges/faculties/directorates are grouping tiers.",
+  "groups": [
+    {
+      "name": "College of Agriculture and Natural Resources",
+      "type": "college",
+      "faculties": [
+        {
+          "name": "Faculty of Agriculture",
+          "departments": [
+            "Agricultural Economics, Agribusiness and Extension",
+            "Agricultural Research Station",
+            "Animal Science",
+            "Crop and Soil Sciences",
+            "Dean's Office - Faculty of Agriculture",
+            "Horticulture",
+            "KNUST Dairy/Beef Cattle Research Station"
+          ]
+        },
+        {
+          "name": "Faculty of Renewable Natural Resources",
+          "departments": [
+            "Agroforestry",
+            "Dean's Office - Faculty of Renewable Natural Resources",
+            "Fisheries and Watershed Management",
+            "Forest Resources Technology",
+            "Silviculture and Forest Management",
+            "Wildlife and Range Management",
+            "Wood Science and Technology"
+          ]
+        }
+      ],
+      "departments": [
+        "Experimental Farm",
+        "Institute for Rural Development and Innovation Studies",
+        "Provost's Office - College of Agriculture and Natural Resources"
+      ]
+    },
+    {
+      "name": "College of Art and Built Environment",
+      "type": "college",
+      "faculties": [
+        {
+          "name": "Faculty of Art",
+          "departments": [
+            "Communication Design",
+            "Dean's Office - Faculty of Art",
+            "Design Press",
+            "Indigenous Art and Technology",
+            "Industrial Art",
+            "Painting and Sculpture",
+            "Publishing Studies"
+          ]
+        },
+        {
+          "name": "Faculty of Built Environment",
+          "departments": [
+            "Architecture",
+            "Centre for Land Studies",
+            "Centre for Settlement Studies",
+            "Construction Technology and Management",
+            "Dean's Office - Faculty of Built Environment",
+            "Institute of Human Settlements Research",
+            "Land Economy",
+            "Planning"
+          ]
+        },
+        {
+          "name": "Faculty of Educational Studies",
+          "departments": [
+            "Dean's Office - Faculty of Educational Studies",
+            "Educational Innovations in Science and Technology",
+            "Teacher Education"
+          ]
+        }
+      ],
+      "departments": [
+        "Provost's Office - College of Art and Built Environment"
+      ]
+    },
+    {
+      "name": "College of Humanities and Social Sciences",
+      "type": "college",
+      "faculties": [
+        {
+          "name": "Faculty of Law",
+          "departments": [
+            "Commercial Law",
+            "Dean's Office - Faculty of Law",
+            "Private Law",
+            "Public Law"
+          ]
+        },
+        {
+          "name": "Faculty of Social Sciences",
+          "departments": [
+            "Dean's Office - Faculty of Social Sciences",
+            "Economics",
+            "English",
+            "Geography and Rural Development",
+            "History and Political Studies",
+            "Language and Communication Sciences",
+            "Religion and Human Development",
+            "Sociology and Social Work"
+          ]
+        },
+        {
+          "name": "KNUST School of Business",
+          "departments": [
+            "Accounting and Finance",
+            "Centre for Applied Res. and Innov. in Supply Chain Africa",
+            "Dean's Office - KNUST School of Business",
+            "Hospitality and Tourism Studies",
+            "Human Resource and Organisational Development",
+            "Marketing and Corporate Strategy",
+            "Supply Chain and Information Systems"
+          ]
+        }
+      ],
+      "departments": [
+        "Provost's Office - College of Humanities and Social Sciences",
+        "Centre for Cultural and African Studies"
+      ]
+    },
+    {
+      "name": "College of Engineering",
+      "type": "college",
+      "faculties": [
+        {
+          "name": "Faculty of Civil and Geo-Engineering",
+          "departments": [
+            "Civil Engineering",
+            "Dean's Office - Faculty of Civil and Geo-Engineering",
+            "Geological Engineering",
+            "Geomatic Engineering",
+            "KNUST Engineering Education Project",
+            "Petroleum Engineering",
+            "Regional Water and Environmental Sanitation Centre Kumasi",
+            "Transport Research and Education Centre, Kumasi",
+            "West Africa Science Service Centre on Adapted Land Use"
+          ]
+        },
+        {
+          "name": "Faculty of Electrical and Computer Engineering",
+          "departments": [
+            "Computer Engineering",
+            "Dean's Office - Faculty of Electrical and Computer Engineering",
+            "Electrical/Electronic Engineering",
+            "Telecommunication Engineering"
+          ]
+        },
+        {
+          "name": "Faculty of Mechanical and Chemical Engineering",
+          "departments": [
+            "Agricultural and Biosystems Engineering",
+            "Chemical Engineering",
+            "Dean's Office - Faculty of Mechanical and Chemical Engineering",
+            "Materials Engineering",
+            "Mechanical Engineering"
+          ]
+        }
+      ],
+      "departments": [
+        "Provost's Office - College of Engineering",
+        "Technology Consultancy Centre",
+        "The Brew Hammond Energy Centre"
+      ]
+    },
+    {
+      "name": "College of Health Sciences",
+      "type": "college",
+      "faculties": [
+        {
+          "name": "Faculty of Allied Health Sciences",
+          "departments": [
+            "Dean's Office - Faculty of Allied Health Sciences",
+            "Medical Diagnostics",
+            "Medical Imaging",
+            "Physiotherapy and Sports Science"
+          ]
+        },
+        {
+          "name": "Faculty of Pharmacy and Pharmaceutical Sciences",
+          "departments": [
+            "Dean's Office - Faculty of Pharmacy and Pharm. Sciences",
+            "Herbal Medicine",
+            "Pharmaceutical Chemistry",
+            "Pharmaceutics",
+            "Pharmacognosy",
+            "Pharmacology",
+            "Pharmacy Practice"
+          ]
+        },
+        {
+          "name": "School of Dentistry",
+          "departments": [
+            "Adult Oral Health",
+            "Basic Diagnostic Oral Health",
+            "Child Oral Health and Orthodontics",
+            "Community Dentistry",
+            "Dean's Office - School of Dentistry",
+            "Oral and Maxillofacial Sciences"
+          ]
+        },
+        {
+          "name": "School of Veterinary Medicine",
+          "departments": [
+            "Anatomy and Physiology",
+            "Clinical Studies",
+            "Dean's Office - School of Veterinary Medicine",
+            "Pathobiology",
+            "Public Health and Epidemiology",
+            "Public Health, Food Hygiene and Food Safety"
+          ]
+        },
+        {
+          "name": "School of Medical Sciences",
+          "departments": [
+            "Anaesthesiology and Intensive Care",
+            "Anatomy",
+            "Behavioural Sciences",
+            "Centre for Disability and Rehabilitation Studies",
+            "Child Health",
+            "Clinical Microbiology",
+            "Clinical Students Hostel - KATH",
+            "Community Health",
+            "Dean's Office - School of Medical Sciences",
+            "Eye, Ear, Nose and Throat",
+            "Medicine",
+            "Molecular Medicine",
+            "Obstetrics and Gynaecology",
+            "Pathology",
+            "Physiology",
+            "Radiology",
+            "Simulation Centre",
+            "Surgery"
+          ]
+        },
+        {
+          "name": "School of Public Health",
+          "departments": [
+            "Dean's Office - School of Public Health",
+            "Epidemiology and Biostatistics",
+            "Global and International Health",
+            "Health Policy, Management and Economics",
+            "Health Promotion and Education",
+            "Occupational and Environmental Health and Safety",
+            "Population, Family and Reproductive Health"
+          ]
+        },
+        {
+          "name": "School of Nursing and Midwifery",
+          "departments": [
+            "Dean's Office - School of Nursing and Midwifery",
+            "Emergency and Critical Care Nursing",
+            "Midwifery",
+            "Nursing",
+            "Public Health Nursing"
+          ]
+        }
+      ],
+      "departments": [
+        "Central Laboratory",
+        "G-WAC for Global Health and Pandemic Prevention",
+        "Kumasi Centre For Collaborative Research In Tropical Medicine",
+        "Provost's Office - College of Health Sciences"
+      ]
+    },
+    {
+      "name": "College of Science",
+      "type": "college",
+      "faculties": [
+        {
+          "name": "Faculty of Biosciences",
+          "departments": [
+            "Biochemistry and Biotechnology",
+            "Botanical Gardens",
+            "Dean's Office - Faculty of Biosciences",
+            "Environmental Science",
+            "Food Science and Technology",
+            "Optometry and Visual Science",
+            "Theoretical and Applied Biology"
+          ]
+        },
+        {
+          "name": "Faculty of Physical and Computational Sciences",
+          "departments": [
+            "Chemistry",
+            "Computer Science",
+            "Dean's Office - Faculty of Physical and Comp. Sciences",
+            "Mathematics",
+            "Meteorology and Climate Science",
+            "Physics",
+            "Statistics and Actuarial Science"
+          ]
+        }
+      ],
+      "departments": [
+        "National Institute for Mathematical Sciences",
+        "Provost's Office - College of Science"
+      ]
+    },
+    {
+      "name": "Main Administration",
+      "type": "directorate",
+      "departments": [
+        "Academic Affairs",
+        "Admissions Office",
+        "Affiliations Office",
+        "Alumni Office",
+        "Examinations Office",
+        "General Administration",
+        "HRD",
+        "International Programmes Office",
+        "Legal Services",
+        "Registrar's Office",
+        "Registrar's Offices",
+        "Vice-Chancellor's Office",
+        "Welfare Office"
+      ]
+    },
+    {
+      "name": "Finance Office",
+      "type": "directorate",
+      "departments": [
+        "Budget Section",
+        "Cash Office",
+        "Final Accounts Section",
+        "Finance Office",
+        "Internal Audit",
+        "Payables Section",
+        "Payroll Section",
+        "Students Section"
+      ]
+    },
+    {
+      "name": "University Information Technology Services",
+      "type": "directorate",
+      "departments": [
+        "Information Security and Technology Assurance",
+        "Network Operations and Infrastructure",
+        "Software Development Services",
+        "Systems and Data Management",
+        "University Information Technology Services",
+        "User Support Services"
+      ]
+    },
+    {
+      "name": "Institute of Distance Learning",
+      "type": "directorate",
+      "departments": [
+        "Institute of Distance Learning"
+      ]
+    },
+    {
+      "name": "Standalone",
+      "type": "standalone",
+      "departments": [
+        "Accra Guesthouse",
+        "Africa Hall",
+        "Catholic Chaplaincy",
+        "Centre for Business Development",
+        "Community Centre",
+        "Development Office",
+        "Directorate of Students Affairs",
+        "E-learning Centre",
+        "Environmental Quality Unit",
+        "Estate Organisation",
+        "Fire Preventive Unit",
+        "Grounds and Gardens",
+        "GUSSS Secretariat",
+        "Independence Hall",
+        "Institute of Science and Technology for Africa",
+        "International Centre of Materials Science and Technology",
+        "JUST Office",
+        "KNUST Accra Office",
+        "KNUST Basic Schools",
+        "KNUST Bottling Limited Company",
+        "KNUST Counselling Centre",
+        "KNUST Obuasi Campus",
+        "KNUST Wellness Centre",
+        "Library",
+        "Maintenance",
+        "Mastercard Foundation",
+        "Non Academic Facilities and Special Project Unit",
+        "Nyansapo Eco-Resort, Moree",
+        "Office of Grants and Research",
+        "Photocopy Unit",
+        "Post Graduate Hostel",
+        "Printing Press",
+        "Procurement Office",
+        "Protestant Chaplaincy",
+        "Quality Assurance and Planning Office",
+        "Queen Elizabeth II Hall",
+        "Republic Hall",
+        "School of Graduate Studies",
+        "Security Service",
+        "Senga Recycling and Packaging",
+        "Senior Staff Club",
+        "Sports Directorate",
+        "Spring Hostel",
+        "Steven Paris Hostel",
+        "Student Affairs",
+        "Transport",
+        "Unity Hall",
+        "University Hall",
+        "University Hospital",
+        "University J.H.S.",
+        "University Pre-School",
+        "University Primary School",
+        "University Relations Office",
+        "University Stores",
+        "Wilkado Hostel",
+        "Academic Facilities and Assets Management",
+        "Housing and Special Facilities Unit",
+        "Hygiene and Sanitation Unit",
+        "Valuation and Land Management Unit"
+      ]
+    }
+  ]
+}
