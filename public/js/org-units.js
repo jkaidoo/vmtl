@@ -15,7 +15,7 @@ window.VMTL_PAGE = async function () {
        <div class="oc-search"><input id="ocq" placeholder="Search any unit or department…"></div>
        <div class="oc-tools"><button class="ghost" id="expandAll">Expand all</button><button class="ghost" id="collapseAll">Collapse all</button></div>
      </div>
-     <div class="card" id="chartView"><div id="chart"><div class="loading"><span class="spinner"></span></div></div></div>
+     <div class="card pad" id="chartView"><div id="chart"><div class="loading"><span class="spinner"></span></div></div></div>
      <div class="card hidden" id="tableView"><div id="tree"></div></div>`;
 
   let types = [];
