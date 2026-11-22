@@ -6,8 +6,18 @@
   const btn = document.getElementById('submitBtn');
   const card = form.closest('.login-wrap');
   const error = document.getElementById('loginError');
+  const signInHeading = document.getElementById('signInHeading');
+  const returningVisitorKey = 'vmtl-has-signed-in';
   let feedbackTimer;
   document.getElementById('copyrightYear').textContent = new Date().getFullYear();
+
+  try {
+    if (localStorage.getItem(returningVisitorKey) === '1') signInHeading.textContent = 'Welcome back';
+  } catch { /* The sign-in form also works when storage is unavailable. */ }
+
+  function rememberSignIn() {
+    try { localStorage.setItem(returningVisitorKey, '1'); } catch { /* Storage is optional. */ }
+  }
 
   function deviceName() {
     const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
@@ -17,7 +27,9 @@
   }
 
   VMTL.api('/me').then((me) => {
-    if (!me?.user || me._stale || btn.disabled) return;
+    if (!me?.user || me._stale) return;
+    rememberSignIn();
+    if (btn.disabled) return;
     document.getElementById('signInPanel').hidden = true;
     document.getElementById('welcomePanel').hidden = false;
     document.querySelector('#welcomePanel a').focus();
@@ -31,6 +43,7 @@
     btn.disabled = true; btn.textContent = 'Signing in…';
     try {
       await VMTL.api('/login', { method: 'POST', body: { email: document.getElementById('email').value.trim(), password: document.getElementById('password').value, device_name: deviceName() } });
+      rememberSignIn();
       location.href = '/dashboard.html';
     } catch {
       error.textContent = 'Sign in failed.';
