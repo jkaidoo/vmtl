@@ -416,7 +416,7 @@ table.data tbody tr.click:hover { background: var(--surface-2); }
 }
 .login-hero {
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr auto auto;
   align-items: center;
   gap: 16px;
   padding: 38px;
@@ -434,6 +434,43 @@ table.data tbody tr.click:hover { background: var(--surface-2); }
   list-style: none;
   color: #e0f6ef;
   font-size: 14.5px;
+}
+.login-road {
+  position: relative;
+  height: 40px;
+  overflow: hidden;
+}
+.login-road::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 2px;
+  border-bottom: 2px dashed rgba(255, 255, 255, .5);
+}
+.login-scenery {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  width: 200%;
+  height: 36px;
+  opacity: .55;
+}
+.login-pickup {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 84px;
+  transform: translateX(-50%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .login-scenery { animation: login-scroll-scenery 26s linear infinite; }
+  .login-pickup { animation: login-drive 7s linear infinite; }
+}
+@keyframes login-scroll-scenery {
+  to { transform: translateX(-50%); }
+}
+@keyframes login-drive {
+  from { left: 0; transform: translateX(-100%); }
+  to { left: 100%; transform: translateX(0); }
 }
 .login-affiliation { margin: 0; color: #a6dccf; font-size: 13px; }
 .login-form { display: grid; place-items: center; padding: 38px; }
