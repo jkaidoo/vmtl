@@ -391,36 +391,86 @@ table.data tbody tr.click:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) { .toast, .modal, .modal-backdrop, .sk, .spinner { animation: none !important; } }
 
 /* ---- Login -------------------------------------------------------------- */
-.login-wrap { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
-@media (max-width: 880px) { .login-wrap { grid-template-columns: 1fr; } .login-hero { display: none; } }
-.login-hero { position: relative; overflow: hidden; background: linear-gradient(160deg, var(--primary-600), var(--primary)); color: #fff; display: flex; flex-direction: column; justify-content: center; padding: 48px 48px 150px; }
-.login-hero h1 { color: #fff; font-size: 2rem; position: relative; z-index: 1; }
-.login-hero p { color: rgba(255,255,255,.88); max-width: 420px; position: relative; z-index: 1; }
-.login-form { display: flex; align-items: center; justify-content: center; padding: 32px; }
-.login-card { width: 100%; max-width: 380px; }
-.login-card .logo { width: 56px; height: 56px; object-fit: contain; margin-bottom: 14px; }
-/* Static road: the truck moves, the road does not. */
-.road { position: absolute; left: 0; right: 0; bottom: 64px; height: 3px; z-index: 1; background: repeating-linear-gradient(90deg, rgba(255,255,255,.7) 0 28px, transparent 28px 56px); }
-/* Passing scenery: a looping row of buildings and plants that scrolls by. */
-.scenery { position: absolute; left: 0; right: 0; bottom: 64px; height: 48px; overflow: hidden; z-index: 0; pointer-events: none; }
-.scenery-track { display: flex; align-items: flex-end; gap: 42px; width: max-content; animation: scenery 26s linear infinite; }
-@keyframes scenery { to { transform: translateX(-50%); } }
-/* CSS-drawn buildings (white silhouettes with punched-out windows). */
-.bld { position: relative; width: 34px; background: rgba(255,255,255,.82); border-radius: 3px 3px 0 0; }
-.bld::before { content: ""; position: absolute; inset: 7px 6px 9px; background-image: radial-gradient(circle, rgba(16,70,42,.55) 1.5px, transparent 1.7px); background-size: 9px 10px; }
-.bld.b1 { width: 32px; height: 46px; } .bld.b2 { width: 44px; height: 34px; } .bld.b3 { width: 28px; height: 40px; } .bld.b4 { width: 38px; height: 30px; }
-/* CSS-drawn trees (canopy + trunk). */
-.tree { position: relative; width: 26px; height: 34px; }
-.tree.sm { width: 20px; height: 26px; }
-.tree::before { content: ""; position: absolute; left: 50%; bottom: 0; width: 5px; height: 12px; transform: translateX(-50%); background: rgba(255,255,255,.55); border-radius: 2px; }
-.tree.sm::before { height: 9px; }
-.tree::after { content: ""; position: absolute; left: 50%; bottom: 8px; width: 22px; height: 22px; transform: translateX(-50%); background: rgba(255,255,255,.8); border-radius: 50%; box-shadow: -6px 3px 0 -4px rgba(255,255,255,.8), 6px 3px 0 -4px rgba(255,255,255,.8); }
-.tree.sm::after { width: 17px; height: 17px; bottom: 6px; }
-/* Inline-SVG pickup truck; it drives, the road and scenery provide the rest. */
-.car { position: absolute; bottom: 64px; width: 92px; height: auto; z-index: 2; filter: drop-shadow(0 2px 2px rgba(0,0,0,.2)); animation: drive 7s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .scenery-track, .car { animation: none; } }
-@keyframes drive { from { left: -10%; } to { left: 110%; } }
-@media (prefers-reduced-motion: reduce) { .road, .car { animation: none; } }
+.login-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  gap: 24px;
+  padding: 24px;
+  background: color-mix(in srgb, #609b4d 8%, var(--surface));
+}
+.login-wrap {
+  width: 100%;
+  max-width: 1026px;
+  min-height: 515px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .12);
+}
+.login-hero {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 38px;
+  background: radial-gradient(120% 120% at 15% 10%, #00a84a 0%, #00762f 46%, #054d21 100%);
+  color: #fff;
+}
+.login-brand { display: grid; justify-items: center; gap: 16px; text-align: center; }
+.login-brand img { display: block; height: 136px; width: auto; }
+.login-brand h1 { margin: 0; color: #fff; font-size: 34px; font-weight: 553; line-height: 1.15; }
+.login-features {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #e0f6ef;
+  font-size: 14.5px;
+}
+.login-affiliation { margin: 0; color: #a6dccf; font-size: 13px; }
+.login-form { display: grid; place-items: center; padding: 38px; }
+.login-card { width: 100%; max-width: 428px; }
+.login-card h2 { margin: 0; font-size: 23px; font-weight: 650; text-align: center; }
+.login-card .muted { margin: 6px 0 26px; text-align: center; }
+.login-card .field { margin-bottom: 16px; }
+.login-card .field > label { margin-bottom: 5px; font-weight: 500; }
+.login-card .field > label span { color: var(--danger); }
+.login-card .field input { height: 44px; }
+.login-card .field input:focus { border-color: var(--primary); box-shadow: var(--ring); }
+.login-error { min-height: 21px; margin: 0 0 15px; color: var(--danger); font-size: 14px; font-weight: 400; }
+.login-wrap.login-rejected .field input {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-tint);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .login-wrap.login-rejected { animation: login-shake .35s ease-in-out; }
+}
+@keyframes login-shake {
+  25%, 75% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+}
+.login-card .btn-primary { height: 46px; background: #007d36; border-color: #007d36; color: #fff; font-size: 15px; font-weight: 600; }
+.login-card .btn-primary:hover { background: #006a2e; border-color: #006a2e; }
+.login-note { margin: 6px 0 0; color: var(--text-2); font-size: 13px; text-align: center; }
+.login-copyright { color: var(--text-2); font-size: 13px; text-align: center; }
+@media (max-width: 860px) {
+  .login-page { padding: 16px; }
+  .login-wrap { max-width: 480px; min-height: 0; grid-template-columns: minmax(0, 1fr); }
+  .login-hero { padding: 28px 24px; grid-template-rows: auto; }
+  .login-brand img { height: 100px; }
+  .login-brand h1 { font-size: 26px; }
+  .login-features, .login-affiliation { display: none; }
+  .login-form { padding: 28px 16px; }
+  .login-error { margin-bottom: 4px; }
+}
 
 /* ---- Animated FAQ accordion -------------------------------------------- */
 .faq-list { display: flex; flex-direction: column; gap: 10px; }
