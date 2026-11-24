@@ -41,7 +41,11 @@ function driverModal(d, done) {
     new FormData(form).forEach((val, k) => { if (val !== '') body[k] = val; });
     if (body.org_unit_id) body.org_unit_id = Number(body.org_unit_id);
     body.create_login = cl.checked;
-    try { const saved = (savedRecord || d) ? await VMTL.api(`/drivers/${savedRecord?.data.id || d.id}`, { method: 'PUT', body }) : await VMTL.api('/drivers', { method: 'POST', body }); savedRecord=saved; await VMTL.uploadFiles(form,'driver',saved.data.id); m.close(); VMTL.toast('Saved.', 'success'); done(); }
-    catch (err) { if(savedRecord) VMTL.toast('The record was saved. Fix the file issue and Save again to retry the upload.','error'); VMTL.showErrors(err, form); }
+    await VMTL.saveWithUploads(form, m.el.querySelector('#save'), 'driver', async () => {
+      savedRecord = (savedRecord || d)
+        ? await VMTL.api(`/drivers/${savedRecord?.data.id || d.id}`, { method: 'PUT', body })
+        : await VMTL.api('/drivers', { method: 'POST', body });
+      return savedRecord;
+    }, () => { m.close(); VMTL.toast('Saved.', 'success'); done(); });
   };
 }

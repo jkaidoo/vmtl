@@ -294,19 +294,70 @@ window.VMTL_PAGE = async function () {
   function importSchedule() {
     const m = VMTL.openModal(`<div class="modal-head"><h3>Import schedule (CSV)</h3><button class="icon-btn" data-close>✕</button></div><div class="modal-body">
       <p class="dim">Upload or paste CSV with a <b>Name</b> column and a <b>Centre</b> column. Only drivers already in the pool and centres already on this event are assigned.</p>
-      <input type="file" id="csvFile" accept=".csv,text/csv" class="mb">
+      <div data-upload-host class="field"><label>Schedule CSV<input type="file" id="csvFile" accept=".csv,text/csv"></label>
+        ${VMTL.uploadStatus()}<button type="button" class="btn btn-sm" id="csvRemove" hidden>Remove file</button></div>
       <textarea id="csvText" rows="8" placeholder="Name,Centre&#10;Yaw Owusu,Kumasi Centre" style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
       <div id="impResult" class="mt"></div>
     </div><div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="impGo">Import</button></div>`, { large: true });
     const ta = m.el.querySelector('#csvText');
-    m.el.querySelector('#csvFile').onchange = (e) => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { ta.value = r.result; }; r.readAsText(f); };
-    m.el.querySelector('#impGo').onclick = async () => {
-      if (!ta.value.trim()) return VMTL.toast('Paste or choose a CSV first.', 'err');
+    const input = m.el.querySelector('#csvFile');
+    const host = input.closest('[data-upload-host]');
+    const remove = m.el.querySelector('#csvRemove');
+    const go = m.el.querySelector('#impGo');
+    const result = m.el.querySelector('#impResult');
+    let entry, draft = ta.value;
+    function clearSelection() {
+      input.value = '';
+      entry = undefined;
+      remove.hidden = true;
+      VMTL.clearUpload(host);
+      result.textContent = '';
+    }
+    remove.onclick = () => { ta.value = draft; clearSelection(); input.focus(); };
+    input.onchange = () => {
+      if (!input.files[0]) { ta.value = draft; return clearSelection(); }
+      if (!entry) draft = ta.value;
+      const file = input.files[0];
+      remove.hidden = false;
+      result.textContent = '';
+      entry = VMTL.uploadEntry(host, file.name, async (checks, state) => {
+        if (!/\.csv$/i.test(file.name)) checks.fail('FILE_EXTENSION', 'Choose a .csv file.');
+        checks.size(file.size, checks.csvLimit);
+        let text;
+        try { text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
+        catch (_) { checks.fail('FILE_CONTENT', 'Choose a UTF-8 CSV file.'); }
+        checks.parseScheduleCsv(text);
+        if (state.current()) ta.value = text;
+        return file;
+      });
+    };
+    ta.oninput = () => { draft = ta.value; clearSelection(); };
+    go.onclick = async () => {
+      if (!entry && !ta.value.trim()) return VMTL.toast('Paste or choose a CSV first.', 'err');
+      if (go.disabled || entry?.complete) return;
+      if (!entry) {
+        const pastedText = ta.value;
+        entry = VMTL.uploadEntry(host, 'Pasted CSV', checks => {
+          checks.parseScheduleCsv(pastedText);
+          return new Blob([pastedText]);
+        });
+      }
+      const selected = entry;
+      go.disabled = true;
       try {
-        const r = (await VMTL.api('/ts/events/' + eventId + '/import-schedule', { method: 'POST', body: { csv: ta.value } })).data;
-        m.el.querySelector('#impResult').innerHTML = `<div class="card pad"><strong>${r.imported} assignment(s) imported.</strong>${r.skipped.length ? `<ul class="dim">${r.skipped.slice(0, 40).map((s) => `<li>${esc(s.name)}: ${esc(s.reason)}</li>`).join('')}</ul>` : ''}</div>`;
+        const file = await selected.checked;
+        if (!file || !selected.current()) return;
+        const headers = { 'Content-Type': 'application/octet-stream' };
+        if (file instanceof File) headers['X-File-Name'] = encodeURIComponent(file.name);
+        const r = await selected.send('/ts/events/' + eventId + '/import-schedule', file, headers);
+        if (!selected.current()) return;
+        result.innerHTML = `<div class="card pad"><strong>${r.imported} assignment(s) imported.</strong>${r.skipped.length ? `<ul class="dim">${r.skipped.slice(0, 40).map(s => `<li>${esc(s.name)}: ${esc(s.reason)}</li>`).join('')}</ul>` : ''}</div>`;
         await reload();
-      } catch (e) { VMTL.showErrors(e); }
+      } catch (_) {
+        // File errors are shown inline by the upload entry.
+      } finally {
+        go.disabled = false;
+      }
     };
   }
 

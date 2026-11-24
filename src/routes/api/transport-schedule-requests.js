@@ -9,6 +9,24 @@ const audit = require('../../services/audit');
 const sched = require('../../services/transportSchedule');
 const { moduleEnabled } = require('../../services/systemControls');
 
+const { csvLimit, parseScheduleCsv, size } = require('../../../public/js/upload-rules');
+const { fileName, validate, reject } = require('../../services/uploadValidation');
+
+function scheduleCsv(req) {
+  const raw = Buffer.isBuffer(req.body);
+  const name = raw ? fileName(req) : req.body?.name;
+  if (name !== undefined && (typeof name !== 'string' || !/\.csv$/i.test(name))) {
+    reject('FILE_EXTENSION', 'Choose a .csv file.');
+  }
+  let text = req.body?.csv;
+  if (raw) {
+    validate(() => size(req.body.length, csvLimit));
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(req.body); }
+    catch (_) { reject('FILE_CONTENT', 'Choose a UTF-8 CSV file.'); }
+  }
+  return validate(() => parseScheduleCsv(text));
+}
+
 module.exports = (router) => {
   const manage = async (req, res, next) => { if (!await moduleEnabled('transportSchedule')) throw forbidden('Transport Scheduling is turned off.'); if (!await has(req, 'schedule.manage')) throw forbidden(); next(); };
   const ok = (res, data) => res.json({ data });
@@ -99,14 +117,7 @@ module.exports = (router) => {
   // already configured on the event are assigned. Returns per-row outcomes.
   router.post('/ts/events/:id/import-schedule', requireAuth, manage, async (req, res) => {
     const event = await getEvent(req, req.params.id);
-    const text = String(req.body.csv || '');
-    if (!text.trim()) throw badRequest('Paste or upload CSV content.');
-    const rows = parseCsv(text);
-    if (!rows.length) throw badRequest('No rows found.');
-    const header = rows[0].map((h) => h.trim().toLowerCase());
-    const nameIdx = header.findIndex((h) => /name|driver/.test(h));
-    const centreIdx = header.findIndex((h) => /centre|center|location/.test(h));
-    if (nameIdx < 0 || centreIdx < 0) throw badRequest('CSV needs a Name column and a Centre column.');
+    const { rows, nameIdx, centreIdx } = scheduleCsv(req);
     const centres = await db.all('SELECT ec.centre_id, c.name FROM ts_event_centres ec JOIN ts_centres c ON c.id=ec.centre_id WHERE ec.event_id=?', [event.id]);
     const centreByName = new Map(centres.map((c) => [c.name.trim().toLowerCase(), c.centre_id]));
     const pool = await db.all(`SELECT d.id, d.name FROM drivers d WHERE d.id IN (
@@ -122,28 +133,21 @@ module.exports = (router) => {
       if (!driverId) { skipped.push({ name, reason: 'not in pool' }); continue; }
       if (!centreId) { skipped.push({ name, reason: `centre "${centreName}" not on event` }); continue; }
       if (await db.get('SELECT 1 FROM ts_assignments WHERE event_id=? AND driver_id=?', [event.id, driverId])) { skipped.push({ name, reason: 'already assigned' }); continue; }
-      try { await sched.validate(event.id, driverId, { event, locationId: centreId, requirePool: true }); await db.run('INSERT INTO ts_assignments(event_id,centre_id,driver_id) VALUES(?,?,?)', [event.id, centreId, driverId]); imported += 1; }
-      catch (err) { skipped.push({ name, reason: err.message }); }
+      try {
+        await sched.validate(event.id, driverId, { event, locationId: centreId, requirePool: true });
+        const added = await db.run(
+          'INSERT INTO ts_assignments(event_id,centre_id,driver_id) VALUES(?,?,?) ON CONFLICT(event_id,driver_id) DO NOTHING',
+          [event.id, centreId, driverId]
+        );
+        if (added.changes) imported += 1;
+        else skipped.push({ name, reason: 'already assigned' });
+      } catch (err) {
+        skipped.push({ name, reason: err.status >= 400 && err.status < 500 ? err.message : 'The assignment could not be saved. Try again.' });
+      }
     }
     if (imported) await sched.checkpoint(event.id, req.session.user.id, 'Imported schedule (' + imported + ')');
     await audit.from(req, { action: 'ts.import_schedule', description: `${imported} imported, ${skipped.length} skipped — ${event.title}`, entityType: 'ts_event', entityId: event.id }).catch(() => {});
     ok(res, { imported, skipped });
   });
 
-  // Minimal CSV parser (quoted fields, commas, CRLF).
-  function parseCsv(text) {
-    const rows = []; let row = []; let field = ''; let inQ = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (inQ) {
-        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
-        else field += c;
-      } else if (c === '"') inQ = true;
-      else if (c === ',') { row.push(field); field = ''; }
-      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(field); field = ''; if (row.some((v) => v !== '')) rows.push(row); row = []; }
-      else field += c;
-    }
-    if (field !== '' || row.length) { row.push(field); if (row.some((v) => v !== '')) rows.push(row); }
-    return rows;
-  }
 };

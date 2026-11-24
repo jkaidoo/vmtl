@@ -422,6 +422,8 @@ CREATE TABLE IF NOT EXISTS schedule_expenses (
 );
 `);
 ensureColumn('fleet_files','storage_profile','TEXT');
+ensureColumn('fleet_files','upload_key','TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_fleet_files_upload_key ON fleet_files(upload_key)');
 
 // --- Fleet operations extensions (incidents, route history, work orders, ------
 // --- ratings, driver duty, parts & tyres) ------------------------------------

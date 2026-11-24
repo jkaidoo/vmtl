@@ -128,9 +128,6 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
     res.status(dbHealth.ok && fresh ? 200 : 503).json({ status: dbHealth.ok && fresh ? 'ok' : 'error' });
   });
 
-  app.use(express.json({ limit: '12mb' }));
-  app.use(express.urlencoded({ extended: true }));
-
   app.use(session({
     store: sessionStore || createSessionStore(),
     secret,
@@ -144,6 +141,10 @@ function createApp({ sessionStore, apiRouter = require('./routes/api') } = {}) {
   const perIp = Number(process.env.RATE_LIMIT_IP_PER_MIN || 2000);
   app.use('/api', rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_IP_BACKSTOP_PER_MIN || 12000), key: rateLimit.ip, message: 'Too many requests from this network. Please try again shortly.' }));
   app.use('/api', rateLimit({ windowMs: 60_000, max: (req) => (req.session && req.session.user ? perUser : perIp), key: rateLimit.userOrIp }));
+
+  require('./middleware/uploadBody')(app);
+  app.use(express.json({ limit: '12mb' }));
+  app.use(express.urlencoded({ extended: true }));
 
   app.use('/api', require('./middleware/idempotency'));
   app.use('/api', apiRouter);

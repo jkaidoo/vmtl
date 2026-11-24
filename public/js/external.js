@@ -25,7 +25,7 @@ window.VMTL_PAGE = function () {
       </div>
       <div class="field"><label>Destination</label><input name="destination" required></div>
       <div class="field"><label>Purpose</label><textarea name="purpose" required></textarea></div>
-      <div class="field"><label>Request letter (image or PDF, optional)</label><input type="file" data-upload="letter" accept="image/jpeg,image/png,image/webp,application/pdf"></div>
+      ${VMTL.uploadFields('request')}
       <div class="field"><label>Remarks (optional)</label><input name="remarks"></div>
       <button class="btn btn-primary" type="submit">Log external travel</button>
     </form>`;
@@ -33,6 +33,7 @@ window.VMTL_PAGE = function () {
   const sel = form.external_org_select, other = form.external_org_other;
   const syncOther = () => { const o = sel.value === '__other__'; other.hidden = !o; other.required = o; if (!o) other.value = ''; };
   sel.onchange = syncOther; syncOther();
+  let saved;
   form.onsubmit = async (e) => {
     e.preventDefault();
     const body = {};
@@ -43,12 +44,14 @@ window.VMTL_PAGE = function () {
     if (body.expected_duration_days) body.expected_duration_days = Number(body.expected_duration_days);
     if (body.start_odometer) body.start_odometer = Number(body.start_odometer);
     if (body.org_unit_id) body.org_unit_id = Number(body.org_unit_id);
-    try {
-      const r = await VMTL.api('/vehicle-requests/external', { method: 'POST', body });
-      try { await VMTL.uploadFiles(form, 'request', r.data.id); }
-      catch (upErr) { VMTL.toast('Request logged, but the letter upload failed: ' + (upErr.message || 'try again from the request.'), 'error'); }
+    await VMTL.saveWithUploads(form, form.querySelector('[type="submit"]'), 'request', async () => {
+      saved ||= await VMTL.api('/vehicle-requests/external', { method: 'POST', body });
+      return saved;
+    }, r => {
       VMTL.toast('External travel logged.', 'success');
-      location.href = `/requests.html?id=${r.data.id}`;
-    } catch (err) { VMTL.showErrors(err, form); }
+      const href = `/requests.html?id=${r.data.id}`;
+      if (VMTL.navigate) return VMTL.navigate(href);
+      location.href = href;
+    });
   };
 };

@@ -1,6 +1,6 @@
 'use strict';
 const db=require('../db/runtime');
-const settings=require('./settings');
+const { attachment, decode, fileName, reject } = require('./uploadValidation');
 const fs=require('fs/promises');
 const path=require('path');
 const crypto=require('crypto');
@@ -22,35 +22,59 @@ async function access(req,type,id,write=false,kind=null){
  if(type==='maintenance' && !await has(req,meta.cap)) throw forbidden();
  return meta;
 }
-function sniff(buf){
- if(buf.subarray(0,3).equals(Buffer.from([255,216,255]))) return 'image/jpeg';
- if(buf.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
- if(buf.toString('ascii',0,4)==='RIFF' && buf.toString('ascii',8,12)==='WEBP') return 'image/webp';
- if(buf.toString('ascii',0,5)==='%PDF-') return 'application/pdf';
- return null;
-}
-async function upload(req,type,id,kind,body){
- const meta=await access(req,type,id,true); if(!meta.kinds.includes(kind)) throw badRequest('Invalid attachment type.');
- const c=await config(); if(!c.enabled) throw forbidden('File uploads are turned off.');
- if(typeof body.data!=='string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(body.data)) throw badRequest('Invalid file.');
- const buf=Buffer.from(body.data,'base64'); const mime=sniff(buf);
- if(!buf.length || buf.length>c.maxMB*1024*1024) throw badRequest(`File must be at most ${c.maxMB} MB.`);
- if(!mime || (!PDF_KINDS.includes(kind) && mime==='application/pdf')) throw badRequest('Use a JPEG, PNG or WebP image, or a PDF document.');
- const since=new Date(Date.now()-86400000).toISOString().replace('T',' ').slice(0,19);
- const used=await db.get('SELECT COALESCE(SUM(size_bytes),0) AS bytes FROM fleet_files WHERE uploaded_by=? AND created_at>=?',[req.session.user.id,since]);
- if(c.dailyMB && Number(used.bytes)+buf.length>c.dailyMB*1048576) throw badRequest('Daily upload allowance exceeded.');
- let key=null,profile=null;
- if(['s3','supabase'].includes(c.provider)){
-  const adapter=storage.adapter(c);profile=storage.encrypt(c);key='vmtl/'+crypto.randomUUID();await adapter.put(key,buf,mime);
+async function upload(req, type, id, kind, body) {
+ const meta = await access(req, type, id, true);
+ if (!meta.kinds.includes(kind)) reject('FILE_KIND', 'Invalid attachment type.');
+ const c = req.uploadConfig || await config();
+ if (!c.enabled) reject('FILE_DISABLED', 'File uploads are turned off.', 403);
+
+ const limit = c.maxMB * 1048576;
+ const name = Buffer.isBuffer(body) ? fileName(req) : body?.name;
+ const buf = Buffer.isBuffer(body) ? body : decode(body?.data, limit);
+ const mime = attachment(buf, name, kind, limit);
+ const displayName = path.win32.basename(name).slice(-255);
+ const opId = req.get('X-Op-Id');
+ const retryKey = opId && /^[a-z0-9-]{1,80}$/i.test(opId)
+  ? crypto.createHash('sha256').update(JSON.stringify([req.session.user.id, type, Number(id), kind, displayName, opId])).update(buf).digest('hex')
+  : null;
+ const response = id => ({ id, url: '/api/fleet-files/' + id });
+ const replay = () => db.get('SELECT id FROM fleet_files WHERE upload_key=?', [retryKey]);
+ if (retryKey) {
+  const previous = await replay();
+  if (previous) return { data: response(previous.id), replayed: true };
  }
- if(c.provider==='folder'){
-  const directory=path.resolve(c.folder); await fs.mkdir(directory,{recursive:true});
-  key=path.join(directory,crypto.randomUUID()); await fs.writeFile(key,buf,{flag:'wx'});
- }
+
+ const since = new Date(Date.now() - 86400000).toISOString().replace('T', ' ').slice(0, 19);
+ const used = await db.get('SELECT COALESCE(SUM(size_bytes),0) AS bytes FROM fleet_files WHERE uploaded_by=? AND created_at>=?', [req.session.user.id, since]);
+ if (c.dailyMB && Number(used.bytes) + buf.length > c.dailyMB * 1048576) reject('FILE_QUOTA', 'Daily upload allowance exceeded.');
+
+ let key = null, profile = null, remove;
  try {
- const r=await db.run('INSERT INTO fleet_files(entity_type,entity_id,kind,file_name,mime_type,size_bytes,data_base64,storage_key,storage_profile,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?)',[type,Number(id),kind,path.basename(String(body.name||'attachment')).slice(0,255),mime,buf.length,key?null:buf.toString('base64'),key,profile,req.session.user.id]);
- return {id:r.lastInsertRowid,url:`/api/fleet-files/${r.lastInsertRowid}`};
- }catch(e){if(key){if(profile) await storage.adapter(c).remove(key).catch(()=>{});else await fs.unlink(key).catch(()=>{});}throw e;}
+  if (['s3', 'supabase'].includes(c.provider)) {
+   const adapter = storage.adapter(c);
+   profile = storage.encrypt(c);
+   key = 'vmtl/' + crypto.randomUUID();
+   remove = () => adapter.remove(key);
+   await adapter.put(key, buf, mime);
+  }
+  if (c.provider === 'folder') {
+   const directory = path.resolve(c.folder);
+   await fs.mkdir(directory, { recursive: true });
+   key = path.join(directory, crypto.randomUUID());
+   remove = () => fs.unlink(key);
+   await fs.writeFile(key, buf, { flag: 'wx' });
+  }
+  const result = await db.run(
+   'INSERT INTO fleet_files(entity_type,entity_id,kind,file_name,mime_type,size_bytes,data_base64,storage_key,storage_profile,uploaded_by,upload_key) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(upload_key) DO NOTHING',
+   [type, Number(id), kind, displayName, mime, buf.length, key ? null : buf.toString('base64'), key, profile, req.session.user.id, retryKey]
+  );
+  if (result.changes) return { data: response(result.lastInsertRowid), replayed: false };
+ } catch (error) {
+  if (remove) await remove().catch(() => {});
+  throw error;
+ }
+ if (remove) await remove().catch(() => {});
+ return { data: response((await replay()).id), replayed: true };
 }
 async function read(f){if(f.storage_profile) return storage.adapter(storage.decrypt(f.storage_profile)).get(f.storage_key);return f.storage_key?fs.readFile(f.storage_key):Buffer.from(f.data_base64,'base64');}
-module.exports={config,access,upload,sniff,read};
+module.exports={config,access,upload,read};

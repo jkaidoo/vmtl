@@ -18,6 +18,7 @@ function errorHandler(err, req, res, next) {
   if (status >= 500) log.error('request_error', { id: req.id, path: req.path, message: err && err.message, stack: err && err.stack });
   else log.warn('request_rejected', { id: req.id, path: req.path, status, message: err && err.message });
   const body = { error: status >= 500 ? 'Something went wrong. Please try again.' : (err.message || 'Request failed.') };
+  if (err && err.extra && err.extra.code) body.code = err.extra.code;
   if (err && err.extra && err.extra.errors) body.errors = err.extra.errors;
   res.status(status).json(body);
 }

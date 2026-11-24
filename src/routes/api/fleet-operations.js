@@ -32,9 +32,9 @@ module.exports=router=>{
 
  router.post('/fleet-files/:type/:id/:kind',requireAuth,async(req,res)=>{
 
-  const data=await files.upload(req,req.params.type,req.params.id,req.params.kind,req.body);
+  const {data,replayed}=await files.upload(req,req.params.type,req.params.id,req.params.kind,req.body);
 
-  await audit.from(req,{action:'file.uploaded',description:`Uploaded ${req.params.kind} for ${req.params.type} #${req.params.id}`});
+  if (!replayed) await audit.from(req,{action:'file.uploaded',description:`Uploaded ${req.params.kind} for ${req.params.type} #${req.params.id}`});
 
   res.status(201).json({data});
 

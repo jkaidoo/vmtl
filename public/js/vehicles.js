@@ -102,7 +102,11 @@ function vehicleModal(v, done) {
     if(!form.reportValidity()) return;
     new FormData(form).forEach((val, k) => { if (val !== '') body[k] = val; });
     ['year', 'capacity', 'current_odometer', 'service_interval_km', 'org_unit_id'].forEach((k) => { if (body[k] != null) body[k] = Number(body[k]); });
-    try { const saved = (savedRecord || v) ? await VMTL.api(`/vehicles/${savedRecord?.data.id || v.id}`, { method: 'PUT', body }) : await VMTL.api('/vehicles', { method: 'POST', body }); savedRecord=saved; await VMTL.uploadFiles(form,'vehicle',saved.data.id); m.close(); VMTL.toast('Saved.', 'success'); done(); }
-    catch (err) { if(savedRecord) VMTL.toast('The record was saved. Fix the file issue and Save again to retry the upload.','error'); VMTL.showErrors(err, form); }
+    await VMTL.saveWithUploads(form, m.el.querySelector('#save'), 'vehicle', async () => {
+      savedRecord = (savedRecord || v)
+        ? await VMTL.api(`/vehicles/${savedRecord?.data.id || v.id}`, { method: 'PUT', body })
+        : await VMTL.api('/vehicles', { method: 'POST', body });
+      return savedRecord;
+    }, () => { m.close(); VMTL.toast('Saved.', 'success'); done(); });
   };
 }

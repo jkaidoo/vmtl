@@ -98,11 +98,10 @@ window.VMTL_PAGE = async function () {
     m.el.querySelector('#save').onclick = async () => {
       const form = m.el.querySelector('#inf'); if (!form.reportValidity()) return;
       const body = collect(form);
-      try {
-        const rec = saved || await VMTL.api('/incidents', { method: 'POST', body }); saved = rec;
-        await VMTL.uploadFiles(form, 'incident', rec.data.id);
-        m.close(); VMTL.toast('Incident reported.', 'success'); loadStats(); load();
-      } catch (err) { if (saved) VMTL.toast('The incident was saved. Fix the file issue and Report again to retry the upload.', 'error'); VMTL.showErrors(err, form); }
+      await VMTL.saveWithUploads(form, m.el.querySelector('#save'), 'incident', async () => {
+        saved ||= await VMTL.api('/incidents', { method: 'POST', body });
+        return saved;
+      }, () => { m.close(); VMTL.toast('Incident reported.', 'success'); loadStats(); load(); });
     };
   }
 
@@ -150,15 +149,13 @@ window.VMTL_PAGE = async function () {
       </form></div>
       <div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="save">Save</button></div>`, { large: true });
     bindGeo(m.el);
-    let saved = false;
     m.el.querySelector('#save').onclick = async () => {
       const form = m.el.querySelector('#inf'); if (!form.reportValidity()) return;
       const body = collect(form);
-      try {
-        if (!saved) { await VMTL.api(`/incidents/${x.id}`, { method: 'PUT', body }); saved = true; }
-        await VMTL.uploadFiles(form, 'incident', x.id);
-        m.close(); VMTL.toast('Updated.', 'success'); loadStats(); load();
-      } catch (err) { if (saved) VMTL.toast('Saved. Fix the file issue and Save again to retry the upload.', 'error'); VMTL.showErrors(err, form); }
+      await VMTL.saveWithUploads(form, m.el.querySelector('#save'), 'incident', async () => {
+        await VMTL.api(`/incidents/${x.id}`, { method: 'PUT', body });
+        return { data: x };
+      }, () => { m.close(); VMTL.toast('Updated.', 'success'); loadStats(); load(); });
     };
   }
 

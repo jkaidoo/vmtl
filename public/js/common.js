@@ -254,9 +254,11 @@
   (function initTheme() { const p = themePref(); if (p !== 'system') document.documentElement.setAttribute('data-theme', p); })();
 
   // ---- toast + modal ----------------------------------------------------
-  function toast(message, kind = '') {
+  function toast(message, kind = '', role = '') {
     let host = document.getElementById('toasts'); if (!host) { host = el('<div id="toasts"></div>'); document.body.appendChild(host); }
-    const t = el(`<div class="toast ${kind}">${esc(message)}</div>`); host.appendChild(t);
+    const t = el(`<div class="toast ${kind}">${esc(message)}</div>`);
+    if (role) t.setAttribute('role', role);
+    host.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, kind === 'err' ? 5200 : 3200);
   }
   VMTL.toast = toast;
@@ -264,7 +266,7 @@
   function openModal(innerHtml, { large = false, onClose } = {}) {
     const backdrop = el(`<div class="modal-backdrop"><div class="modal ${large ? 'lg' : ''}">${innerHtml}</div></div>`);
     let closed = false;
-    function close() { if (closed) return; closed = true; document.removeEventListener('keydown', onKey); backdrop.remove(); onClose?.(); }
+    function close() { if (closed) return; closed = true; document.removeEventListener('keydown', onKey); VMTL.cancelUploads?.(backdrop); backdrop.remove(); onClose?.(); }
     backdrop.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
     function onKey(e) {
       if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.wi-calendar') && backdrop === [...document.querySelectorAll('.modal-backdrop')].at(-1)) { e.preventDefault(); close(); }
@@ -877,6 +879,7 @@
         .map((s) => s.getAttribute('src'))
         .find((src) => src && !/\/js\/(common|ui-system|vehicle-map|charts)\.js(\?|$)/.test(src));
       runLeave();
+      if (VMTL.view) VMTL.cancelUploads?.(VMTL.view);
       window.WalkinUI?.startPage();
       if (push) history.pushState({ spa: true }, '', href);
       if (doc.title) document.title = doc.title;
@@ -893,6 +896,7 @@
       location.href = href; // graceful fallback
     } finally { spaBusy = false; }
   }
+  VMTL.navigate = spaNavigate;
   document.addEventListener('click', (e) => {
     if (!document.getElementById('view')) return; // only inside a mounted shell
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -914,21 +918,233 @@
   });
 })();
 
-VMTL.uploadFields = type => type === 'maintenance' ? '<div class="field"><label>Receipt (image or PDF)</label><input type="file" data-upload="receipt" accept="image/jpeg,image/png,image/webp,application/pdf"></div>' : '<div class="field"><label>Photo</label><input type="file" data-upload="photo" accept="image/jpeg,image/png,image/webp"></div>' + (type==='driver' ? '<div class="field"><label>Licence photo</label><input type="file" data-upload="licence" accept="image/jpeg,image/png,image/webp"></div>' : '');
-VMTL.uploadFiles = async (form,type,id) => {
- for(const input of form.querySelectorAll('[data-upload]')) {
-  let file=input.files[0]; if(!file) continue;
-  const cfg=await VMTL.api('/file-upload-config');if(!cfg.enabled) throw Error('File uploads are turned off.');
-  if(file.type.startsWith('image/')){
-   const bitmap=await createImageBitmap(file);const scale=Math.min(1,cfg.images.maxEdge/Math.max(bitmap.width,bitmap.height));
-   const canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
-   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',cfg.images.quality));if(blob)file=new File([blob],file.name.replace(/\.[^.]+$/,'.webp'),{type:'image/webp'});
+(() => {
+  const entries = new WeakMap();
+  let rulesPromise;
+  const rules = () => {
+    rulesPromise ||= import('/js/upload-rules.js').then(() => window.VMTLUploadRules).catch(error => {
+      rulesPromise = null;
+      throw error;
+    });
+    return rulesPromise;
+  };
+  const replaced = () => Object.assign(new Error('The file selection changed. Save again to continue.'), { code: 'UPLOAD_CHANGED' });
+  const errorText = error => {
+    if (error.code === 'UPLOAD_CHANGED') return error.message;
+    if (error.status >= 500) return 'The server could not verify the file. Try again.';
+    if (error.code || error.status) return error.message;
+    if (error.offline) return 'The connection failed. Reconnect and choose the file again.';
+    return 'The file could not be checked. Try again or choose another file.';
+  };
+  const status = (state, text, { active = false, error = false } = {}) => {
+    if (!state.current()) return;
+    const label = state.host.querySelector('[data-upload-status]');
+    state.host.toggleAttribute('data-upload-error', error);
+    label.textContent = state.name ? `${state.name} · ${text}` : text;
+    const progress = state.host.querySelector('progress');
+    state.host.querySelector('[data-upload-percent]').textContent = '';
+    progress.hidden = !active;
+    progress.removeAttribute('value');
+    progress.setAttribute('aria-label', state.name ? `Upload progress for ${state.name}` : 'Upload progress');
+  };
+  VMTL.uploadStatus = () => '<div data-upload-status role="status" aria-live="polite" aria-atomic="true"></div><progress max="100" aria-label="Upload progress" hidden></progress> <span data-upload-percent aria-hidden="true"></span>';
+  const picker = (kind, label) => `<div class="field" data-upload-host>
+    <label>${label}<input type="file" data-upload="${kind}" accept=".jpg,.jpeg,.jpe,.jfif,.png,.webp${['letter', 'receipt'].includes(kind) ? ',.pdf' : ''}"></label>
+    ${VMTL.uploadStatus()}<button type="button" class="btn btn-sm" data-upload-remove hidden>Remove file</button>
+  </div>`;
+  VMTL.uploadFields = type => {
+    if (type === 'maintenance') return picker('receipt', 'Receipt (image or PDF)');
+    if (type === 'request') return picker('letter', 'Request letter (image or PDF, optional)');
+    return picker('photo', 'Photo') + (type === 'driver' ? picker('licence', 'Licence photo') : '');
+  };
+
+  function transfer(path, body, headers, state) {
+    if (!state.current()) throw replaced();
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      state.xhr = xhr;
+      status(state, 'Uploading…', { active: true });
+      xhr.open('POST', '/api' + path);
+      xhr.responseType = 'json';
+      xhr.timeout = 120_000;
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.setRequestHeader('X-Op-Id', state.opId);
+      for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable && event.total > 0 && state.current()) {
+          const percent = Math.min(100, Math.floor(100 * event.loaded / event.total));
+          state.host.querySelector('progress').value = percent;
+          state.host.querySelector('[data-upload-percent]').textContent = percent + '%';
+        }
+      };
+      xhr.upload.onload = () => status(state, 'Verifying file…', { active: true });
+      xhr.onload = () => {
+        if (!state.current()) return reject(replaced());
+        if (xhr.status >= 200 && xhr.status < 300 && xhr.response?.data) return resolve(xhr.response.data);
+        reject(Object.assign(new Error(xhr.response?.error || 'The server could not confirm the upload. Try again.'), {
+          code: xhr.response?.code || 'UPLOAD_RESPONSE', status: xhr.status,
+        }));
+      };
+      xhr.onerror = xhr.ontimeout = () => reject(Object.assign(new Error('The connection failed. Try the upload again.'), { code: 'UPLOAD_NETWORK' }));
+      xhr.onabort = () => reject(replaced());
+      xhr.send(body);
+    });
   }
-  if(file.size>cfg.maxMB*1048576) throw Error(`File exceeds the ${cfg.maxMB} MB limit.`);
-  if(file.size>8*1024*1024) throw Error('File exceeds the 8 MB maximum.');
-  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});
-  await VMTL.api(`/fleet-files/${type}/${id}/${input.dataset.upload}`,{method:'POST',body:{data,name:file.name}}); input.value='';
- }
-};
+
+  VMTL.uploadEntry = (host, name, check) => {
+    const previous = entries.get(host);
+    const state = {
+      host, name,
+      opId: VMTL.offline.uuid(),
+      current: () => entries.get(host) === state && host.isConnected,
+      async send(path, body, headers) {
+        try {
+          const result = await transfer(path, body, headers, state);
+          status(state, 'Upload complete');
+          state.complete = true;
+          return result;
+        } catch (error) {
+          status(state, errorText(error), { error: true });
+          throw error;
+        } finally {
+          state.xhr = null;
+        }
+      },
+    };
+    entries.set(host, state);
+    previous?.xhr?.abort();
+    status(state, 'Checking file…', { active: true });
+    state.checked = (async () => {
+      try {
+        const checks = await rules();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (!state.current()) return null;
+        const result = await check(checks, state);
+        status(state, 'Ready to upload');
+        return result;
+      } catch (error) {
+        status(state, errorText(error), { error: true });
+        return null;
+      }
+    })();
+    return state;
+  };
+
+  VMTL.clearUpload = host => {
+    const previous = entries.get(host);
+    entries.delete(host);
+    host.removeAttribute('data-upload-error');
+    previous?.xhr?.abort();
+    host.querySelector('[data-upload-status]').textContent = '';
+    host.querySelector('progress').hidden = true;
+    host.querySelector('[data-upload-percent]').textContent = '';
+  };
+  VMTL.cancelUploads = root => root.querySelectorAll('[data-upload-host]').forEach(VMTL.clearUpload);
+
+  async function prepareImage(file, type, config) {
+    let bitmap;
+    try { bitmap = await createImageBitmap(file.slice(0, file.size, type)); }
+    catch (_) { throw Object.assign(new Error('The image could not be opened. Choose another file.'), { code: 'FILE_CONTENT' }); }
+    try {
+      const scale = Math.min(1, config.maxEdge / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) return file;
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', config.quality));
+      if (!blob || blob.type !== 'image/webp' || blob.size > config.limit) return file;
+      return new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp' });
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  document.addEventListener('dragover', event => {
+    if (event.target.closest?.('[data-upload-host]') && event.dataTransfer?.types.includes('Files')) event.preventDefault();
+  });
+  document.addEventListener('drop', event => {
+    const host = event.target.closest?.('[data-upload-host]');
+    const files = event.dataTransfer?.files;
+    if (!host || !files?.length) return;
+    event.preventDefault();
+    const input = host.querySelector('input[type=file]');
+    if (files.length !== 1) {
+      VMTL.toast('Drop one file per field.', 'err', 'alert');
+      return;
+    }
+    input.files = files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  document.addEventListener('change', event => {
+    const input = event.target.closest?.('input[data-upload]');
+    if (!input) return;
+    const host = input.closest('[data-upload-host]');
+    const remove = host.querySelector('[data-upload-remove]');
+    const file = input.files[0];
+    remove.hidden = !file;
+    if (!file) return VMTL.clearUpload(host);
+    VMTL.uploadEntry(host, file.name, async (checks, state) => {
+      const type = checks.expectedType(file.name, input.dataset.upload);
+      const config = await VMTL.api('/file-upload-config');
+      if (config?._stale || !config) checks.fail('UPLOAD_NETWORK', 'The upload settings are unavailable. Reconnect and choose the file again.');
+      if (!config.enabled) checks.fail('FILE_DISABLED', 'File uploads are turned off.');
+      if (!state.current()) throw replaced();
+      checks.size(file.size, config.maxMB * checks.MiB);
+      const [head, tail] = await Promise.all([file.slice(0, 32).arrayBuffer(), file.slice(Math.max(0, file.size - 1024)).arrayBuffer()]);
+      if (!state.current()) throw replaced();
+      checks.checkSignature(type, new Uint8Array(head), new Uint8Array(tail), file.size);
+      return type.startsWith('image/') ? prepareImage(file, type, { ...config.images, limit: config.maxMB * checks.MiB }) : file;
+    });
+  });
+  document.addEventListener('click', event => {
+    const remove = event.target.closest?.('[data-upload-remove]');
+    if (!remove) return;
+    const host = remove.closest('[data-upload-host]');
+    const input = host.querySelector('input');
+    input.value = '';
+    remove.hidden = true;
+    VMTL.clearUpload(host);
+    input.focus();
+  });
+
+  VMTL.saveWithUploads = async (form, button, type, save, done) => {
+    if (button.disabled) return;
+    button.disabled = true;
+    const selected = [...form.querySelectorAll('[data-upload-host]')].map(host => entries.get(host)).filter(state => state && !state.complete);
+    let record;
+    try {
+      const files = await Promise.all(selected.map(state => state.checked));
+      if (!form.isConnected || files.some(file => !file)) return;
+      if (selected.some(state => !state.current())) throw replaced();
+      record = await save();
+      if (!form.isConnected) return;
+      let failure;
+      for (const [index, state] of selected.entries()) {
+        const file = files[index];
+        try {
+          const kind = state.host.querySelector('input').dataset.upload;
+          await state.send(`/fleet-files/${type}/${record.data.id}/${kind}`, file, {
+            'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name),
+          });
+        } catch (error) { failure ||= error; }
+      }
+      if (failure) throw failure;
+      if (!form.isConnected || selected.some(state => !state.current())) return;
+      if ([...form.querySelectorAll('[data-upload-host]')].some(host => entries.get(host)?.complete)) {
+        VMTL.toast('Upload complete', 'success', 'status');
+      }
+      await done(record);
+    } catch (error) {
+      if (form.isConnected) {
+        if (!record) VMTL.showErrors(error, form);
+        else VMTL.toast(error.code === 'UPLOAD_CHANGED' ? error.message : 'The record was saved. Review the file messages and save again to retry.', 'error');
+      }
+    } finally {
+      button.disabled = false;
+    }
+  };
+})();
 VMTL.otherField = field => `<select name="${field}" required>${VMTL.enumOptions(field)}</select><input name="${field}_other" placeholder="Enter name" hidden maxlength="255">`;
 VMTL.bindOther = (root,field) => {const select=root.querySelector(`[name=${field}]`),input=root.querySelector(`[name=${field}_other]`);const sync=()=>{input.hidden=select.value!=='other'; input.required=!input.hidden;};select.onchange=sync;sync();};

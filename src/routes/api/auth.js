@@ -9,6 +9,7 @@ const audit = require('../../services/audit');
 const securityAlerts = require('../../services/securityAlerts');
 const sessionPolicy = require('../../config/sessionPolicy');
 const { badRequest } = require('../../middleware/errorHandler');
+const { avatar: validateAvatar, avatarLimits } = require('../../services/uploadValidation');
 
 // Map the client-declared device to a session mode (drives the idle policy).
 function sessionModeFor(deviceName) {
@@ -109,8 +110,7 @@ module.exports = function register(router) {
   });
 
   router.post('/me/avatar', requireAuth, async (req, res) => {
-    const avatar = req.body.avatar;
-    if (avatar != null && (typeof avatar !== 'string' || avatar.length > 2_000_000)) throw badRequest('Invalid avatar.');
+    const avatar = validateAvatar(req.body?.avatar, avatarLimits.profile);
     await db.run(`UPDATE users SET avatar = ?, updated_at = ${db.now()} WHERE id = ?`, [avatar || null, req.session.user.id]);
     res.json({ user: await userForClient(req.session.user.id) });
   });

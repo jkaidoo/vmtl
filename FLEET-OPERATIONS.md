@@ -29,3 +29,40 @@ Restart the application to apply PostgreSQL migration 009 (SQLite upgrades itsel
 - **Booking calendar (`requests.create`):** a month view of how busy the fleet is each day (scheduled/in-progress trips against the scoped fleet size), so requesters pick a quiet day before raising a request. **Trip ratings:** after a trip is completed its requester rates it 1–5 (with optional punctuality and vehicle-condition scores and a comment); ratings ≤2 are flagged and notify oversight.
 
 Local verification: `npm test`. All new endpoints are org-scoped to the viewer's visible subtree and recorded in the audit log.
+
+## Upload validation
+
+| Flow | Server endpoint and destination |
+| --- | --- |
+| Vehicle photo, driver photo and licence, incident photo, maintenance receipt, and external travel letter | `POST /api/fleet-files/:type/:id/:kind` → configured database, server folder, S3-compatible storage, or Supabase Storage |
+| Work-order receipt (API only) | Same attachment endpoint with `work_order` and `receipt` |
+| Transport schedule CSV, picked, dropped or pasted | `POST /api/ts/events/:id/import-schedule` → schedule assignments in the database |
+| Profile avatar and administrator-set avatar (API only) | `POST /api/me/avatar` and `POST /api/users` or `PUT /api/users/:id` → users table |
+
+All browser file bytes go through Express. Storage writes use the exact buffer
+the server validated and a new object key. Files are available through the
+existing scoped read routes after metadata is committed. OneDrive backups and
+File Server moves transfer existing server data. Directory photo sync fetches
+images on the server through its existing bounded photo normalizer.
+
+Fleet checks cover JPEG (including JPG, JPE and JFIF), PNG and WebP, with PDF
+accepted for receipts and letters. The File Server limit (1–8 MB, 5 MB by
+default) applies to both the selected file and the transmitted attachment.
+CSV uses a 1 MB limit, strict UTF-8 and the existing comma-delimited schedule
+columns with quote and row-shape checks. Avatar APIs accept JPEG, PNG, WebP
+and GIF data URLs within their existing encoded-length limits. Earlier saved
+avatars are retained.
+
+The shared binary check reads up to 32 bytes at the front and 1 KiB at the
+end. It checks format markers, basic structure such as WebP container
+length, and end markers where applicable. It does not fully parse image
+chunks or validate all PDF objects and cross-references. Browser image
+resizing also decodes the image. These checks do not scan for malware. CSV
+reads the whole bounded file because it has no binary signature.
+
+Browser uploads use binary bodies to support measurable transfer progress.
+Fleet validation reads the File Server settings on selection and at receipt.
+There are no added storage reads, separate verification requests, or
+staging objects. An attachment retry with the same operation ID and bytes
+can reuse the accepted attachment. CSV retries skip drivers already assigned
+to the event.

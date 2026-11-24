@@ -6,6 +6,8 @@
 const db = require('../db/runtime');
 
 module.exports = async function idempotency(req, res, next) {
+  // Upload routes validate and authorize every request, including retries.
+  if (req.uploadBody || (req.body?.avatar !== undefined && /^\/users(?:\/[^/]+)?\/?$/i.test(req.path))) return next();
   const opId = req.headers['x-op-id'];
   if (!opId || !['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   const id = String(opId).slice(0, 80);

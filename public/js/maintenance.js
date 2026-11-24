@@ -27,7 +27,10 @@ window.VMTL_PAGE = async function () {
       const form = m.el.querySelector('#mf'); const body = {}; if(!form.reportValidity()) return; new FormData(form).forEach((val, k) => { if (val !== '') body[k] = val; });
       ['vehicle_id', 'odometer', 'next_service_odometer'].forEach((k) => { if (body[k]) body[k] = Number(body[k]); });
       if (body.cost) body.cost = Number(body.cost);
-      try { const saved=savedRecord||await VMTL.api('/maintenance-records', { method: 'POST', body });savedRecord=saved; await VMTL.uploadFiles(form,'maintenance',saved.data.id); m.close(); VMTL.toast('Recorded.', 'success'); load(); } catch (err) { if(savedRecord) VMTL.toast('The record was saved. Fix the file issue and Save again to retry the upload.','error'); VMTL.showErrors(err, form); }
+      await VMTL.saveWithUploads(form, m.el.querySelector('#save'), 'maintenance', async () => {
+        savedRecord ||= await VMTL.api('/maintenance-records', { method: 'POST', body });
+        return savedRecord;
+      }, () => { m.close(); VMTL.toast('Recorded.', 'success'); load(); });
     };
   };
   load();

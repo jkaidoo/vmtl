@@ -3,6 +3,7 @@
 // subtree (+ unassigned accounts); scoped managers cannot grant the admin role
 // or place users outside their subtree; the break-glass admin is protected.
 const db = require('../../db/runtime');
+const { avatar: validateAvatar, avatarLimits } = require('../../services/uploadValidation');
 const { CAP } = require('../../services/capabilities');
 const { has } = require('../../services/authz');
 const orgScope = require('../../services/orgScope');
@@ -115,14 +116,15 @@ module.exports = function register(router) {
       name: { required: true, type: 'string', maxLength: 255 }, email: { required: true, type: 'string', maxLength: 255 },
       password: { required: true, type: 'string' }, role_id: { required: true, type: 'integer' },
       department_id: { type: 'integer' }, org_unit_id: { type: 'integer' }, phone: { type: 'string', maxLength: 50 },
-      active: { type: 'boolean', default: true }, avatar: { type: 'string', maxLength: 700000 }, can_drive: { type: 'boolean' },
+      active: { type: 'boolean', default: true }, can_drive: { type: 'boolean' },
     });
     const email = data.email.trim().toLowerCase();
     if (await db.get('SELECT id FROM users WHERE lower(email) = ?', [email])) throw badRequest('The given data was invalid.', { email: ['That email is already in use.'] });
     assertPasswordStrength(data.password);
     await guardAssignment(req, data);
+    const avatar = validateAvatar(req.body.avatar, avatarLimits.admin);
     const r = await db.run(`INSERT INTO users (name, email, password_hash, role_id, department_id, org_unit_id, phone, active, is_super_admin, avatar, can_drive, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ${db.now()}, ${db.now()})`,
-      [data.name, email, hashPassword(data.password), data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null, data.active ? 1 : 0, data.avatar || null, data.can_drive ? 1 : 0]);
+      [data.name, email, hashPassword(data.password), data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null, data.active ? 1 : 0, avatar, data.can_drive ? 1 : 0]);
     await syncDriverLink(r.lastInsertRowid);
     await audit.from(req, { action: 'user.created', description: `User ${data.name} (${email}) was created`, entityType: 'user', entityId: r.lastInsertRowid });
     await checkAdminChange(req, null, r.lastInsertRowid);
@@ -176,7 +178,7 @@ module.exports = function register(router) {
       name: { required: true, type: 'string', maxLength: 255 }, email: { required: true, type: 'string', maxLength: 255 },
       password: { type: 'string' }, role_id: { required: true, type: 'integer' },
       department_id: { type: 'integer' }, org_unit_id: { type: 'integer' }, phone: { type: 'string', maxLength: 50 },
-      active: { type: 'boolean' }, avatar: { type: 'string', maxLength: 700000 }, can_drive: { type: 'boolean' },
+      active: { type: 'boolean' }, can_drive: { type: 'boolean' },
     });
     const email = data.email.trim().toLowerCase();
     if (await db.get('SELECT id FROM users WHERE lower(email) = ? AND id != ?', [email, target.id])) throw badRequest('The given data was invalid.', { email: ['That email is already in use.'] });
@@ -184,7 +186,7 @@ module.exports = function register(router) {
     const sets = ['name = ?', 'email = ?', 'role_id = ?', 'department_id = ?', 'org_unit_id = ?', 'phone = ?'];
     const params = [data.name, email, data.role_id, data.department_id || null, data.org_unit_id || null, data.phone || null];
     if (req.body.active !== undefined) { sets.push('active = ?'); params.push(data.active ? 1 : 0); }
-    if (req.body.avatar !== undefined) { sets.push('avatar = ?'); params.push(data.avatar || null); }
+    if (req.body.avatar !== undefined) { sets.push('avatar = ?'); params.push(validateAvatar(req.body.avatar, avatarLimits.admin)); }
     if (req.body.can_drive !== undefined) { sets.push('can_drive = ?'); params.push(data.can_drive ? 1 : 0); }
     if (data.password) { assertPasswordStrength(data.password); sets.push('password_hash = ?'); params.push(hashPassword(data.password)); }
     await db.run(`UPDATE users SET ${sets.join(', ')}, updated_at = ${db.now()} WHERE id = ?`, [...params, target.id]);
